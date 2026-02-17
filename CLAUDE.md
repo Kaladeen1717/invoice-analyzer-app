@@ -52,7 +52,8 @@ scripts/                — Utility scripts (migrate-clients.js)
 - Always reference a Linear ticket ID when working on planned work
 - Use conventional commits with ticket reference (see Linear rules)
 - Branch from `main` for each ticket
-- Test changes: `npm start` (server) or `node batch-process.js --list` (CLI)
+- Dev server: `npm run dev` (auto-restarts via nodemon) or `/dev-server start|stop|restart`
+- Test changes: open `http://localhost:3000` (UI) or `node batch-process.js --list` (CLI)
 
 ## Coding Conventions
 
