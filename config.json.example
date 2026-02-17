@@ -25,6 +25,80 @@
     ],
     "includeSummary": true
   },
+  "fieldDefinitions": [
+    {
+      "key": "supplierName",
+      "label": "Supplier Name",
+      "type": "text",
+      "schemaHint": "Full company/supplier name as it appears on the invoice",
+      "instruction": "extract the full company name with proper spacing (e.g., \"Acme Corporation\" not \"AcmeCorporation\")",
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "key": "paymentDate",
+      "label": "Payment Date",
+      "type": "date",
+      "schemaHint": "YYYYMMDD format - the date payment is due",
+      "instruction": "look for \"Due Date\", \"Payment Due\", \"Pay By\", or similar fields. Convert to YYYYMMDD format. If not found, use the invoiceDate.",
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "key": "invoiceDate",
+      "label": "Invoice Date",
+      "type": "date",
+      "schemaHint": "YYYYMMDD format - the date the invoice was issued",
+      "instruction": "convert any date format to YYYYMMDD (e.g., \"2024-01-15\" becomes \"20240115\")",
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "key": "invoiceNumber",
+      "label": "Invoice Number",
+      "type": "text",
+      "schemaHint": "Invoice number/reference",
+      "instruction": "extract the invoice number or reference as shown on the document",
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "key": "currency",
+      "label": "Currency",
+      "type": "text",
+      "schemaHint": "Currency code (e.g., USD, EUR, DKK, NOK, SEK)",
+      "instruction": "identify the 3-letter currency code (USD, EUR, DKK, etc.)",
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "key": "totalAmount",
+      "label": "Total Amount",
+      "type": "number",
+      "schemaHint": "Total amount as a number (no currency symbol, no thousands separators)",
+      "instruction": "provide just the numeric value without currency symbol or separators (e.g., \"1500.50\" not \"$1,500.50\")",
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "key": "documentTypes",
+      "label": "Document Types",
+      "type": "array",
+      "schemaHint": "Array of document type tags that apply to this document",
+      "instruction": "analyze the document and return an array of applicable types",
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "key": "isPrivate",
+      "label": "Private",
+      "type": "boolean",
+      "schemaHint": "Boolean - true if this appears to be a private/personal invoice",
+      "instruction": "set to true if the document appears to be a personal/private invoice",
+      "enabled": true,
+      "builtIn": true
+    }
+  ],
   "output": {
     "filenameTemplate": "{supplierName} - {paymentDateFormatted}{invoiceDateIfDifferent} - {invoiceNumber} - {currency} - {totalAmount}{privateTag}.pdf",
     "processedOriginalSubfolder": "processed-original",
