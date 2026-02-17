@@ -1,0 +1,53 @@
+---
+description: "Development rules for Invoice Analyzer App"
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Invoice Analyzer App
+
+## Project Overview
+
+Node.js/Express app that analyzes invoice PDFs using Gemini Vision API. Multi-client support with web Admin UI and CLI batch processing.
+
+- **Entry points**: `server.js` (web server), `batch-process.js` (CLI)
+- **Business logic**: `src/` modules (processor, parallel-processor, client-manager, config, csv-logger, prompt-builder, filename-generator)
+- **Web UI**: `public/` (index.html, app.js, styles.css)
+- **Client configs**: `clients/*.json` (per-client settings)
+- **Runtime**: Node.js v18+, CommonJS modules
+
+## Linear Ticket Workflow
+
+This project uses Linear for task management. Team prefix: **INV** (e.g., INV-1, INV-2).
+
+**Commit format**: `{type}(INV-{number}): {description}`
+- Types: `feat`, `fix`, `improve`, `chore`, `docs`, `refactor`, `test`
+- Example: `feat(INV-12): add multi-currency support`
+
+**Branch format**: `{type}/INV-{number}-{short-description}`
+- Example: `feat/INV-12-multi-currency`
+
+For work without a ticket, omit the scope: `chore: update .gitignore`
+
+## Coding Conventions
+
+- CommonJS (`require` / `module.exports`) — not ES modules
+- Express route handlers in `server.js`, logic in `src/` modules
+- Error handling: try-catch with meaningful error messages
+- Config: `.env` for secrets, `config.json` for app settings, `clients/*.json` for client configs
+- Never commit `.env` or `config.json`
+
+## File Organization
+
+- `src/` — Core business logic modules
+- `public/` — Static web UI (HTML, JS, CSS)
+- `clients/` — Per-client JSON configuration files
+- `scripts/` — One-off migration/utility scripts
+- `docs/` — Developer documentation
+
+## Testing Changes
+
+- Server: `npm start` then open `http://localhost:3000`
+- CLI: `node batch-process.js --list` (list clients) or `node batch-process.js` (process)
+- Validate JSON config changes against `config.json.example`
+- Do not modify client JSON files without explicit user request

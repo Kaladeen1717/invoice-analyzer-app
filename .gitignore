@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# User configuration (use config.json.example as template)
+config.json
+
+# Processed files
+uploads/
+output/
+
+# Test data
+test-invoices/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# AI metadata
+.gemini/
+
+# Local Claude Code permissions (not portable)
+.claude/settings.local.json
