@@ -74,3 +74,12 @@ When discovering bugs or improvements during work:
 - PR title matches the primary commit format: `{type}(INV-{number}): {description}`
 - PR body includes: `Closes INV-{number}` (or `Part of INV-{number}` for partial work)
 - Keep PRs focused on a single ticket when possible
+
+## Commit Discipline
+
+- **Never commit automatically** — only commit when the user explicitly asks (e.g., "commit", "commit this", "make a commit")
+- Do not commit as a side effect of completing a task
+- Do not commit after fixing a bug, adding a feature, or any other change unless told to
+- When asked to commit, follow the commit message convention above
+- Always show `git status` and `git diff` summary before committing so the user can review
+- Never push to remote unless explicitly asked
