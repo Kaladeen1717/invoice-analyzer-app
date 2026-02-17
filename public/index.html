@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice Analyzer - Admin</title>
+  <meta name="description" content="Manage clients and process invoices with AI-powered analysis">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>Invoice Analyzer</h1>
+      <p class="subtitle">Admin - Client Management</p>
+      <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot"></span>
+        <span id="statusText">Checking connection...</span>
+      </div>
+    </header>
+
+    <main class="main-card">
+      <!-- Alert area -->
+      <div id="alertArea"></div>
+
+      <!-- Client Management Section -->
+      <section class="client-management-section">
+        <div class="section-header">
+          <h2>Clients</h2>
+          <div class="section-actions">
+            <button class="btn btn-secondary" id="refreshClientsBtn">
+              <span>Refresh</span>
+            </button>
+            <button class="btn btn-primary" id="newClientBtn">
+              <span>+ New Client</span>
+            </button>
+            <button class="btn btn-accent" id="processAllBtn" disabled>
+              <span>Process All</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Client list -->
+        <div class="client-list" id="clientList">
+          <div class="loading-placeholder">Loading clients...</div>
+        </div>
+      </section>
+
+      <!-- Processing Log Section -->
+      <section class="processing-log-section" id="processingLogSection">
+        <div class="section-header">
+          <h3>Processing Log</h3>
+          <button class="btn btn-small btn-secondary" id="clearLogBtn">Clear</button>
+        </div>
+        <div class="processing-log" id="processingLog">
+          <div class="log-placeholder">Processing output will appear here...</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Client Form Modal -->
+  <div class="modal-overlay" id="clientModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">Create New Client</h3>
+        <button class="modal-close" id="closeModalBtn">&times;</button>
+      </div>
+      <form id="clientForm">
+        <div class="form-group">
+          <label for="clientId">Client ID</label>
+          <input type="text" id="clientId" name="clientId" placeholder="e.g., acme-corp" pattern="[a-z0-9-]+"
+            title="Lowercase letters, numbers, and hyphens only" required>
+          <span class="form-hint">Lowercase letters, numbers, and hyphens only. Cannot be changed after creation.</span>
+        </div>
+
+        <div class="form-group">
+          <label for="clientName">Display Name</label>
+          <input type="text" id="clientName" name="name" placeholder="e.g., Acme Corporation" required>
+        </div>
+
+        <div class="form-group">
+          <label for="folderPath">Folder Path</label>
+          <input type="text" id="folderPath" name="folderPath" placeholder="e.g., /Users/you/Documents/acme-invoices"
+            required>
+          <span class="form-hint">Absolute path to the folder containing invoice PDFs.</span>
+        </div>
+
+        <div class="form-group">
+          <label for="privateAddressMarker">Private Address Marker</label>
+          <input type="text" id="privateAddressMarker" name="privateAddressMarker"
+            placeholder="e.g., 123 Business Street" required>
+          <span class="form-hint">Text that identifies your business address on invoices.</span>
+        </div>
+
+        <div class="form-group">
+          <label for="apiKeyEnvVar">API Key Environment Variable (Optional)</label>
+          <input type="text" id="apiKeyEnvVar" name="apiKeyEnvVar" placeholder="e.g., GEMINI_API_KEY_ACME">
+          <span class="form-hint">Custom environment variable for this client's API key. Leave empty to use default.</span>
+        </div>
+
+        <div class="form-group form-checkbox">
+          <label class="checkbox-label">
+            <input type="checkbox" id="clientEnabled" name="enabled" checked>
+            <span class="checkbox-text">Enabled</span>
+          </label>
+          <span class="form-hint">Disabled clients are excluded from "Process All".</span>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancelFormBtn">Cancel</button>
+          <button type="button" class="btn btn-danger" id="deleteClientBtn" style="display: none;">Delete</button>
+          <button type="submit" class="btn btn-primary" id="saveClientBtn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h3>Confirm Delete</h3>
+        <button class="modal-close" id="closeDeleteModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete client "<strong id="deleteClientName"></strong>"?</p>
+        <p class="text-warning">This action cannot be undone. The client configuration file will be permanently removed.</p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

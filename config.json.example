@@ -1,0 +1,34 @@
+{
+  "documentTypes": [
+    { "id": "commercial_invoice", "label": "Commercial Invoice", "description": "Standard invoice for goods/services" },
+    { "id": "proforma_invoice", "label": "Proforma Invoice", "description": "Preliminary invoice" },
+    { "id": "receipt", "label": "Receipt", "description": "Payment confirmation" },
+    { "id": "order_confirmation", "label": "Order Confirmation", "description": "Order confirmation" },
+    { "id": "purchase_order", "label": "Purchase Order", "description": "Purchase request" },
+    { "id": "government_taxes", "label": "Government/Taxes", "description": "Tax documents" }
+  ],
+  "processing": {
+    "concurrency": 5,
+    "retryAttempts": 2,
+    "retryDelayMs": 1000
+  },
+  "extraction": {
+    "fields": [
+      "supplierName",
+      "paymentDate",
+      "invoiceDate",
+      "invoiceNumber",
+      "currency",
+      "totalAmount",
+      "documentTypes",
+      "isPrivate"
+    ],
+    "includeSummary": true
+  },
+  "output": {
+    "filenameTemplate": "{supplierName} - {paymentDateFormatted}{invoiceDateIfDifferent} - {invoiceNumber} - {currency} - {totalAmount}{privateTag}.pdf",
+    "processedOriginalSubfolder": "processed-original",
+    "processedEnrichedSubfolder": "processed-enriched",
+    "csvFilename": "invoice-log.csv"
+  }
+}
