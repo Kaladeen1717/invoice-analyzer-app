@@ -240,6 +240,33 @@ function getDefaultDocumentTypes() {
     return DEFAULT_DOCUMENT_TYPES;
 }
 
+/**
+ * Save configuration to config.json (partial update).
+ * Reads current file, merges updates, writes back, clears cache.
+ * @param {Object} updates - Key-value pairs to merge into config
+ */
+async function saveConfig(updates) {
+    const configPath = path.join(process.cwd(), CONFIG_FILE);
+    const configData = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(configData);
+
+    Object.assign(config, updates);
+
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+
+    clearConfigCache();
+}
+
+/**
+ * Update fieldDefinitions in config.json.
+ * Validates before saving.
+ * @param {Array} fieldDefinitions - The field definitions array
+ */
+async function updateFieldDefinitions(fieldDefinitions) {
+    validateFieldDefinitions(fieldDefinitions);
+    await saveConfig({ fieldDefinitions });
+}
+
 module.exports = {
     loadConfig,
     getConfig,
@@ -248,5 +275,7 @@ module.exports = {
     getDocumentTypes,
     getDefaultDocumentTypes,
     validateFieldDefinitions,
-    getFieldDefinitions
+    getFieldDefinitions,
+    saveConfig,
+    updateFieldDefinitions
 };

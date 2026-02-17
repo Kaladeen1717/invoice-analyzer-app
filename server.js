@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Import modules
-const { loadConfig } = require('./src/config');
+const { loadConfig, updateFieldDefinitions } = require('./src/config');
 const { processAllInvoices } = require('./src/parallel-processor');
 const {
     getAllClients,
@@ -236,6 +236,44 @@ app.get('/api/clients/:id/status', async (req, res) => {
             error: 'Failed to get client status',
             details: error.message
         });
+    }
+});
+
+// ============================================================================
+// GLOBAL CONFIG API ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/config - Get global configuration
+ */
+app.get('/api/config', async (req, res) => {
+    try {
+        const config = await loadConfig({ requireFolders: false });
+        res.json({
+            fieldDefinitions: config.fieldDefinitions || null,
+            extraction: config.extraction,
+            output: config.output,
+            processing: config.processing,
+            documentTypes: config.documentTypes || null
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to load config', details: error.message });
+    }
+});
+
+/**
+ * PUT /api/config/fields - Update field definitions
+ */
+app.put('/api/config/fields', async (req, res) => {
+    try {
+        const { fieldDefinitions } = req.body;
+        if (!fieldDefinitions) {
+            return res.status(400).json({ error: 'fieldDefinitions array is required' });
+        }
+        await updateFieldDefinitions(fieldDefinitions);
+        res.json({ success: true, message: 'Field definitions updated' });
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to update field definitions', details: error.message });
     }
 });
 
