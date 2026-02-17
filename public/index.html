@@ -23,43 +23,60 @@
       </div>
     </header>
 
+    <!-- Tab Navigation -->
+    <nav class="tab-bar">
+      <button class="tab active" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="global-config">Global Config</button>
+    </nav>
+
     <main class="main-card">
-      <!-- Alert area -->
+      <!-- Alert area (visible across all tabs) -->
       <div id="alertArea"></div>
 
-      <!-- Client Management Section -->
-      <section class="client-management-section">
-        <div class="section-header">
-          <h2>Clients</h2>
-          <div class="section-actions">
-            <button class="btn btn-secondary" id="refreshClientsBtn">
-              <span>Refresh</span>
-            </button>
-            <button class="btn btn-primary" id="newClientBtn">
-              <span>+ New Client</span>
-            </button>
-            <button class="btn btn-accent" id="processAllBtn" disabled>
-              <span>Process All</span>
-            </button>
+      <!-- Tab: Dashboard -->
+      <div class="tab-content active" id="tab-dashboard">
+        <!-- Client Management Section -->
+        <section class="client-management-section">
+          <div class="section-header">
+            <h2>Clients</h2>
+            <div class="section-actions">
+              <button class="btn btn-secondary" id="refreshClientsBtn">
+                <span>Refresh</span>
+              </button>
+              <button class="btn btn-primary" id="newClientBtn">
+                <span>+ New Client</span>
+              </button>
+              <button class="btn btn-accent" id="processAllBtn" disabled>
+                <span>Process All</span>
+              </button>
+            </div>
           </div>
-        </div>
 
-        <!-- Client list -->
-        <div class="client-list" id="clientList">
-          <div class="loading-placeholder">Loading clients...</div>
-        </div>
-      </section>
+          <!-- Client list -->
+          <div class="client-list" id="clientList">
+            <div class="loading-placeholder">Loading clients...</div>
+          </div>
+        </section>
 
-      <!-- Processing Log Section -->
-      <section class="processing-log-section" id="processingLogSection">
-        <div class="section-header">
-          <h3>Processing Log</h3>
-          <button class="btn btn-small btn-secondary" id="clearLogBtn">Clear</button>
+        <!-- Processing Log Section -->
+        <section class="processing-log-section" id="processingLogSection">
+          <div class="section-header">
+            <h3>Processing Log</h3>
+            <button class="btn btn-small btn-secondary" id="clearLogBtn">Clear</button>
+          </div>
+          <div class="processing-log" id="processingLog">
+            <div class="log-placeholder">Processing output will appear here...</div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Tab: Global Config -->
+      <div class="tab-content" id="tab-global-config">
+        <div class="empty-placeholder">
+          <p>Global configuration editor coming in the next update.</p>
+          <p>This will include extraction fields, tag rules, prompt templates, and filename settings.</p>
         </div>
-        <div class="processing-log" id="processingLog">
-          <div class="log-placeholder">Processing output will appear here...</div>
-        </div>
-      </section>
+      </div>
     </main>
   </div>
 
