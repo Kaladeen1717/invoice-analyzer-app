@@ -4,6 +4,7 @@ let isProcessing = false;
 let eventSource = null;
 let editingClientId = null;
 let deleteClientId = null;
+let activeTab = 'dashboard';
 
 // DOM elements
 const statusIndicator = document.getElementById('statusIndicator');
@@ -51,6 +52,24 @@ document.addEventListener('DOMContentLoaded', () => {
     loadClients();
     setupEventListeners();
 });
+
+// ============================================================================
+// TAB NAVIGATION
+// ============================================================================
+
+function switchTab(tabName) {
+    activeTab = tabName;
+
+    // Update tab buttons
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === `tab-${tabName}`);
+    });
+}
 
 // ============================================================================
 // SERVER HEALTH CHECK
@@ -617,6 +636,11 @@ function escapeHtml(text) {
 // ============================================================================
 
 function setupEventListeners() {
+    // Tab navigation
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    });
+
     // Refresh clients
     refreshClientsBtn.addEventListener('click', loadClients);
 
