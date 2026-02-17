@@ -68,6 +68,50 @@ async function loadConfig(options = {}) {
     }
 }
 
+const VALID_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'array'];
+
+/**
+ * Validate field definitions array
+ * @param {Array} fieldDefinitions - Field definitions to validate
+ */
+function validateFieldDefinitions(fieldDefinitions) {
+    if (!Array.isArray(fieldDefinitions)) {
+        throw new Error('fieldDefinitions must be an array');
+    }
+    if (fieldDefinitions.length === 0) {
+        throw new Error('fieldDefinitions must be a non-empty array');
+    }
+    for (const [index, field] of fieldDefinitions.entries()) {
+        if (!field.key || typeof field.key !== 'string') {
+            throw new Error(`fieldDefinitions[${index}]: must have a "key" string`);
+        }
+        if (!field.label || typeof field.label !== 'string') {
+            throw new Error(`fieldDefinitions[${index}]: must have a "label" string`);
+        }
+        if (!VALID_FIELD_TYPES.includes(field.type)) {
+            throw new Error(`fieldDefinitions[${index}]: "type" must be one of: ${VALID_FIELD_TYPES.join(', ')}`);
+        }
+        if (!field.schemaHint || typeof field.schemaHint !== 'string') {
+            throw new Error(`fieldDefinitions[${index}]: must have a "schemaHint" string`);
+        }
+        if (!field.instruction || typeof field.instruction !== 'string') {
+            throw new Error(`fieldDefinitions[${index}]: must have an "instruction" string`);
+        }
+        if (typeof field.enabled !== 'boolean') {
+            throw new Error(`fieldDefinitions[${index}]: "enabled" must be a boolean`);
+        }
+    }
+}
+
+/**
+ * Get field definitions from config, or null for legacy mode
+ * @param {Object} config - The configuration object
+ * @returns {Array|null} Field definitions array or null
+ */
+function getFieldDefinitions(config) {
+    return config.fieldDefinitions || null;
+}
+
 /**
  * Validate document types array
  * @param {Array} documentTypes - Document types to validate
@@ -134,9 +178,16 @@ function validateConfig(config, options = {}) {
         throw new Error('processing.retryAttempts must be a non-negative number');
     }
 
-    // Validate extraction
-    if (!Array.isArray(config.extraction.fields) || config.extraction.fields.length === 0) {
-        throw new Error('extraction.fields must be a non-empty array');
+    // Validate field definitions if present
+    if (config.fieldDefinitions) {
+        validateFieldDefinitions(config.fieldDefinitions);
+    }
+
+    // Validate extraction.fields (only required in legacy mode without fieldDefinitions)
+    if (!config.fieldDefinitions) {
+        if (!Array.isArray(config.extraction.fields) || config.extraction.fields.length === 0) {
+            throw new Error('extraction.fields must be a non-empty array');
+        }
     }
 
     // Validate output
@@ -195,5 +246,7 @@ module.exports = {
     ensureDirectories,
     clearConfigCache,
     getDocumentTypes,
-    getDefaultDocumentTypes
+    getDefaultDocumentTypes,
+    validateFieldDefinitions,
+    getFieldDefinitions
 };
