@@ -125,6 +125,64 @@
             <button class="btn btn-primary btn-small" id="saveTagsBtn">Save Changes</button>
           </div>
         </div>
+
+        <!-- Prompt Editor Section -->
+        <section class="prompt-editor-section">
+          <div class="section-header">
+            <h2>Prompt Template</h2>
+            <div class="section-actions">
+              <button class="btn btn-secondary btn-small" id="reloadPromptBtn"><span>Reload</span></button>
+              <button class="btn btn-small" id="rawEditToggleBtn"><span>Raw Edit</span></button>
+            </div>
+          </div>
+          <p class="section-description">Configure the prompt sent to Gemini for invoice analysis. The JSON schema, field instructions, and tag instructions are auto-generated from your field and tag definitions above.</p>
+
+          <!-- Structured mode -->
+          <div id="promptStructuredMode">
+            <div class="prompt-form-group">
+              <label for="promptPreamble">Preamble</label>
+              <p class="prompt-field-desc">This text appears at the beginning of the prompt, before the JSON schema. It tells the AI what task to perform.</p>
+              <textarea id="promptPreamble" rows="3" placeholder="Analyze this invoice PDF and extract the following information in JSON format:"></textarea>
+            </div>
+            <div class="prompt-form-group">
+              <label for="promptGeneralRules">General Rules</label>
+              <p class="prompt-field-desc">These rules appear after the field-specific and tag-specific instructions. Use for general extraction guidelines that apply to all fields.</p>
+              <textarea id="promptGeneralRules" rows="3" placeholder='If any field cannot be determined, use "Unknown" for text fields...'></textarea>
+            </div>
+            <div class="prompt-form-group">
+              <label for="promptSuffix">Suffix</label>
+              <p class="prompt-field-desc">This text appears at the very end of the prompt. Use for output format requirements.</p>
+              <textarea id="promptSuffix" rows="2" placeholder="Always return valid JSON that can be parsed directly."></textarea>
+            </div>
+          </div>
+
+          <!-- Raw edit mode -->
+          <div id="promptRawMode" style="display: none;">
+            <div class="prompt-raw-warning">Editing the raw prompt gives you full control but bypasses the structured sections. The raw prompt will be used as-is, replacing the auto-generated schema and instructions.</div>
+            <div class="prompt-form-group">
+              <label for="promptRawText">Full Prompt</label>
+              <textarea id="promptRawText" rows="16" placeholder="Enter the complete prompt text..."></textarea>
+            </div>
+          </div>
+
+          <!-- Live Preview -->
+          <div class="prompt-preview-section">
+            <div class="prompt-preview-header">
+              <h3>Live Preview</h3>
+              <span class="prompt-preview-length" id="promptPreviewLength"></span>
+            </div>
+            <pre class="prompt-preview" id="promptPreview"><code>Loading preview...</code></pre>
+          </div>
+        </section>
+
+        <!-- Prompt save bar -->
+        <div class="prompt-save-bar" id="promptSaveBar" style="display: none;">
+          <span>You have unsaved prompt changes</span>
+          <div class="prompt-save-bar-actions">
+            <button class="btn btn-secondary btn-small" id="discardPromptBtn">Discard</button>
+            <button class="btn btn-primary btn-small" id="savePromptBtn">Save Changes</button>
+          </div>
+        </div>
       </div>
     </main>
   </div>

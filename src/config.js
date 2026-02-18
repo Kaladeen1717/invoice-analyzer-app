@@ -207,6 +207,59 @@ async function updateTagDefinitions(tagDefinitions) {
 }
 
 /**
+ * Validate promptTemplate object
+ * @param {Object} promptTemplate - The prompt template to validate
+ */
+function validatePromptTemplate(promptTemplate) {
+    if (!promptTemplate || typeof promptTemplate !== 'object') {
+        throw new Error('promptTemplate must be an object');
+    }
+    for (const field of ['preamble', 'generalRules', 'suffix']) {
+        if (!promptTemplate[field] || typeof promptTemplate[field] !== 'string') {
+            throw new Error(`promptTemplate.${field} must be a non-empty string`);
+        }
+    }
+}
+
+/**
+ * Update promptTemplate in config.json.
+ * Also clears rawPrompt if switching back to structured mode.
+ * @param {Object} promptTemplate - The prompt template object
+ */
+async function updatePromptTemplate(promptTemplate) {
+    validatePromptTemplate(promptTemplate);
+    await saveConfig({ promptTemplate, rawPrompt: undefined });
+    // Remove rawPrompt key from config file since saveConfig merges
+    const configPath = path.join(process.cwd(), CONFIG_FILE);
+    const raw = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+    delete raw.rawPrompt;
+    await fs.writeFile(configPath, JSON.stringify(raw, null, 2));
+    clearConfigCache();
+}
+
+/**
+ * Update rawPrompt in config.json (for raw edit mode).
+ * @param {string} rawPrompt - The full raw prompt string
+ */
+async function updateRawPrompt(rawPrompt) {
+    if (!rawPrompt || typeof rawPrompt !== 'string') {
+        throw new Error('rawPrompt must be a non-empty string');
+    }
+    await saveConfig({ rawPrompt });
+}
+
+/**
+ * Clear rawPrompt from config (switch back to structured mode).
+ */
+async function clearRawPrompt() {
+    const configPath = path.join(process.cwd(), CONFIG_FILE);
+    const raw = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+    delete raw.rawPrompt;
+    await fs.writeFile(configPath, JSON.stringify(raw, null, 2));
+    clearConfigCache();
+}
+
+/**
  * Validate the configuration object
  * @param {Object} config - The configuration to validate
  * @param {Object} options - Validation options
@@ -259,6 +312,11 @@ function validateConfig(config, options = {}) {
     // Validate tag definitions if present
     if (config.tagDefinitions) {
         validateTagDefinitions(config.tagDefinitions);
+    }
+
+    // Validate promptTemplate if present
+    if (config.promptTemplate) {
+        validatePromptTemplate(config.promptTemplate);
     }
 
     // Validate extraction.fields (only required in legacy mode without fieldDefinitions)
@@ -697,6 +755,10 @@ module.exports = {
     saveConfig,
     updateFieldDefinitions,
     updateTagDefinitions,
+    validatePromptTemplate,
+    updatePromptTemplate,
+    updateRawPrompt,
+    clearRawPrompt,
     exportConfig,
     importConfig,
     createBackup,
