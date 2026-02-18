@@ -4,7 +4,8 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Import modules
-const { loadConfig, updateFieldDefinitions, updateTagDefinitions, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
+const { loadConfig, updateFieldDefinitions, updateTagDefinitions, updatePromptTemplate, updateRawPrompt, clearRawPrompt, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
+const { buildPromptPreview } = require('./src/prompt-builder');
 const { processAllInvoices } = require('./src/parallel-processor');
 const {
     getAllClients,
@@ -309,6 +310,79 @@ app.put('/api/config/tags', async (req, res) => {
         res.json({ success: true, message: 'Tag definitions updated' });
     } catch (error) {
         res.status(400).json({ error: 'Failed to update tag definitions', details: error.message });
+    }
+});
+
+/**
+ * GET /api/config/prompt - Get prompt template
+ */
+app.get('/api/config/prompt', async (req, res) => {
+    try {
+        const config = await loadConfig({ requireFolders: false });
+        res.json({
+            promptTemplate: config.promptTemplate || null,
+            rawPrompt: config.rawPrompt || null
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to load prompt config', details: error.message });
+    }
+});
+
+/**
+ * PUT /api/config/prompt - Update prompt template (structured mode)
+ */
+app.put('/api/config/prompt', async (req, res) => {
+    try {
+        const { promptTemplate } = req.body;
+        if (!promptTemplate) {
+            return res.status(400).json({ error: 'promptTemplate object is required' });
+        }
+        await updatePromptTemplate(promptTemplate);
+        res.json({ success: true, message: 'Prompt template updated' });
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to update prompt template', details: error.message });
+    }
+});
+
+/**
+ * PUT /api/config/prompt/raw - Update raw prompt (raw edit mode)
+ */
+app.put('/api/config/prompt/raw', async (req, res) => {
+    try {
+        const { rawPrompt } = req.body;
+        if (!rawPrompt) {
+            return res.status(400).json({ error: 'rawPrompt string is required' });
+        }
+        await updateRawPrompt(rawPrompt);
+        res.json({ success: true, message: 'Raw prompt saved' });
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to update raw prompt', details: error.message });
+    }
+});
+
+/**
+ * DELETE /api/config/prompt/raw - Clear raw prompt (revert to structured mode)
+ */
+app.delete('/api/config/prompt/raw', async (req, res) => {
+    try {
+        await clearRawPrompt();
+        res.json({ success: true, message: 'Raw prompt cleared, using structured template' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to clear raw prompt', details: error.message });
+    }
+});
+
+/**
+ * POST /api/config/prompt/preview - Build prompt preview from template
+ */
+app.post('/api/config/prompt/preview', async (req, res) => {
+    try {
+        const config = await loadConfig({ requireFolders: false });
+        const templateOverride = req.body.promptTemplate || {};
+        const preview = buildPromptPreview(config, templateOverride);
+        res.json({ preview });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to build prompt preview', details: error.message });
     }
 });
 

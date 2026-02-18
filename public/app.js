@@ -21,6 +21,15 @@ let deleteTagIndex = null;
 let tagsLoaded = false;
 let currentTagParams = [];
 
+// Prompt editor state
+let promptTemplate = { preamble: '', generalRules: '', suffix: '' };
+let originalPromptTemplate = { preamble: '', generalRules: '', suffix: '' };
+let rawPrompt = null;
+let originalRawPrompt = null;
+let promptRawMode = false;
+let promptLoaded = false;
+let promptPreviewDebounceTimer = null;
+
 // DOM elements
 const statusIndicator = document.getElementById('statusIndicator');
 const statusText = document.getElementById('statusText');
@@ -111,6 +120,21 @@ const closeDeleteTagModalBtn = document.getElementById('closeDeleteTagModalBtn')
 const cancelDeleteTagBtn = document.getElementById('cancelDeleteTagBtn');
 const confirmDeleteTagBtn = document.getElementById('confirmDeleteTagBtn');
 
+// Prompt editor elements
+const promptPreambleInput = document.getElementById('promptPreamble');
+const promptGeneralRulesInput = document.getElementById('promptGeneralRules');
+const promptSuffixInput = document.getElementById('promptSuffix');
+const promptRawTextInput = document.getElementById('promptRawText');
+const promptStructuredMode = document.getElementById('promptStructuredMode');
+const promptRawModeEl = document.getElementById('promptRawMode');
+const rawEditToggleBtn = document.getElementById('rawEditToggleBtn');
+const reloadPromptBtn = document.getElementById('reloadPromptBtn');
+const promptPreviewEl = document.getElementById('promptPreview');
+const promptPreviewLength = document.getElementById('promptPreviewLength');
+const promptSaveBar = document.getElementById('promptSaveBar');
+const savePromptBtn = document.getElementById('savePromptBtn');
+const discardPromptBtn = document.getElementById('discardPromptBtn');
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -131,12 +155,14 @@ function switchTab(tabName) {
         if (editMode) readFieldsFromDOM();
         const unsavedFields = hasUnsavedFieldChanges();
         const unsavedTags = hasUnsavedTagChanges();
-        if (unsavedFields || unsavedTags) {
+        const unsavedPrompt = hasUnsavedPromptChanges();
+        if (unsavedFields || unsavedTags || unsavedPrompt) {
             if (!confirm('You have unsaved changes. Discard and switch tabs?')) {
                 return;
             }
             if (unsavedFields) discardFieldChanges();
             if (unsavedTags) discardTagChanges();
+            if (unsavedPrompt) discardPromptChanges();
         }
     }
 
@@ -156,6 +182,7 @@ function switchTab(tabName) {
     if (tabName === 'global-config') {
         if (!fieldsLoaded) loadFieldDefinitions();
         if (!tagsLoaded) loadTagDefinitions();
+        if (!promptLoaded) loadPromptTemplate();
     }
 }
 
@@ -1719,6 +1746,217 @@ function labelToSnakeCase(label) {
 }
 
 // ============================================================================
+// PROMPT TEMPLATE EDITOR
+// ============================================================================
+
+async function loadPromptTemplate() {
+    try {
+        const response = await fetch('/api/config/prompt');
+        const data = await response.json();
+
+        if (response.ok) {
+            promptTemplate = data.promptTemplate || { preamble: '', generalRules: '', suffix: '' };
+            originalPromptTemplate = JSON.parse(JSON.stringify(promptTemplate));
+            rawPrompt = data.rawPrompt || null;
+            originalRawPrompt = rawPrompt;
+            promptLoaded = true;
+
+            // If rawPrompt exists, switch to raw mode
+            if (rawPrompt) {
+                promptRawMode = true;
+                rawEditToggleBtn.classList.add('active');
+                rawEditToggleBtn.querySelector('span').textContent = 'Structured';
+                promptStructuredMode.style.display = 'none';
+                promptRawModeEl.style.display = 'block';
+                promptRawTextInput.value = rawPrompt;
+            } else {
+                promptRawMode = false;
+                rawEditToggleBtn.classList.remove('active');
+                rawEditToggleBtn.querySelector('span').textContent = 'Raw Edit';
+                promptStructuredMode.style.display = 'block';
+                promptRawModeEl.style.display = 'none';
+                promptPreambleInput.value = promptTemplate.preamble || '';
+                promptGeneralRulesInput.value = promptTemplate.generalRules || '';
+                promptSuffixInput.value = promptTemplate.suffix || '';
+            }
+
+            updatePromptPreview();
+            updatePromptSaveBar();
+        }
+    } catch (error) {
+        showAlert('Failed to load prompt template: ' + error.message, 'error');
+    }
+}
+
+function toggleRawEditMode() {
+    if (promptRawMode) {
+        // Switch to structured mode
+        promptRawMode = false;
+        rawEditToggleBtn.classList.remove('active');
+        rawEditToggleBtn.querySelector('span').textContent = 'Raw Edit';
+        promptStructuredMode.style.display = 'block';
+        promptRawModeEl.style.display = 'none';
+        // Restore structured fields
+        promptPreambleInput.value = promptTemplate.preamble || '';
+        promptGeneralRulesInput.value = promptTemplate.generalRules || '';
+        promptSuffixInput.value = promptTemplate.suffix || '';
+    } else {
+        // Switch to raw mode — populate with current assembled preview
+        promptRawMode = true;
+        rawEditToggleBtn.classList.add('active');
+        rawEditToggleBtn.querySelector('span').textContent = 'Structured';
+        promptStructuredMode.style.display = 'none';
+        promptRawModeEl.style.display = 'block';
+        // If we already have a raw prompt, use that; otherwise use the preview
+        const previewCode = promptPreviewEl.querySelector('code');
+        if (rawPrompt) {
+            promptRawTextInput.value = rawPrompt;
+        } else if (previewCode) {
+            promptRawTextInput.value = previewCode.textContent;
+        }
+    }
+    updatePromptPreview();
+    updatePromptSaveBar();
+}
+
+function updatePromptPreview() {
+    clearTimeout(promptPreviewDebounceTimer);
+    promptPreviewDebounceTimer = setTimeout(async () => {
+        try {
+            let previewText;
+            if (promptRawMode) {
+                // In raw mode, preview shows the raw text directly
+                previewText = promptRawTextInput.value || '(empty)';
+            } else {
+                // In structured mode, call the preview API
+                const templateOverride = {
+                    preamble: promptPreambleInput.value,
+                    generalRules: promptGeneralRulesInput.value,
+                    suffix: promptSuffixInput.value
+                };
+                const response = await fetch('/api/config/prompt/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ promptTemplate: templateOverride })
+                });
+                const data = await response.json();
+                previewText = data.preview || '(empty)';
+            }
+
+            const code = promptPreviewEl.querySelector('code');
+            if (code) {
+                code.textContent = previewText;
+            }
+            promptPreviewLength.textContent = previewText.length + ' chars';
+        } catch (error) {
+            const code = promptPreviewEl.querySelector('code');
+            if (code) {
+                code.textContent = 'Error loading preview: ' + error.message;
+            }
+        }
+    }, 300);
+}
+
+function hasUnsavedPromptChanges() {
+    if (promptRawMode) {
+        const currentRaw = promptRawTextInput.value;
+        return currentRaw !== (originalRawPrompt || '');
+    }
+    return promptPreambleInput.value !== (originalPromptTemplate.preamble || '') ||
+           promptGeneralRulesInput.value !== (originalPromptTemplate.generalRules || '') ||
+           promptSuffixInput.value !== (originalPromptTemplate.suffix || '');
+}
+
+function updatePromptSaveBar() {
+    promptSaveBar.style.display = hasUnsavedPromptChanges() ? 'flex' : 'none';
+}
+
+async function savePromptTemplate() {
+    try {
+        savePromptBtn.disabled = true;
+        savePromptBtn.textContent = 'Saving...';
+
+        if (promptRawMode) {
+            const rawText = promptRawTextInput.value.trim();
+            if (!rawText) {
+                showAlert('Raw prompt cannot be empty', 'error');
+                return;
+            }
+            const response = await fetch('/api/config/prompt/raw', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rawPrompt: rawText })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                rawPrompt = rawText;
+                originalRawPrompt = rawText;
+                showAlert(result.message || 'Raw prompt saved', 'success');
+            } else {
+                showAlert(result.error || 'Failed to save raw prompt', 'error');
+            }
+        } else {
+            const template = {
+                preamble: promptPreambleInput.value.trim(),
+                generalRules: promptGeneralRulesInput.value.trim(),
+                suffix: promptSuffixInput.value.trim()
+            };
+            if (!template.preamble || !template.generalRules || !template.suffix) {
+                showAlert('All prompt template fields are required', 'error');
+                return;
+            }
+            // Clear rawPrompt when saving structured
+            const response = await fetch('/api/config/prompt', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ promptTemplate: template })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                promptTemplate = JSON.parse(JSON.stringify(template));
+                originalPromptTemplate = JSON.parse(JSON.stringify(template));
+                rawPrompt = null;
+                originalRawPrompt = null;
+                showAlert(result.message || 'Prompt template saved', 'success');
+            } else {
+                showAlert(result.error || result.details || 'Failed to save prompt template', 'error');
+            }
+        }
+        updatePromptSaveBar();
+    } catch (error) {
+        showAlert('Failed to save prompt: ' + error.message, 'error');
+    } finally {
+        savePromptBtn.disabled = false;
+        savePromptBtn.textContent = 'Save Changes';
+    }
+}
+
+function discardPromptChanges() {
+    if (originalRawPrompt) {
+        promptRawMode = true;
+        rawEditToggleBtn.classList.add('active');
+        rawEditToggleBtn.querySelector('span').textContent = 'Structured';
+        promptStructuredMode.style.display = 'none';
+        promptRawModeEl.style.display = 'block';
+        promptRawTextInput.value = originalRawPrompt;
+        rawPrompt = originalRawPrompt;
+    } else {
+        promptRawMode = false;
+        rawEditToggleBtn.classList.remove('active');
+        rawEditToggleBtn.querySelector('span').textContent = 'Raw Edit';
+        promptStructuredMode.style.display = 'block';
+        promptRawModeEl.style.display = 'none';
+        promptTemplate = JSON.parse(JSON.stringify(originalPromptTemplate));
+        promptPreambleInput.value = promptTemplate.preamble || '';
+        promptGeneralRulesInput.value = promptTemplate.generalRules || '';
+        promptSuffixInput.value = promptTemplate.suffix || '';
+        rawPrompt = null;
+    }
+    updatePromptPreview();
+    updatePromptSaveBar();
+}
+
+// ============================================================================
 // EVENT LISTENERS
 // ============================================================================
 
@@ -1832,6 +2070,33 @@ function setupEventListeners() {
     confirmDeleteTagBtn.addEventListener('click', confirmDeleteTag);
     deleteTagModal.addEventListener('click', (e) => {
         if (e.target === deleteTagModal) closeDeleteTagModalFn();
+    });
+
+    // Prompt editor buttons
+    reloadPromptBtn.addEventListener('click', () => {
+        promptLoaded = false;
+        loadPromptTemplate();
+    });
+    rawEditToggleBtn.addEventListener('click', toggleRawEditMode);
+    savePromptBtn.addEventListener('click', savePromptTemplate);
+    discardPromptBtn.addEventListener('click', discardPromptChanges);
+
+    // Prompt editor live preview on input
+    promptPreambleInput.addEventListener('input', () => {
+        updatePromptPreview();
+        updatePromptSaveBar();
+    });
+    promptGeneralRulesInput.addEventListener('input', () => {
+        updatePromptPreview();
+        updatePromptSaveBar();
+    });
+    promptSuffixInput.addEventListener('input', () => {
+        updatePromptPreview();
+        updatePromptSaveBar();
+    });
+    promptRawTextInput.addEventListener('input', () => {
+        updatePromptPreview();
+        updatePromptSaveBar();
     });
 
     // Keyboard shortcuts

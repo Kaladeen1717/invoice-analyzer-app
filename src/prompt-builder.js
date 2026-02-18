@@ -159,14 +159,25 @@ function buildExtractionPrompt(config) {
         rulesText += tagInstructions.join('\n');
     }
 
-    const prompt = `Analyze this invoice PDF and extract the following information in JSON format:
+    // If rawPrompt is set, use it directly
+    if (config.rawPrompt) {
+        return config.rawPrompt;
+    }
+
+    // Use promptTemplate from config, or hardcoded defaults for backward compatibility
+    const template = config.promptTemplate || {};
+    const preamble = template.preamble || 'Analyze this invoice PDF and extract the following information in JSON format:';
+    const generalRules = template.generalRules || 'If any field cannot be determined, use "Unknown" for text fields, "0" for amounts, false for booleans, or [] for arrays.';
+    const suffix = template.suffix || 'Always return valid JSON that can be parsed directly.';
+
+    const prompt = `${preamble}
 ${jsonExample}
 
 Important extraction rules:
 ${rulesText}
 
-If any field cannot be determined, use "Unknown" for text fields, "0" for amounts, false for booleans, or [] for arrays.
-Always return valid JSON that can be parsed directly.`;
+${generalRules}
+${suffix}`;
 
     return prompt;
 }
@@ -311,8 +322,29 @@ function getActiveTags(tags) {
     return Object.entries(tags).filter(([_, v]) => v === true).map(([k]) => k);
 }
 
+/**
+ * Build a prompt preview from structured template parts + current config
+ * Used by the frontend to show a live preview of the assembled prompt
+ * @param {Object} config - The configuration object
+ * @param {Object} [templateOverride] - Optional override for promptTemplate fields
+ * @returns {string} The assembled prompt text
+ */
+function buildPromptPreview(config, templateOverride) {
+    // Temporarily override promptTemplate and clear rawPrompt for preview
+    const previewConfig = {
+        ...config,
+        rawPrompt: undefined,
+        promptTemplate: {
+            ...(config.promptTemplate || {}),
+            ...(templateOverride || {})
+        }
+    };
+    return buildExtractionPrompt(previewConfig);
+}
+
 module.exports = {
     buildExtractionPrompt,
+    buildPromptPreview,
     parseGeminiResponse,
     validateAnalysis,
     formatDocumentTypes,
