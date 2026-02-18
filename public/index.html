@@ -90,11 +90,19 @@
             <div class="section-header">
               <h2>Extraction Fields</h2>
               <div class="section-actions">
-                <button class="btn btn-small btn-secondary" disabled title="Available in a future update">Customize</button>
+                <button class="btn btn-small btn-secondary" id="resetFieldsBtn" style="display:none">Reset to Default</button>
+                <button class="btn btn-small btn-primary" id="customizeFieldsBtn">Customize</button>
               </div>
             </div>
             <div id="detailFieldList">
               <div class="loading-placeholder">Loading fields...</div>
+            </div>
+            <div class="detail-save-bar" id="detailFieldsSaveBar" style="display:none">
+              <span>You have unsaved field overrides</span>
+              <div class="detail-save-bar-actions">
+                <button class="btn btn-secondary btn-small" id="discardDetailFieldsBtn">Cancel</button>
+                <button class="btn btn-primary btn-small" id="saveDetailFieldsBtn">Save Overrides</button>
+              </div>
             </div>
           </section>
 
@@ -103,11 +111,19 @@
             <div class="section-header">
               <h2>Tag Rules</h2>
               <div class="section-actions">
-                <button class="btn btn-small btn-secondary" disabled title="Available in a future update">Customize</button>
+                <button class="btn btn-small btn-secondary" id="resetTagsBtn" style="display:none">Reset to Default</button>
+                <button class="btn btn-small btn-primary" id="customizeTagsBtn">Customize</button>
               </div>
             </div>
             <div id="detailTagList">
               <div class="loading-placeholder">Loading tags...</div>
+            </div>
+            <div class="detail-save-bar" id="detailTagsSaveBar" style="display:none">
+              <span>You have unsaved tag overrides</span>
+              <div class="detail-save-bar-actions">
+                <button class="btn btn-secondary btn-small" id="discardDetailTagsBtn">Cancel</button>
+                <button class="btn btn-primary btn-small" id="saveDetailTagsBtn">Save Overrides</button>
+              </div>
             </div>
           </section>
 
@@ -116,11 +132,19 @@
             <div class="section-header">
               <h2>Filename Template</h2>
               <div class="section-actions">
-                <button class="btn btn-small btn-secondary" disabled title="Available in a future update">Customize</button>
+                <button class="btn btn-small btn-secondary" id="resetFilenameBtn" style="display:none">Reset to Default</button>
+                <button class="btn btn-small btn-primary" id="customizeFilenameBtn">Customize</button>
               </div>
             </div>
             <div id="detailFilenameTemplate">
               <div class="loading-placeholder">Loading template...</div>
+            </div>
+            <div class="detail-save-bar" id="detailFilenameSaveBar" style="display:none">
+              <span>You have unsaved filename override</span>
+              <div class="detail-save-bar-actions">
+                <button class="btn btn-secondary btn-small" id="discardDetailFilenameBtn">Cancel</button>
+                <button class="btn btn-primary btn-small" id="saveDetailFilenameBtn">Save Override</button>
+              </div>
             </div>
           </section>
 
@@ -129,11 +153,19 @@
             <div class="section-header">
               <h2>Prompt Template</h2>
               <div class="section-actions">
-                <button class="btn btn-small btn-secondary" disabled title="Available in a future update">Customize</button>
+                <button class="btn btn-small btn-secondary" id="resetPromptBtn" style="display:none">Reset to Default</button>
+                <button class="btn btn-small btn-primary" id="customizePromptBtn">Customize</button>
               </div>
             </div>
             <div id="detailPromptTemplate">
               <div class="loading-placeholder">Loading prompt...</div>
+            </div>
+            <div class="detail-save-bar" id="detailPromptSaveBar" style="display:none">
+              <span>You have unsaved prompt overrides</span>
+              <div class="detail-save-bar-actions">
+                <button class="btn btn-secondary btn-small" id="discardDetailPromptBtn">Cancel</button>
+                <button class="btn btn-primary btn-small" id="saveDetailPromptBtn">Save Overrides</button>
+              </div>
             </div>
           </section>
         </div>
