@@ -14,6 +14,9 @@ output/
 # Config backups
 backups/
 
+# Per-client processing results
+**/processing-results.json
+
 # Test data
 test-invoices/
 

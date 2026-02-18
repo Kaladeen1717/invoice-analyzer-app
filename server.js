@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const fs = require('fs').promises;
+const path = require('path');
 
 // Import modules
 const { VALID_OVERRIDE_SECTIONS, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER } = require('./src/constants');
@@ -18,7 +19,8 @@ const {
     restoreBackup
 } = require('./src/config');
 const { buildPromptPreview } = require('./src/prompt-builder');
-const { processAllInvoices } = require('./src/parallel-processor');
+const { processAllInvoices, processWithRetry } = require('./src/parallel-processor');
+const { getResults, getSummary, getResult, getFailedResults, updateResult } = require('./src/result-manager');
 const {
     getAllClients,
     getClient,
@@ -31,7 +33,8 @@ const {
     isMultiClientMode,
     ensureClientDirectories,
     saveClientOverrides,
-    removeClientOverrides
+    removeClientOverrides,
+    resolveApiKey
 } = require('./src/client-manager');
 
 const app = express();
@@ -579,6 +582,296 @@ app.post('/api/config/restore', async (req, res) => {
     } catch (error) {
         const status = error.message.includes('not found') ? 404 : 500;
         res.status(status).json({ error: 'Restore failed', details: error.message });
+    }
+});
+
+// ============================================================================
+// PROCESSING RESULTS API ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/clients/:id/results - Paginated processing results with optional status filter
+ */
+app.get('/api/clients/:id/results', async (req, res) => {
+    try {
+        const clientId = req.params.id;
+        const globalConfig = await loadConfig({ requireFolders: false });
+        const clientConfig = await getClientConfig(clientId, globalConfig);
+
+        const status = req.query.status || undefined;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 250);
+        const offset = parseInt(req.query.offset) || 0;
+
+        const results = await getResults(clientConfig.folders.base, { status, limit, offset });
+        res.json(results);
+    } catch (error) {
+        const status = error.message.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/clients/:id/results/summary - Aggregate processing statistics
+ */
+app.get('/api/clients/:id/results/summary', async (req, res) => {
+    try {
+        const clientId = req.params.id;
+        const globalConfig = await loadConfig({ requireFolders: false });
+        const clientConfig = await getClientConfig(clientId, globalConfig);
+
+        const summary = await getSummary(clientConfig.folders.base);
+        res.json(summary);
+    } catch (error) {
+        const status = error.message.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/clients/:id/results/retry - Retry failed invoice processing (SSE)
+ * Body: { resultIds: ["uuid1", ...] } or { all: true }
+ */
+app.post('/api/clients/:id/results/retry', async (req, res) => {
+    const clientId = req.params.id;
+
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    res.write('data: ' + JSON.stringify({ status: 'connected', clientId }) + '\n\n');
+
+    try {
+        if (activeProcessing.has(clientId)) {
+            res.write(
+                'data: ' + JSON.stringify({ status: 'error', error: 'Client is already being processed' }) + '\n\n'
+            );
+            res.end();
+            return;
+        }
+
+        activeProcessing.set(clientId, true);
+
+        const globalConfig = await loadConfig();
+        const clientConfig = await getClientConfig(clientId, globalConfig);
+        const apiKey = resolveApiKey(clientConfig);
+
+        const processingConfig = {
+            ...globalConfig,
+            model: clientConfig.model,
+            folders: clientConfig.folders,
+            extraction: clientConfig.extraction,
+            output: clientConfig.output,
+            documentTypes: clientConfig.documentTypes,
+            fieldDefinitions: clientConfig.fieldDefinitions,
+            tagDefinitions: clientConfig.tagDefinitions,
+            promptTemplate: clientConfig.promptTemplate
+        };
+
+        // Determine which results to retry
+        let resultsToRetry;
+        if (req.body.all) {
+            resultsToRetry = await getFailedResults(clientConfig.folders.base);
+        } else if (req.body.resultIds && Array.isArray(req.body.resultIds)) {
+            resultsToRetry = [];
+            for (const id of req.body.resultIds) {
+                const r = await getResult(clientConfig.folders.base, id);
+                if (r && r.status === 'failed') resultsToRetry.push(r);
+            }
+        } else {
+            res.write(
+                'data: ' + JSON.stringify({ status: 'error', error: 'Provide resultIds array or all: true' }) + '\n\n'
+            );
+            res.end();
+            activeProcessing.delete(clientId);
+            return;
+        }
+
+        if (resultsToRetry.length === 0) {
+            res.write('data: ' + JSON.stringify({ status: 'error', error: 'No failed results to retry' }) + '\n\n');
+            res.end();
+            activeProcessing.delete(clientId);
+            return;
+        }
+
+        res.write('data: ' + JSON.stringify({ status: 'retry-starting', total: resultsToRetry.length }) + '\n\n');
+
+        const originalFolder =
+            clientConfig.folders.processedOriginal ||
+            path.join(clientConfig.folders.base, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER);
+        let retrySuccess = 0;
+        let retryFailed = 0;
+
+        for (let i = 0; i < resultsToRetry.length; i++) {
+            const failedResult = resultsToRetry[i];
+            const originalPath = path.join(clientConfig.folders.base, failedResult.originalFilename);
+            const processedOriginalPath = path.join(originalFolder, failedResult.originalFilename);
+
+            res.write(
+                'data: ' +
+                    JSON.stringify({
+                        status: 'retry-processing',
+                        filename: failedResult.originalFilename,
+                        current: i + 1,
+                        total: resultsToRetry.length,
+                        resultId: failedResult.id
+                    }) +
+                    '\n\n'
+            );
+
+            try {
+                // Copy file back to input folder for processing
+                let filePath;
+                try {
+                    await fs.access(processedOriginalPath);
+                    await fs.copyFile(processedOriginalPath, originalPath);
+                    filePath = originalPath;
+                } catch {
+                    // File might still be in input folder
+                    try {
+                        await fs.access(originalPath);
+                        filePath = originalPath;
+                    } catch {
+                        throw new Error(`Original file not found: ${failedResult.originalFilename}`);
+                    }
+                }
+
+                const result = await processWithRetry(filePath, processingConfig, { apiKey });
+
+                // Update the result record
+                await updateResult(clientConfig.folders.base, failedResult.id, result, {
+                    model: processingConfig.model,
+                    duration: result.duration
+                });
+
+                if (result.success) {
+                    retrySuccess++;
+                    res.write(
+                        'data: ' +
+                            JSON.stringify({
+                                status: 'retry-completed',
+                                resultId: failedResult.id,
+                                filename: failedResult.originalFilename,
+                                outputFilename: result.outputFilename,
+                                current: i + 1,
+                                total: resultsToRetry.length
+                            }) +
+                            '\n\n'
+                    );
+                } else {
+                    retryFailed++;
+                    res.write(
+                        'data: ' +
+                            JSON.stringify({
+                                status: 'retry-failed',
+                                resultId: failedResult.id,
+                                filename: failedResult.originalFilename,
+                                error: result.error,
+                                current: i + 1,
+                                total: resultsToRetry.length
+                            }) +
+                            '\n\n'
+                    );
+                }
+            } catch (error) {
+                retryFailed++;
+                res.write(
+                    'data: ' +
+                        JSON.stringify({
+                            status: 'retry-failed',
+                            resultId: failedResult.id,
+                            filename: failedResult.originalFilename,
+                            error: error.message,
+                            current: i + 1,
+                            total: resultsToRetry.length
+                        }) +
+                        '\n\n'
+                );
+            }
+        }
+
+        res.write(
+            'data: ' +
+                JSON.stringify({
+                    status: 'retry-done',
+                    success: retrySuccess,
+                    failed: retryFailed,
+                    total: resultsToRetry.length
+                }) +
+                '\n\n'
+        );
+        res.end();
+        activeProcessing.delete(clientId);
+    } catch (error) {
+        res.write('data: ' + JSON.stringify({ status: 'error', error: error.message }) + '\n\n');
+        res.end();
+        activeProcessing.delete(clientId);
+    }
+
+    req.on('close', () => {
+        activeProcessing.delete(clientId);
+    });
+});
+
+/**
+ * GET /api/stats - Aggregate processing statistics across all clients
+ */
+app.get('/api/stats', async (req, res) => {
+    try {
+        const clients = await getAllClients();
+        const globalConfig = await loadConfig({ requireFolders: false });
+
+        const aggregate = {
+            totalProcessed: 0,
+            totalSuccess: 0,
+            totalFailed: 0,
+            successRate: 0,
+            totalTokens: 0,
+            lastProcessed: null
+        };
+
+        const perClient = {};
+
+        if (clients) {
+            for (const [clientId] of Object.entries(clients)) {
+                try {
+                    const clientConfig = await getClientConfig(clientId, globalConfig);
+                    const summary = await getSummary(clientConfig.folders.base);
+
+                    perClient[clientId] = {
+                        total: summary.total,
+                        success: summary.success,
+                        failed: summary.failed,
+                        successRate: summary.successRate,
+                        totalTokens: summary.tokenUsage.totalTokens,
+                        lastProcessed: summary.lastProcessed
+                    };
+
+                    aggregate.totalProcessed += summary.total;
+                    aggregate.totalSuccess += summary.success;
+                    aggregate.totalFailed += summary.failed;
+                    aggregate.totalTokens += summary.tokenUsage.totalTokens;
+
+                    if (
+                        summary.lastProcessed &&
+                        (!aggregate.lastProcessed || summary.lastProcessed > aggregate.lastProcessed)
+                    ) {
+                        aggregate.lastProcessed = summary.lastProcessed;
+                    }
+                } catch {
+                    // Skip clients with missing folders
+                }
+            }
+        }
+
+        if (aggregate.totalProcessed > 0) {
+            aggregate.successRate = Math.round((aggregate.totalSuccess / aggregate.totalProcessed) * 100);
+        }
+
+        res.json({ aggregate, perClient });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to load stats', details: error.message });
     }
 });
 

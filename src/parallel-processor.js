@@ -12,6 +12,7 @@ const {
     clientFolderExists
 } = require('./client-manager');
 const { appendInvoiceRow } = require('./csv-logger');
+const { appendResult } = require('./result-manager');
 
 /**
  * Sleep for a specified number of milliseconds
@@ -35,11 +36,13 @@ async function processWithRetry(filePath, config, options = {}) {
     const baseDelay = config.processing.retryDelayMs || 1000;
 
     let lastError = null;
+    const startTime = Date.now();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const result = await processInvoice(filePath, config, { apiKey, onProgress });
 
         if (result.success) {
+            result.duration = Date.now() - startTime;
             return result;
         }
 
@@ -66,7 +69,8 @@ async function processWithRetry(filePath, config, options = {}) {
         success: false,
         originalFilename: path.basename(filePath),
         error: lastError,
-        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 },
+        duration: Date.now() - startTime
     };
 }
 
@@ -82,7 +86,7 @@ async function processWithRetry(filePath, config, options = {}) {
  * @returns {Promise<Object>} Processing results summary
  */
 async function processAllInvoices(config, options = {}) {
-    const { apiKey, csvPath, onProgress, onComplete, onInvoiceComplete } = options;
+    const { apiKey, csvPath, onProgress, onComplete, onInvoiceComplete, storeResults = true } = options;
 
     // Get all PDF files
     const pdfFiles = await getPdfFiles(config);
@@ -142,6 +146,18 @@ async function processAllInvoices(config, options = {}) {
                     csvRowsAdded++;
                 } catch (csvError) {
                     console.error(`Warning: Failed to write to CSV: ${csvError.message}`);
+                }
+            }
+
+            // Store result to processing-results.json
+            if (storeResults && config.folders && config.folders.base) {
+                try {
+                    await appendResult(config.folders.base, result, {
+                        model: config.model,
+                        duration: result.duration
+                    });
+                } catch (err) {
+                    console.error(`Warning: Failed to store processing result: ${err.message}`);
                 }
             }
 
