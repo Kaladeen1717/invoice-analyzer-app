@@ -2,7 +2,7 @@
 
 A local application that analyzes invoice PDFs using Google's Gemini Vision API. Supports multi-client management with both a web-based Admin UI and CLI for batch processing.
 
-**Model:** `gemini-2.5-flash-preview-05-20`
+**Model:** `gemini-3-flash-preview`
 
 ## Features
 
