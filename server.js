@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Import modules
+const { VALID_OVERRIDE_SECTIONS, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER } = require('./src/constants');
 const { loadConfig, saveConfig, updateFieldDefinitions, updateTagDefinitions, updatePromptTemplate, updateRawPrompt, clearRawPrompt, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
 const { buildPromptPreview } = require('./src/prompt-builder');
 const { processAllInvoices } = require('./src/parallel-processor');
@@ -57,7 +58,7 @@ app.get('/api/clients', async (req, res) => {
             Object.entries(clients).map(async ([clientId, client]) => {
                 const folderStatus = await getClientFolderStatus(
                     client.folderPath,
-                    globalConfig.output?.processedOriginalSubfolder || 'processed-original'
+                    globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER
                 );
 
                 return {
@@ -94,7 +95,7 @@ app.get('/api/clients/:id', async (req, res) => {
         const globalConfig = await loadConfig();
         const folderStatus = await getClientFolderStatus(
             client.folderPath,
-            globalConfig.output?.processedOriginalSubfolder || 'processed-original'
+            globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER
         );
 
         res.json({
@@ -230,7 +231,7 @@ app.get('/api/clients/:id/status', async (req, res) => {
         const globalConfig = await loadConfig();
         const folderStatus = await getClientFolderStatus(
             client.folderPath,
-            globalConfig.output?.processedOriginalSubfolder || 'processed-original'
+            globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER
         );
 
         res.json({
@@ -281,9 +282,8 @@ app.put('/api/clients/:id/overrides', async (req, res) => {
             return res.status(400).json({ error: 'section and data are required' });
         }
 
-        const validSections = ['fields', 'tags', 'prompt', 'output', 'model'];
-        if (!validSections.includes(section)) {
-            return res.status(400).json({ error: `Invalid section. Must be one of: ${validSections.join(', ')}` });
+        if (!VALID_OVERRIDE_SECTIONS.includes(section)) {
+            return res.status(400).json({ error: `Invalid section. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}` });
         }
 
         await saveClientOverrides(clientId, section, data);
@@ -311,9 +311,8 @@ app.delete('/api/clients/:id/overrides/:section', async (req, res) => {
     try {
         const { id: clientId, section } = req.params;
 
-        const validSections = ['fields', 'tags', 'prompt', 'output', 'model'];
-        if (!validSections.includes(section)) {
-            return res.status(400).json({ error: `Invalid section. Must be one of: ${validSections.join(', ')}` });
+        if (!VALID_OVERRIDE_SECTIONS.includes(section)) {
+            return res.status(400).json({ error: `Invalid section. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}` });
         }
 
         await removeClientOverrides(clientId, section);

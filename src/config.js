@@ -1,6 +1,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+const { VALID_FIELD_TYPES, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER, DEFAULT_PROCESSED_ENRICHED_SUBFOLDER, DEFAULT_CSV_FILENAME } = require('./constants');
+
 const CONFIG_FILE = 'config.json';
 const REQUIRED_FIELDS = ['processing', 'extraction', 'output'];
 
@@ -39,9 +41,9 @@ async function loadConfig(options = {}) {
 
         // Apply defaults for new output fields
         config.output = {
-            processedOriginalSubfolder: 'processed-original',
-            processedEnrichedSubfolder: 'processed-enriched',
-            csvFilename: 'invoice-log.csv',
+            processedOriginalSubfolder: DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
+            processedEnrichedSubfolder: DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
+            csvFilename: DEFAULT_CSV_FILENAME,
             ...config.output
         };
 
@@ -67,8 +69,6 @@ async function loadConfig(options = {}) {
         throw error;
     }
 }
-
-const VALID_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'array'];
 
 /**
  * Validate field definitions array
