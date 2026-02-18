@@ -5,7 +5,7 @@ const {
     DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
     DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
     DEFAULT_CSV_FILENAME,
-    validatePathSegment
+    safeJoin
 } = require('./constants');
 
 let cachedClientsConfig = null;
@@ -394,7 +394,7 @@ async function createClient(clientId, config) {
     }
 
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = path.join(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${clientId}.json`);
 
     // Ensure clients directory exists
     await fs.mkdir(clientsDir, { recursive: true });
@@ -426,9 +426,8 @@ async function createClient(clientId, config) {
  * @returns {Promise<void>}
  */
 async function updateClient(clientId, config) {
-    validatePathSegment(clientId, 'clientId');
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = path.join(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${clientId}.json`);
 
     // Check if client exists
     try {
@@ -456,9 +455,8 @@ async function updateClient(clientId, config) {
  * @returns {Promise<void>}
  */
 async function deleteClient(clientId) {
-    validatePathSegment(clientId, 'clientId');
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = path.join(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${clientId}.json`);
 
     // Check if client exists and delete
     try {
@@ -669,9 +667,8 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
  * @returns {Promise<void>}
  */
 async function saveClientOverrides(clientId, section, data) {
-    validatePathSegment(clientId, 'clientId');
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = path.join(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${clientId}.json`);
 
     let config;
     try {
@@ -715,9 +712,8 @@ async function saveClientOverrides(clientId, section, data) {
  * @returns {Promise<void>}
  */
 async function removeClientOverrides(clientId, section) {
-    validatePathSegment(clientId, 'clientId');
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = path.join(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${clientId}.json`);
 
     let config;
     try {

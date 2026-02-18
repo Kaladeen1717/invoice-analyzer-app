@@ -6,7 +6,7 @@ const {
     DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
     DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
     DEFAULT_CSV_FILENAME,
-    validatePathSegment
+    safeJoin
 } = require('./constants');
 
 const CONFIG_FILE = 'config.json';
@@ -464,8 +464,7 @@ async function exportConfig(scope) {
         default:
             if (scope.startsWith('client:')) {
                 const clientId = scope.substring(7);
-                validatePathSegment(clientId, 'clientId');
-                const clientPath = path.join(CLIENTS_DIR, `${clientId}.json`);
+                const clientPath = safeJoin(CLIENTS_DIR, `${clientId}.json`);
                 try {
                     data = { clientId, config: JSON.parse(await fs.readFile(clientPath, 'utf-8')) };
                 } catch (err) {
@@ -598,13 +597,12 @@ async function importConfig(bundle) {
         default:
             if (bundle.scope.startsWith('client:')) {
                 const clientId = bundle.scope.substring(7);
-                validatePathSegment(clientId, 'clientId');
                 if (!bundle.data.config) {
                     throw new Error('Import bundle for single client must have data.config');
                 }
                 await fs.mkdir(CLIENTS_DIR, { recursive: true });
                 await fs.writeFile(
-                    path.join(CLIENTS_DIR, `${clientId}.json`),
+                    safeJoin(CLIENTS_DIR, `${clientId}.json`),
                     JSON.stringify(bundle.data.config, null, 2)
                 );
                 imported.updated.push(`clients/${clientId}.json`);
@@ -622,12 +620,11 @@ async function importConfig(bundle) {
  * @returns {Promise<Object>} Backup metadata { id, path, timestamp, label }
  */
 async function createBackup(label) {
-    if (label) validatePathSegment(label, 'label');
     await fs.mkdir(BACKUPS_DIR, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const id = label ? `${timestamp}_${label}` : timestamp;
-    const backupDir = path.join(BACKUPS_DIR, id);
+    const backupDir = safeJoin(BACKUPS_DIR, id);
     await fs.mkdir(backupDir);
 
     // Copy config.json
@@ -695,8 +692,7 @@ async function listBackups() {
  * @returns {Promise<Object>} Restore result { restoredFrom, safetyBackupId, restored }
  */
 async function restoreBackup(backupId) {
-    validatePathSegment(backupId, 'backupId');
-    const backupDir = path.join(BACKUPS_DIR, backupId);
+    const backupDir = safeJoin(BACKUPS_DIR, backupId);
 
     // Verify backup exists
     try {
