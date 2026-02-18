@@ -37,12 +37,21 @@ const {
     resolveApiKey
 } = require('./src/client-manager');
 
+const rateLimit = require('express-rate-limit');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Serve static files
 app.use(express.static('public'));
 app.use(express.json());
+
+// Rate limiting for processing and file-access endpoints
+const processingLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: { error: 'Too many requests, please try again later' }
+});
 
 // Store active SSE connections for processing
 const activeProcessing = new Map();
@@ -631,7 +640,7 @@ app.get('/api/clients/:id/results/summary', async (req, res) => {
  * POST /api/clients/:id/results/retry - Retry failed invoice processing (SSE)
  * Body: { resultIds: ["uuid1", ...] } or { all: true }
  */
-app.post('/api/clients/:id/results/retry', async (req, res) => {
+app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) => {
     const clientId = req.params.id;
 
     // SSE headers
@@ -882,7 +891,7 @@ app.get('/api/stats', async (req, res) => {
 /**
  * GET /api/clients/:id/files - List PDF files in client's input folder
  */
-app.get('/api/clients/:id/files', async (req, res) => {
+app.get('/api/clients/:id/files', processingLimiter, async (req, res) => {
     try {
         const clientId = req.params.id;
         const globalConfig = await loadConfig({ requireFolders: false });
@@ -927,7 +936,7 @@ app.get('/api/clients/:id/files', async (req, res) => {
 /**
  * POST /api/clients/:id/process - Process specific client (SSE)
  */
-app.post('/api/clients/:id/process', async (req, res) => {
+app.post('/api/clients/:id/process', processingLimiter, async (req, res) => {
     const clientId = req.params.id;
 
     // Set headers for SSE
@@ -1033,7 +1042,7 @@ app.post('/api/clients/:id/process', async (req, res) => {
 /**
  * POST /api/clients/process-all - Process all enabled clients (SSE)
  */
-app.post('/api/clients/process-all', async (req, res) => {
+app.post('/api/clients/process-all', processingLimiter, async (req, res) => {
     // Set headers for SSE
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
