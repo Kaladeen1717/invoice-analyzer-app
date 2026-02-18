@@ -149,7 +149,7 @@ On every PR to `main`, GitHub Actions runs:
 ## Linear Integration
 
 - **Team**: Invoice Analyzer | **Prefix**: `INV`
-- See `.claude/rules/linear-workflow.md` for full workflow rules
+- See `.claude/rules/linear-workflow.md` for full workflow rules, ticket description standards, and quality requirements
 - Commit format: `{type}(INV-{number}): {description}`
 - Branch format: `{type}/INV-{number}-{short-description}`
 
