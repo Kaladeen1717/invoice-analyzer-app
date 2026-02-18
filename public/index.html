@@ -45,6 +45,9 @@
                 <button class="btn btn-secondary" id="refreshClientsBtn">
                   <span>Refresh</span>
                 </button>
+                <button class="btn btn-secondary" id="exportClientsBtn">
+                  <span>Export Clients</span>
+                </button>
                 <button class="btn btn-primary" id="newClientBtn">
                   <span>+ New Client</span>
                 </button>
@@ -173,6 +176,50 @@
 
       <!-- Tab: Global Config -->
       <div class="tab-content" id="tab-global-config">
+        <!-- Export / Import / Backup Section -->
+        <section class="export-import-section">
+          <div class="section-header">
+            <h2>Export &amp; Import</h2>
+          </div>
+          <p class="section-description">Export your configuration as JSON, import from a file, or restore from a backup.</p>
+
+          <div class="export-import-grid">
+            <!-- Export Panel -->
+            <div class="ei-panel">
+              <h3>Export</h3>
+              <div class="export-buttons">
+                <button class="btn btn-secondary btn-small" id="exportFieldsBtn">Export Fields</button>
+                <button class="btn btn-secondary btn-small" id="exportGlobalBtn">Export Global Config</button>
+                <button class="btn btn-primary btn-small" id="exportEverythingBtn">Export Everything</button>
+              </div>
+            </div>
+
+            <!-- Import Panel -->
+            <div class="ei-panel">
+              <h3>Import</h3>
+              <div class="import-drop-zone" id="importDropZone">
+                <div class="drop-zone-content">
+                  <div class="drop-zone-icon">&#8681;</div>
+                  <p>Drop a JSON config file here</p>
+                  <p class="drop-zone-hint">or <button class="btn-link" id="importFilePickerBtn">browse files</button></p>
+                </div>
+                <input type="file" id="importFileInput" accept=".json" style="display: none;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Backup Management -->
+          <div class="backup-section">
+            <div class="backup-header">
+              <h3>Backups</h3>
+              <button class="btn btn-secondary btn-small" id="refreshBackupsBtn">Refresh</button>
+            </div>
+            <div class="backup-list" id="backupList">
+              <div class="loading-placeholder">Click refresh to load backups</div>
+            </div>
+          </div>
+        </section>
+
         <section class="fields-editor-section">
           <div class="section-header">
             <h2>Extraction Fields</h2>
@@ -411,6 +458,42 @@
       <div class="form-actions">
         <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
         <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Preview Modal -->
+  <div class="modal-overlay" id="importPreviewModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Import Preview</h3>
+        <button class="modal-close" id="closeImportPreviewBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="import-preview-meta" id="importPreviewMeta"></div>
+        <div class="import-preview-details" id="importPreviewDetails"></div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" id="cancelImportBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Restore Confirmation Modal -->
+  <div class="modal-overlay" id="restoreModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h3>Confirm Restore</h3>
+        <button class="modal-close" id="closeRestoreModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Restore configuration from backup "<strong id="restoreBackupLabel"></strong>"?</p>
+        <p class="text-warning">A safety backup will be created before restoring. Current config will be overwritten.</p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" id="cancelRestoreBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmRestoreBtn">Restore</button>
       </div>
     </div>
   </div>
