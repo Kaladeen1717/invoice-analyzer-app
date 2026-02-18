@@ -70,6 +70,10 @@ function validateClientConfig(clientId, config) {
     if (config.tagOverrides !== undefined && (typeof config.tagOverrides !== 'object' || config.tagOverrides === null)) {
         throw new Error(`Client "${clientId}": "tagOverrides" must be an object`);
     }
+    // model is optional but must be a string if present
+    if (config.model !== undefined && typeof config.model !== 'string') {
+        throw new Error(`Client "${clientId}": "model" must be a string`);
+    }
 }
 
 /**
@@ -281,11 +285,15 @@ async function getClientConfig(clientId, globalConfig) {
         promptTemplate = client.promptTemplate;
     }
 
+    // Model: client overrides global
+    const model = client.model || globalConfig.model || null;
+
     return {
         clientId,
         name: client.name,
         enabled: client.enabled,
         apiKeyEnvVar: client.apiKeyEnvVar || null,
+        model,
         folders,
         processing: globalConfig.processing,
         extraction,
@@ -608,6 +616,12 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
         _source: (hasOutputOverride || hasLegacyOutput) ? 'override' : 'global'
     };
 
+    // Model: client overrides global
+    const effectiveModel = {
+        value: client.model || globalConfig.model || null,
+        _source: client.model ? 'override' : 'global'
+    };
+
     // Folder status
     const folderStatus = await getClientFolderStatus(
         client.folderPath,
@@ -623,6 +637,7 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
             apiKeyEnvVar: client.apiKeyEnvVar || null,
             folderStatus
         },
+        model: effectiveModel,
         fieldDefinitions: effectiveFields,
         tagDefinitions: effectiveTags,
         promptTemplate: effectivePrompt,
@@ -662,6 +677,9 @@ async function saveClientOverrides(clientId, section, data) {
             break;
         case 'output':
             config.outputOverride = data;
+            break;
+        case 'model':
+            config.model = data;
             break;
         default:
             throw new Error(`Invalid override section: ${section}`);
@@ -704,6 +722,9 @@ async function removeClientOverrides(clientId, section) {
             break;
         case 'output':
             delete config.outputOverride;
+            break;
+        case 'model':
+            delete config.model;
             break;
         default:
             throw new Error(`Invalid override section: ${section}`);
