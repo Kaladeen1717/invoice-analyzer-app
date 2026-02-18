@@ -72,6 +72,72 @@ When discovering bugs or improvements during work:
 3. Apply the appropriate label (bug, feature, improvement, chore, docs)
 4. Set priority based on impact
 5. Add to Backlog unless the user specifies otherwise
+6. Write the description following the **Ticket Description Standards** below
+
+## Ticket Description Standards
+
+**Never create a ticket with just a title and one-line description.** Every ticket must have structured sections that provide enough context for someone to understand the work without external discussion.
+
+### Required Sections (All Ticket Types)
+
+Every ticket description must include at minimum:
+
+1. **Context** (2-4 sentences) — Why this work is needed. Explain the problem, motivation, or business reason. Reference related tickets if applicable.
+2. **Acceptance Criteria** — Checkbox list of testable outcomes. Each item should be independently verifiable.
+3. **Key Files** — Bulleted list of files to create or modify, each with a short description of the expected change.
+
+### Type-Specific Sections
+
+Add these sections based on the ticket label:
+
+#### `feat` (Feature)
+
+- **Requirements** — Numbered list of functional requirements. Include code snippets, JSON shapes, or API contracts where relevant.
+- **Dependencies** — Other tickets, libraries, or config changes this depends on.
+- **Architecture Notes** — How this fits into the existing system. Reference module dependency chains from CLAUDE.md if helpful.
+
+#### `fix` (Bug Fix)
+
+- **Current Behavior** — What happens now (include error messages, screenshots, or reproduction steps).
+- **Expected Behavior** — What should happen instead.
+- **Root Cause** — Analysis of why the bug occurs (or "TBD — needs investigation" if unknown).
+
+#### `improve` (Improvement)
+
+- **Current State** — How the feature works today and what's lacking.
+- **Technical Approach** — Step-by-step plan for the improvement.
+- **Dependencies** — Other tickets or changes this builds on.
+
+#### `chore` (Maintenance)
+
+- **Technical Approach** — Step-by-step plan with config examples, commands, or file snippets where applicable.
+
+#### `refactor` (Restructuring)
+
+- **Current State** — What the code looks like today and why it needs restructuring.
+- **Technical Approach** — The target architecture or pattern.
+- **Architecture Notes** — How the refactored code fits into the broader system.
+
+### Retroactive Documentation
+
+For tickets already in **Done** status, descriptions serve as a historical record:
+
+- Write in past tense ("Added...", "Implemented...", "Configured...")
+- Replace "Requirements" with "What Was Done"
+- Replace "Key Files" with "Files Modified"
+- Check all acceptance criteria checkboxes
+
+### Quality Checklist
+
+Before submitting a ticket description, verify:
+
+- [ ] Context explains **why**, not just **what**
+- [ ] Acceptance criteria are testable (someone else could verify them)
+- [ ] Key files are listed with change descriptions
+- [ ] Feature tickets are 300+ words
+- [ ] Chore/improvement tickets are 200+ words
+- [ ] Bug tickets include reproduction information
+- [ ] Code examples are included where they clarify requirements
 
 ## PR Conventions
 
