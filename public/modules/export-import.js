@@ -97,7 +97,9 @@ export function initExportImport({ onDataChanged }) {
     });
 }
 
-export function isBackupsLoaded() { return backupsLoaded; }
+export function isBackupsLoaded() {
+    return backupsLoaded;
+}
 
 export async function loadBackups() {
     try {
@@ -124,7 +126,7 @@ export async function loadBackups() {
             return;
         }
 
-        backups.forEach(backup => {
+        backups.forEach((backup) => {
             const date = new Date(backup.timestamp).toLocaleString();
             const label = backup.label || 'manual';
 
@@ -195,10 +197,18 @@ export async function exportConfig(scope) {
 /**
  * Get modal elements for Escape key handling in app.js.
  */
-export function getRestoreModal() { return restoreModal; }
-export function getImportPreviewModal() { return importPreviewModal; }
-export function getCloseRestoreModal() { return closeRestoreModal; }
-export function getCloseImportPreview() { return closeImportPreview; }
+export function getRestoreModal() {
+    return restoreModal;
+}
+export function getImportPreviewModal() {
+    return importPreviewModal;
+}
+export function getCloseRestoreModal() {
+    return closeRestoreModal;
+}
+export function getCloseImportPreview() {
+    return closeImportPreview;
+}
 
 // --- Internal ---
 
@@ -235,7 +245,7 @@ function showImportPreview(bundle) {
     };
     const scopeLabel = bundle.scope.startsWith('client:')
         ? `Client: ${bundle.scope.substring(7)}`
-        : (scopeLabels[bundle.scope] || bundle.scope);
+        : scopeLabels[bundle.scope] || bundle.scope;
 
     importPreviewMeta.textContent = '';
     [
@@ -366,7 +376,10 @@ async function confirmRestore() {
         if (response.ok) {
             closeRestoreModal();
             const restoredCount = result.restored ? result.restored.length : 0;
-            showAlert(`Restored ${restoredCount} item(s) from backup. Safety backup: ${result.safetyBackupId}`, 'success');
+            showAlert(
+                `Restored ${restoredCount} item(s) from backup. Safety backup: ${result.safetyBackupId}`,
+                'success'
+            );
             if (_onDataChanged) _onDataChanged();
         } else {
             showAlert(`Restore failed: ${result.details || result.error}`, 'error');

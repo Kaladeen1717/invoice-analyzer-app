@@ -24,31 +24,31 @@ A local application that analyzes invoice PDFs using Google's Gemini Vision API.
 
 1. **Install Dependencies**
 
-   ```bash
-   npm install
-   ```
+    ```bash
+    npm install
+    ```
 
 2. **Configure API Key**
 
-   ```bash
-   cp .env.example .env
-   ```
+    ```bash
+    cp .env.example .env
+    ```
 
-   Get your API key from [Google AI Studio](https://aistudio.google.com/apikey) and add to `.env`:
+    Get your API key from [Google AI Studio](https://aistudio.google.com/apikey) and add to `.env`:
 
-   ```
-   GEMINI_API_KEY=your_actual_api_key_here
-   ```
+    ```
+    GEMINI_API_KEY=your_actual_api_key_here
+    ```
 
 3. **Start the Server**
 
-   ```bash
-   npm start
-   ```
+    ```bash
+    npm start
+    ```
 
 4. **Open Admin UI**
 
-   Navigate to http://localhost:3000
+    Navigate to http://localhost:3000
 
 ## Usage
 
@@ -84,16 +84,16 @@ Create `clients/my-company.json`:
 
 ```json
 {
-  "name": "My Company",
-  "enabled": true,
-  "folderPath": "/path/to/invoices",
-  "tagOverrides": {
-    "private": {
-      "parameters": {
-        "address": "Home Address Here"
-      }
+    "name": "My Company",
+    "enabled": true,
+    "folderPath": "/path/to/invoices",
+    "tagOverrides": {
+        "private": {
+            "parameters": {
+                "address": "Home Address Here"
+            }
+        }
     }
-  }
 }
 ```
 

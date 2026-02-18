@@ -7,7 +7,13 @@ const fs = require('fs').promises;
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-const { buildExtractionPrompt, parseGeminiResponse, validateAnalysis, formatDocumentTypes, TAG_REPLACED_FIELDS } = require('./prompt-builder');
+const {
+    buildExtractionPrompt,
+    parseGeminiResponse,
+    validateAnalysis,
+    formatDocumentTypes,
+    TAG_REPLACED_FIELDS
+} = require('./prompt-builder');
 const { generateFormattedFilename, getUniqueFilename, formatDateForDisplay } = require('./filename-generator');
 const { DEFAULT_MODEL } = require('./constants');
 
@@ -107,18 +113,20 @@ function sanitizeTextForPdf(text) {
     if (!text) return '';
 
     // Replace common problematic characters
-    return String(text)
-        // Greek letters
-        .replace(/[Α-Ωα-ω]/g, '')
-        // Cyrillic
-        .replace(/[\u0400-\u04FF]/g, '')
-        // Chinese/Japanese/Korean
-        .replace(/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/g, '')
-        // Other non-Latin characters - keep only printable ASCII and extended Latin
-        .replace(/[^\x20-\x7E\xA0-\xFF]/g, ' ')
-        // Normalize multiple spaces
-        .replace(/\s+/g, ' ')
-        .trim();
+    return (
+        String(text)
+            // Greek letters
+            .replace(/[Α-Ωα-ω]/g, '')
+            // Cyrillic
+            .replace(/[\u0400-\u04FF]/g, '')
+            // Chinese/Japanese/Korean
+            .replace(/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/g, '')
+            // Other non-Latin characters - keep only printable ASCII and extended Latin
+            .replace(/[^\x20-\x7E\xA0-\xFF]/g, ' ')
+            // Normalize multiple spaces
+            .replace(/\s+/g, ' ')
+            .trim()
+    );
 }
 
 /**
@@ -158,7 +166,7 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     // Tags section (unified tag system)
     const tagDefinitions = config.tagDefinitions;
     if (tagDefinitions && analysis.tags) {
-        const pdfTags = tagDefinitions.filter(t => t.enabled && t.output && t.output.pdf && analysis.tags[t.id]);
+        const pdfTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.pdf && analysis.tags[t.id]);
         if (pdfTags.length > 0) {
             page.drawText('Tags:', {
                 x: margin,
@@ -168,7 +176,7 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
                 color: rgb(0, 0, 0)
             });
 
-            const tagLabels = sanitizeTextForPdf(pdfTags.map(t => t.label).join(', '));
+            const tagLabels = sanitizeTextForPdf(pdfTags.map((t) => t.label).join(', '));
             page.drawText(tagLabels, {
                 x: margin + 120,
                 y: yPosition,
@@ -208,15 +216,19 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     const fieldDefinitions = config.fieldDefinitions;
     let fieldEntries;
     if (fieldDefinitions) {
-        fieldEntries = fieldDefinitions.filter(f => f.enabled && !skipTypes.includes(f.type));
+        fieldEntries = fieldDefinitions.filter((f) => f.enabled && !skipTypes.includes(f.type));
         // When tag system is active, exclude tag-replaced fields
         if (tagDefinitions) {
-            fieldEntries = fieldEntries.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+            fieldEntries = fieldEntries.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
         }
     } else {
         fieldEntries = config.extraction.fields
-            .filter(f => f !== 'documentTypes' && f !== 'isPrivate')
-            .map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1).replace(/([A-Z])/g, ' $1'), type: 'text' }));
+            .filter((f) => f !== 'documentTypes' && f !== 'isPrivate')
+            .map((f) => ({
+                key: f,
+                label: f.charAt(0).toUpperCase() + f.slice(1).replace(/([A-Z])/g, ' $1'),
+                type: 'text'
+            }));
     }
 
     for (const field of fieldEntries) {
@@ -264,7 +276,7 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
         yPosition -= 20;
 
         // Word wrap the summary (sanitized for PDF)
-        const maxWidth = width - (2 * margin);
+        const maxWidth = width - 2 * margin;
         const sanitizedSummary = sanitizeTextForPdf(analysis.summary);
         const words = sanitizedSummary.split(' ');
         let line = '';
@@ -333,20 +345,13 @@ async function processInvoice(inputPath, config, options = {}) {
         }
 
         // Generate output filename
-        const outputFilename = generateFormattedFilename(
-            config.output.filenameTemplate,
-            analysis,
-            config
-        );
+        const outputFilename = generateFormattedFilename(config.output.filenameTemplate, analysis, config);
 
         // Determine output folder (multi-client uses processedEnriched, single-client uses output)
         const outputFolder = config.folders.processedEnriched || config.folders.output;
 
         // Ensure unique filename
-        const uniqueFilename = await getUniqueFilename(
-            outputFolder,
-            outputFilename
-        );
+        const uniqueFilename = await getUniqueFilename(outputFolder, outputFilename);
 
         const outputPath = path.join(outputFolder, uniqueFilename);
 
@@ -392,9 +397,7 @@ async function getPdfFiles(config) {
     // Multi-client uses base folder, single-client uses input folder
     const inputFolder = config.folders.base || config.folders.input;
     const files = await fs.readdir(inputFolder);
-    return files
-        .filter(f => f.toLowerCase().endsWith('.pdf'))
-        .map(f => path.join(inputFolder, f));
+    return files.filter((f) => f.toLowerCase().endsWith('.pdf')).map((f) => path.join(inputFolder, f));
 }
 
 module.exports = {

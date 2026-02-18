@@ -1,8 +1,6 @@
 // Reusable editor state management — encapsulates the load/save/discard/hasChanges pattern
 // used by field, tag, prompt, model, and filename editors.
 
-import { showAlert } from './ui-utils.js';
-
 export class EditorState {
     /**
      * @param {Object} opts

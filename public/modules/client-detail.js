@@ -78,27 +78,35 @@ export function initClientDetail() {
     backToDashboardBtn.addEventListener('click', closeClientDetail);
 
     // Override buttons
-    customizeFieldsBtn.addEventListener('click', () => detailFieldEditMode ? cancelDetailFieldEdit() : customizeFields());
+    customizeFieldsBtn.addEventListener('click', () =>
+        detailFieldEditMode ? cancelDetailFieldEdit() : customizeFields()
+    );
     resetFieldsBtn.addEventListener('click', () => resetOverride('fields'));
     saveDetailFieldsBtn.addEventListener('click', saveDetailFieldOverrides);
     discardDetailFieldsBtn.addEventListener('click', cancelDetailFieldEdit);
 
-    customizeTagsBtn.addEventListener('click', () => detailTagEditMode ? cancelDetailTagEdit() : customizeTags());
+    customizeTagsBtn.addEventListener('click', () => (detailTagEditMode ? cancelDetailTagEdit() : customizeTags()));
     resetTagsBtn.addEventListener('click', () => resetOverride('tags'));
     saveDetailTagsBtn.addEventListener('click', saveDetailTagOverrides);
     discardDetailTagsBtn.addEventListener('click', cancelDetailTagEdit);
 
-    customizePromptBtn.addEventListener('click', () => detailPromptEditMode ? cancelDetailPromptEdit() : customizePrompt());
+    customizePromptBtn.addEventListener('click', () =>
+        detailPromptEditMode ? cancelDetailPromptEdit() : customizePrompt()
+    );
     resetPromptBtn.addEventListener('click', () => resetOverride('prompt'));
     saveDetailPromptBtn.addEventListener('click', saveDetailPromptOverrides);
     discardDetailPromptBtn.addEventListener('click', cancelDetailPromptEdit);
 
-    customizeModelBtn.addEventListener('click', () => detailModelEditMode ? cancelDetailModelEdit() : customizeModel());
+    customizeModelBtn.addEventListener('click', () =>
+        detailModelEditMode ? cancelDetailModelEdit() : customizeModel()
+    );
     resetModelBtn.addEventListener('click', () => resetOverride('model'));
     saveDetailModelBtn.addEventListener('click', saveDetailModelOverride);
     discardDetailModelBtn.addEventListener('click', cancelDetailModelEdit);
 
-    customizeFilenameBtn.addEventListener('click', () => detailFilenameEditMode ? cancelDetailFilenameEdit() : customizeFilename());
+    customizeFilenameBtn.addEventListener('click', () =>
+        detailFilenameEditMode ? cancelDetailFilenameEdit() : customizeFilename()
+    );
     resetFilenameBtn.addEventListener('click', () => resetOverride('output'));
     saveDetailFilenameBtn.addEventListener('click', saveDetailFilenameOverride);
     discardDetailFilenameBtn.addEventListener('click', cancelDetailFilenameEdit);
@@ -111,7 +119,7 @@ export async function openClientDetail(clientId) {
 
     // Show loading state
     detailClientHeader.textContent = '';
-    [detailModelEl, detailFieldList, detailTagList, detailFilenameTemplate, detailPromptTemplate].forEach(el => {
+    [detailModelEl, detailFieldList, detailTagList, detailFilenameTemplate, detailPromptTemplate].forEach((el) => {
         el.textContent = '';
         const placeholder = document.createElement('div');
         placeholder.className = 'loading-placeholder';
@@ -185,7 +193,7 @@ function renderClientDetail() {
         { label: 'Processed', value: String(c.folderStatus.processedCount) }
     ];
 
-    metaItems.forEach(item => {
+    metaItems.forEach((item) => {
         const div = document.createElement('div');
         div.className = 'detail-meta-item';
         const lbl = document.createElement('span');
@@ -262,7 +270,7 @@ function renderDetailModelEditable(modelData) {
     wrapper.className = 'model-detail-edit';
 
     const select = document.createElement('select');
-    KNOWN_MODELS.forEach(m => {
+    KNOWN_MODELS.forEach((m) => {
         const opt = document.createElement('option');
         opt.value = m;
         opt.textContent = m;
@@ -334,7 +342,7 @@ function renderDetailFieldList(fields) {
         { text: 'Schema Hint', cls: 'col-hint' },
         { text: 'Instruction', cls: 'col-instruction' },
         { text: 'Source', cls: 'col-source' }
-    ].forEach(h => {
+    ].forEach((h) => {
         const th = document.createElement('th');
         th.className = h.cls;
         th.textContent = h.text;
@@ -344,7 +352,7 @@ function renderDetailFieldList(fields) {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    fields.forEach(field => {
+    fields.forEach((field) => {
         const tr = document.createElement('tr');
         if (!field.enabled) tr.className = 'disabled';
 
@@ -437,7 +445,7 @@ function renderDetailTagList(tags) {
         { text: 'CSV', cls: 'col-output' },
         { text: 'File', cls: 'col-output' },
         { text: 'Source', cls: 'col-source' }
-    ].forEach(h => {
+    ].forEach((h) => {
         const th = document.createElement('th');
         th.className = h.cls;
         th.textContent = h.text;
@@ -447,7 +455,7 @@ function renderDetailTagList(tags) {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    tags.forEach(tag => {
+    tags.forEach((tag) => {
         const tr = document.createElement('tr');
         if (tag.enabled === false) tr.classList.add('disabled');
 
@@ -485,7 +493,7 @@ function renderDetailTagList(tags) {
         tr.appendChild(tdInstr);
 
         // Output checkboxes (read-only)
-        ['pdf', 'csv', 'filename'].forEach(key => {
+        ['pdf', 'csv', 'filename'].forEach((key) => {
             const td = document.createElement('td');
             td.className = 'col-output';
             const cb = document.createElement('input');
@@ -525,7 +533,7 @@ function renderDetailTagList(tags) {
             miniTable.className = 'params-mini-table';
             const miniThead = document.createElement('thead');
             const miniHr = document.createElement('tr');
-            ['Name', 'Value', 'Source'].forEach(text => {
+            ['Name', 'Value', 'Source'].forEach((text) => {
                 const th = document.createElement('th');
                 th.textContent = text;
                 miniHr.appendChild(th);
@@ -609,7 +617,7 @@ function renderDetailPromptTemplate(prompt) {
         { label: 'Suffix', value: prompt.suffix }
     ];
 
-    sections.forEach(s => {
+    sections.forEach((s) => {
         const section = document.createElement('div');
         section.className = 'detail-prompt-section';
 
@@ -655,11 +663,15 @@ function resetDetailEditState() {
 function updateDetailResetButtons() {
     if (!clientDetailData) return;
     const d = clientDetailData;
-    resetFieldsBtn.style.display = d.fieldDefinitions.some(f => f._source === 'override') ? 'inline-flex' : 'none';
-    resetTagsBtn.style.display = d.tagDefinitions.some(t => t._source === 'override' || Object.values(t._parameterSources || {}).some(k => k === 'override')) ? 'inline-flex' : 'none';
+    resetFieldsBtn.style.display = d.fieldDefinitions.some((f) => f._source === 'override') ? 'inline-flex' : 'none';
+    resetTagsBtn.style.display = d.tagDefinitions.some(
+        (t) => t._source === 'override' || Object.values(t._parameterSources || {}).some((k) => k === 'override')
+    )
+        ? 'inline-flex'
+        : 'none';
     resetPromptBtn.style.display = d.promptTemplate._source === 'override' ? 'inline-flex' : 'none';
     resetFilenameBtn.style.display = d.filenameTemplate._source === 'override' ? 'inline-flex' : 'none';
-    resetModelBtn.style.display = (d.model && d.model._source === 'override') ? 'inline-flex' : 'none';
+    resetModelBtn.style.display = d.model && d.model._source === 'override' ? 'inline-flex' : 'none';
 }
 
 // --- FIELDS OVERRIDE ---
@@ -668,7 +680,7 @@ function customizeFields() {
     if (!clientDetailData) return;
     detailFieldEditMode = true;
     detailFieldOverrides = {};
-    clientDetailData.fieldDefinitions.forEach(f => {
+    clientDetailData.fieldDefinitions.forEach((f) => {
         if (f._source === 'override') {
             detailFieldOverrides[f.key] = { enabled: f.enabled, instruction: f.instruction };
         }
@@ -715,7 +727,7 @@ function renderDetailFieldListEditable() {
         { text: 'Type', cls: 'col-type' },
         { text: 'Instruction', cls: 'col-instruction' },
         { text: 'Source', cls: 'col-source' }
-    ].forEach(h => {
+    ].forEach((h) => {
         const th = document.createElement('th');
         th.className = h.cls;
         th.textContent = h.text;
@@ -725,7 +737,7 @@ function renderDetailFieldListEditable() {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    fields.forEach(field => {
+    fields.forEach((field) => {
         const override = detailFieldOverrides[field.key];
         const effectiveEnabled = override ? override.enabled : field.enabled;
         const effectiveInstruction = override ? override.instruction : field.instruction;
@@ -866,7 +878,7 @@ function customizeTags() {
     if (!clientDetailData) return;
     detailTagEditMode = true;
     detailTagOverrides = {};
-    clientDetailData.tagDefinitions.forEach(tag => {
+    clientDetailData.tagDefinitions.forEach((tag) => {
         const paramSources = tag._parameterSources || {};
         const hasOverride = tag._source === 'override' || Object.values(paramSources).includes('override');
         if (hasOverride) {
@@ -926,7 +938,7 @@ function renderDetailTagListEditable() {
         { text: 'CSV', cls: 'col-output' },
         { text: 'File', cls: 'col-output' },
         { text: 'Source', cls: 'col-source' }
-    ].forEach(h => {
+    ].forEach((h) => {
         const th = document.createElement('th');
         th.className = h.cls;
         th.textContent = h.text;
@@ -936,9 +948,10 @@ function renderDetailTagListEditable() {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    tags.forEach(tag => {
+    tags.forEach((tag) => {
         const override = detailTagOverrides[tag.id];
-        const effectiveEnabled = override && typeof override.enabled === 'boolean' ? override.enabled : (tag.enabled !== false);
+        const effectiveEnabled =
+            override && typeof override.enabled === 'boolean' ? override.enabled : tag.enabled !== false;
         const isOverridden = !!override;
 
         const tr = document.createElement('tr');
@@ -985,7 +998,7 @@ function renderDetailTagListEditable() {
         tr.appendChild(tdInstr);
 
         // Output checkboxes (read-only)
-        ['pdf', 'csv', 'filename'].forEach(key => {
+        ['pdf', 'csv', 'filename'].forEach((key) => {
             const td = document.createElement('td');
             td.className = 'col-output';
             const cb = document.createElement('input');
@@ -1024,7 +1037,7 @@ function renderDetailTagListEditable() {
             miniTable.className = 'params-mini-table';
             const miniThead = document.createElement('thead');
             const miniHr = document.createElement('tr');
-            ['Name', 'Value', 'Source'].forEach(text => {
+            ['Name', 'Value', 'Source'].forEach((text) => {
                 const th = document.createElement('th');
                 th.textContent = text;
                 miniHr.appendChild(th);
@@ -1036,8 +1049,9 @@ function renderDetailTagListEditable() {
             paramEntries.forEach(([paramKey, paramDef]) => {
                 const row = document.createElement('tr');
                 const overrideValue = override && override.parameters && override.parameters[paramKey];
-                const effectiveValue = overrideValue !== undefined ? overrideValue : (paramDef.default || '');
-                const paramSource = overrideValue !== undefined ? 'override' : ((tag._parameterSources || {})[paramKey] || 'global');
+                const effectiveValue = overrideValue !== undefined ? overrideValue : paramDef.default || '';
+                const paramSource =
+                    overrideValue !== undefined ? 'override' : (tag._parameterSources || {})[paramKey] || 'global';
 
                 const nameTd = document.createElement('td');
                 nameTd.textContent = paramDef.label || paramKey;
@@ -1144,7 +1158,7 @@ function renderDetailPromptEditable() {
         { key: 'suffix', label: 'Suffix' }
     ];
 
-    sections.forEach(s => {
+    sections.forEach((s) => {
         const section = document.createElement('div');
         section.className = 'detail-prompt-section';
 
@@ -1342,7 +1356,10 @@ async function resetOverride(section) {
         resetDetailEditState();
         renderClientDetail();
         updateDetailResetButtons();
-        showAlert(`${sectionNames[section].charAt(0).toUpperCase() + sectionNames[section].slice(1)} settings reset to global defaults`, 'success');
+        showAlert(
+            `${sectionNames[section].charAt(0).toUpperCase() + sectionNames[section].slice(1)} settings reset to global defaults`,
+            'success'
+        );
     } catch (error) {
         showAlert('Failed to reset: ' + error.message, 'error');
     }
