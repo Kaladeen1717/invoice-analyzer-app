@@ -39,6 +39,28 @@
                 <div class="tab-content active" id="tab-dashboard">
                     <!-- Dashboard List View -->
                     <div id="dashboardListView">
+                        <!-- Processing Statistics -->
+                        <section class="dashboard-stats" id="dashboardStats" style="display: none">
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-card-label">Total Processed</div>
+                                    <div class="stat-card-value" id="statTotalProcessed">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-card-label">Success Rate</div>
+                                    <div class="stat-card-value" id="statSuccessRate">-</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-card-label">Total Tokens</div>
+                                    <div class="stat-card-value" id="statTotalTokens">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-card-label">Last Processed</div>
+                                    <div class="stat-card-value stat-card-value-sm" id="statLastProcessed">-</div>
+                                </div>
+                            </div>
+                        </section>
+
                         <!-- Client Management Section -->
                         <section class="client-management-section">
                             <div class="section-header">
@@ -240,6 +262,33 @@
                                         Save Overrides
                                     </button>
                                 </div>
+                            </div>
+                        </section>
+
+                        <!-- Processing History -->
+                        <section class="detail-section">
+                            <div class="section-header">
+                                <h2>
+                                    Processing History
+                                    <span class="results-count" id="resultsCount"></span>
+                                </h2>
+                                <div class="section-actions">
+                                    <button
+                                        class="btn btn-small btn-primary"
+                                        id="retryAllFailedBtn"
+                                        style="display: none"
+                                    >
+                                        Retry All Failed
+                                    </button>
+                                    <div class="results-filters" id="resultsFilters">
+                                        <button class="btn btn-small btn-filter active" data-filter="all">All</button>
+                                        <button class="btn btn-small btn-filter" data-filter="success">Success</button>
+                                        <button class="btn btn-small btn-filter" data-filter="failed">Failed</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="resultsViewer">
+                                <div class="empty-placeholder">Select a client to view processing history.</div>
                             </div>
                         </section>
                     </div>

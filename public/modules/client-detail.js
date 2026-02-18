@@ -3,6 +3,7 @@
 
 import { showAlert } from './ui-utils.js';
 import { KNOWN_MODELS } from './constants.js';
+import { initResultsViewer, loadClientResults, clearResults } from './results-viewer.js';
 
 // --- State ---
 let clientDetailData = null;
@@ -110,6 +111,8 @@ export function initClientDetail() {
     resetFilenameBtn.addEventListener('click', () => resetOverride('output'));
     saveDetailFilenameBtn.addEventListener('click', saveDetailFilenameOverride);
     discardDetailFilenameBtn.addEventListener('click', cancelDetailFilenameEdit);
+
+    initResultsViewer();
 }
 
 export async function openClientDetail(clientId) {
@@ -136,6 +139,7 @@ export async function openClientDetail(clientId) {
         clientDetailData = await response.json();
         renderClientDetail();
         updateDetailResetButtons();
+        loadClientResults(clientId);
     } catch (error) {
         detailClientHeader.textContent = '';
         const errDiv = document.createElement('div');
@@ -150,6 +154,7 @@ export function closeClientDetail() {
     dashboardListView.style.display = 'block';
     resetDetailEditState();
     clientDetailData = null;
+    clearResults();
 }
 
 // --- Internal: Rendering ---
