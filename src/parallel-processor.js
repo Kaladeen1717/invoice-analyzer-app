@@ -132,7 +132,7 @@ async function processAllInvoices(config, options = {}) {
             // Log to CSV if successful and csvPath is provided
             if (result.success && csvPath) {
                 try {
-                    await appendInvoiceRow(csvPath, result);
+                    await appendInvoiceRow(csvPath, result, config);
                     csvRowsAdded++;
                 } catch (csvError) {
                     console.error(`Warning: Failed to write to CSV: ${csvError.message}`);

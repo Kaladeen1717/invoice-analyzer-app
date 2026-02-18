@@ -1,7 +1,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 
-const CSV_HEADERS = [
+// Legacy hardcoded headers (used when no fieldDefinitions in config)
+const LEGACY_CSV_HEADERS = [
     'Enriched Filename',
     'Original Filename',
     'Supplier Name',
@@ -15,6 +16,29 @@ const CSV_HEADERS = [
     'Summary',
     'Processed At'
 ];
+
+/**
+ * Build CSV headers dynamically from field definitions
+ * @param {Object} config - Configuration object (with optional fieldDefinitions)
+ * @returns {string[]} Array of CSV column headers
+ */
+function buildCsvHeaders(config) {
+    const fieldDefinitions = config && config.fieldDefinitions;
+    if (!fieldDefinitions) {
+        return LEGACY_CSV_HEADERS;
+    }
+
+    const headers = ['Enriched Filename', 'Original Filename'];
+    const enabledFields = fieldDefinitions.filter(f => f.enabled);
+    for (const field of enabledFields) {
+        headers.push(field.label);
+    }
+    if (config.extraction && config.extraction.includeSummary) {
+        headers.push('Summary');
+    }
+    headers.push('Processed At');
+    return headers;
+}
 
 /**
  * Escape a value for CSV (handles commas, quotes, and newlines)
@@ -57,15 +81,39 @@ function formatDateForCSV(dateStr) {
  * Ensure CSV file exists with headers
  * Creates the file with headers if it doesn't exist
  * @param {string} csvPath - Path to the CSV file
+ * @param {Object} [config] - Configuration object (for dynamic headers)
  */
-async function ensureCsvExists(csvPath) {
+async function ensureCsvExists(csvPath, config) {
     try {
         await fs.access(csvPath);
         // File exists, nothing to do
     } catch {
         // File doesn't exist, create it with headers
-        const headerLine = CSV_HEADERS.map(h => escapeCSV(h)).join(',') + '\n';
+        const headers = buildCsvHeaders(config);
+        const headerLine = headers.map(h => escapeCSV(h)).join(',') + '\n';
         await fs.writeFile(csvPath, headerLine, 'utf-8');
+    }
+}
+
+/**
+ * Format an analysis value for CSV based on field type
+ * @param {*} value - The raw value
+ * @param {string} type - The field type (text, number, date, boolean, array)
+ * @returns {string} Formatted CSV value
+ */
+function formatFieldForCSV(value, type) {
+    switch (type) {
+        case 'date':
+            return formatDateForCSV(value);
+        case 'boolean':
+            return value ? 'Yes' : 'No';
+        case 'array':
+            return Array.isArray(value) ? value.join('; ') : '';
+        case 'number':
+            return value !== undefined && value !== null ? String(value) : '';
+        case 'text':
+        default:
+            return value !== undefined && value !== null ? String(value) : '';
     }
 }
 
@@ -76,28 +124,45 @@ async function ensureCsvExists(csvPath) {
  * @param {string} data.outputFilename - The enriched filename
  * @param {string} data.originalFilename - The original filename
  * @param {Object} data.analysis - The analysis result from Gemini
+ * @param {Object} [config] - Configuration object (for dynamic columns)
  */
-async function appendInvoiceRow(csvPath, data) {
+async function appendInvoiceRow(csvPath, data, config) {
     const { outputFilename, originalFilename, analysis } = data;
 
     // Ensure CSV exists before appending
-    await ensureCsvExists(csvPath);
+    await ensureCsvExists(csvPath, config);
 
-    // Build row data
-    const row = [
-        outputFilename || '',
-        originalFilename || '',
-        analysis?.supplierName || '',
-        formatDateForCSV(analysis?.paymentDate),
-        formatDateForCSV(analysis?.invoiceDate),
-        analysis?.invoiceNumber || '',
-        analysis?.currency || '',
-        analysis?.totalAmount || '',
-        Array.isArray(analysis?.documentTypes) ? analysis.documentTypes.join('; ') : '',
-        analysis?.isPrivate ? 'Yes' : 'No',
-        analysis?.summary || '',
-        new Date().toISOString()
-    ];
+    const fieldDefinitions = config && config.fieldDefinitions;
+
+    let row;
+    if (fieldDefinitions) {
+        // Dynamic mode: build row from enabled field definitions
+        row = [outputFilename || '', originalFilename || ''];
+        const enabledFields = fieldDefinitions.filter(f => f.enabled);
+        for (const field of enabledFields) {
+            row.push(formatFieldForCSV(analysis?.[field.key], field.type));
+        }
+        if (config.extraction && config.extraction.includeSummary) {
+            row.push(analysis?.summary || '');
+        }
+        row.push(new Date().toISOString());
+    } else {
+        // Legacy mode: hardcoded columns
+        row = [
+            outputFilename || '',
+            originalFilename || '',
+            analysis?.supplierName || '',
+            formatDateForCSV(analysis?.paymentDate),
+            formatDateForCSV(analysis?.invoiceDate),
+            analysis?.invoiceNumber || '',
+            analysis?.currency || '',
+            analysis?.totalAmount || '',
+            Array.isArray(analysis?.documentTypes) ? analysis.documentTypes.join('; ') : '',
+            analysis?.isPrivate ? 'Yes' : 'No',
+            analysis?.summary || '',
+            new Date().toISOString()
+        ];
+    }
 
     const rowLine = row.map(v => escapeCSV(v)).join(',') + '\n';
     await fs.appendFile(csvPath, rowLine, 'utf-8');
@@ -212,11 +277,13 @@ async function getCsvRowCount(csvPath) {
 }
 
 module.exports = {
-    CSV_HEADERS,
+    LEGACY_CSV_HEADERS,
+    buildCsvHeaders,
     ensureCsvExists,
     appendInvoiceRow,
     readCsv,
     getCsvRowCount,
     escapeCSV,
-    formatDateForCSV
+    formatDateForCSV,
+    formatFieldForCSV
 };
