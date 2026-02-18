@@ -1,6 +1,11 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { VALID_OVERRIDE_SECTIONS, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER, DEFAULT_PROCESSED_ENRICHED_SUBFOLDER, DEFAULT_CSV_FILENAME } = require('./constants');
+const {
+    VALID_OVERRIDE_SECTIONS,
+    DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
+    DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
+    DEFAULT_CSV_FILENAME
+} = require('./constants');
 
 let cachedClientsConfig = null;
 let usingLegacyConfig = false;
@@ -14,7 +19,7 @@ async function discoverClientFiles() {
 
     try {
         const files = await fs.readdir(clientsDir);
-        const jsonFiles = files.filter(f => f.endsWith('.json'));
+        const jsonFiles = files.filter((f) => f.endsWith('.json'));
 
         if (jsonFiles.length === 0) {
             return null;
@@ -68,7 +73,10 @@ function validateClientConfig(clientId, config) {
         throw new Error(`Client "${clientId}": must have a "folderPath" string`);
     }
     // tagOverrides is optional but must be an object if present
-    if (config.tagOverrides !== undefined && (typeof config.tagOverrides !== 'object' || config.tagOverrides === null)) {
+    if (
+        config.tagOverrides !== undefined &&
+        (typeof config.tagOverrides !== 'object' || config.tagOverrides === null)
+    ) {
         throw new Error(`Client "${clientId}": "tagOverrides" must be an object`);
     }
     // model is optional but must be a string if present
@@ -201,8 +209,10 @@ async function getClientConfig(clientId, globalConfig) {
     }
 
     // Build folder paths
-    const processedOriginalSubfolder = globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER;
-    const processedEnrichedSubfolder = globalConfig.output?.processedEnrichedSubfolder || DEFAULT_PROCESSED_ENRICHED_SUBFOLDER;
+    const processedOriginalSubfolder =
+        globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER;
+    const processedEnrichedSubfolder =
+        globalConfig.output?.processedEnrichedSubfolder || DEFAULT_PROCESSED_ENRICHED_SUBFOLDER;
     const csvFilename = globalConfig.output?.csvFilename || DEFAULT_CSV_FILENAME;
 
     const folders = {
@@ -237,14 +247,14 @@ async function getClientConfig(clientId, globalConfig) {
     // Field definitions: apply per-field overrides if present, otherwise use global
     let fieldDefinitions = globalConfig.fieldDefinitions || [];
     if (client.fieldOverrides) {
-        fieldDefinitions = fieldDefinitions.map(field => {
+        fieldDefinitions = fieldDefinitions.map((field) => {
             const override = client.fieldOverrides[field.key];
             if (!override) return field;
             return { ...field, ...override, key: field.key, builtIn: field.builtIn };
         });
         // Add client-specific custom fields
         for (const [key, def] of Object.entries(client.fieldOverrides)) {
-            if (!fieldDefinitions.find(f => f.key === key)) {
+            if (!fieldDefinitions.find((f) => f.key === key)) {
                 fieldDefinitions.push({ ...def, key });
             }
         }
@@ -256,7 +266,7 @@ async function getClientConfig(clientId, globalConfig) {
     // Tag definitions: start with global, merge client tagOverrides (parameter values and enabled state)
     let tagDefinitions = globalConfig.tagDefinitions || null;
     if (tagDefinitions && client.tagOverrides) {
-        tagDefinitions = tagDefinitions.map(tag => {
+        tagDefinitions = tagDefinitions.map((tag) => {
             const override = client.tagOverrides[tag.id];
             if (!override) return tag;
 
@@ -324,7 +334,9 @@ function resolveApiKey(clientConfig) {
     }
 
     // 3. Error
-    throw new Error(`No API key found for client "${clientConfig.name}". Set ${clientConfig.apiKeyEnvVar || 'GEMINI_API_KEY'} environment variable.`);
+    throw new Error(
+        `No API key found for client "${clientConfig.name}". Set ${clientConfig.apiKeyEnvVar || 'GEMINI_API_KEY'} environment variable.`
+    );
 }
 
 /**
@@ -497,13 +509,13 @@ async function getClientFolderStatus(folderPath, processedOriginalSubfolder = DE
 
         // Count PDFs in input folder (base folder, excluding subfolders)
         const files = await fs.readdir(folderPath);
-        result.inputPdfCount = files.filter(f => f.toLowerCase().endsWith('.pdf')).length;
+        result.inputPdfCount = files.filter((f) => f.toLowerCase().endsWith('.pdf')).length;
 
         // Count PDFs in processed-original subfolder
         const processedPath = path.join(folderPath, processedOriginalSubfolder);
         try {
             const processedFiles = await fs.readdir(processedPath);
-            result.processedCount = processedFiles.filter(f => f.toLowerCase().endsWith('.pdf')).length;
+            result.processedCount = processedFiles.filter((f) => f.toLowerCase().endsWith('.pdf')).length;
         } catch {
             // Subfolder doesn't exist yet
         }
@@ -548,26 +560,26 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
     const globalFields = globalConfig.fieldDefinitions || [];
     let effectiveFields;
     if (client.fieldOverrides) {
-        effectiveFields = globalFields.map(f => {
+        effectiveFields = globalFields.map((f) => {
             const override = client.fieldOverrides[f.key];
             if (!override) return { ...f, _source: 'global' };
             return { ...f, ...override, key: f.key, builtIn: f.builtIn, _source: 'override' };
         });
         // Add client-specific custom fields
         for (const [key, def] of Object.entries(client.fieldOverrides)) {
-            if (!globalFields.find(f => f.key === key)) {
+            if (!globalFields.find((f) => f.key === key)) {
                 effectiveFields.push({ ...def, key, _source: 'override' });
             }
         }
     } else if (client.fieldDefinitions) {
-        effectiveFields = client.fieldDefinitions.map(f => ({ ...f, _source: 'override' }));
+        effectiveFields = client.fieldDefinitions.map((f) => ({ ...f, _source: 'override' }));
     } else {
-        effectiveFields = globalFields.map(f => ({ ...f, _source: 'global' }));
+        effectiveFields = globalFields.map((f) => ({ ...f, _source: 'global' }));
     }
 
     // Tag definitions: start with global, merge client tagOverrides
     const globalTags = globalConfig.tagDefinitions || [];
-    const effectiveTags = globalTags.map(tag => {
+    const effectiveTags = globalTags.map((tag) => {
         const override = client.tagOverrides?.[tag.id];
         if (!override) {
             return { ...tag, _source: 'global', _parameterSources: {} };
@@ -612,9 +624,9 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
         template: hasOutputOverride
             ? client.outputOverride.filenameTemplate
             : hasLegacyOutput
-                ? client.output.filenameTemplate
-                : (globalConfig.output?.filenameTemplate || ''),
-        _source: (hasOutputOverride || hasLegacyOutput) ? 'override' : 'global'
+              ? client.output.filenameTemplate
+              : globalConfig.output?.filenameTemplate || '',
+        _source: hasOutputOverride || hasLegacyOutput ? 'override' : 'global'
     };
 
     // Model: client overrides global
@@ -683,7 +695,9 @@ async function saveClientOverrides(clientId, section, data) {
             config.model = data;
             break;
         default:
-            throw new Error(`Invalid override section: ${section}. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}`);
+            throw new Error(
+                `Invalid override section: ${section}. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}`
+            );
     }
 
     await fs.writeFile(filePath, JSON.stringify(config, null, 2));
@@ -728,7 +742,9 @@ async function removeClientOverrides(clientId, section) {
             delete config.model;
             break;
         default:
-            throw new Error(`Invalid override section: ${section}. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}`);
+            throw new Error(
+                `Invalid override section: ${section}. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}`
+            );
     }
 
     await fs.writeFile(filePath, JSON.stringify(config, null, 2));

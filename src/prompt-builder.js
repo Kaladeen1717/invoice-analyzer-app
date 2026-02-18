@@ -19,9 +19,8 @@ function resolveTagInstruction(tag, paramOverrides) {
     if (!tag.parameters) return instruction;
 
     for (const [paramKey, paramDef] of Object.entries(tag.parameters)) {
-        const value = (paramOverrides && paramOverrides[paramKey] !== undefined)
-            ? paramOverrides[paramKey]
-            : paramDef.default;
+        const value =
+            paramOverrides && paramOverrides[paramKey] !== undefined ? paramOverrides[paramKey] : paramDef.default;
         instruction = instruction.replace(new RegExp(`\\{\\{${paramKey}\\}\\}`, 'g'), value);
     }
     return instruction;
@@ -37,7 +36,7 @@ function buildExtractionPrompt(config) {
 
     // Get document types from config or use defaults
     const documentTypes = config.documentTypes || getDefaultDocumentTypes();
-    const documentTypeIds = documentTypes.map(dt => dt.id);
+    const documentTypeIds = documentTypes.map((dt) => dt.id);
 
     // Check for data-driven field definitions and tag definitions
     const fieldDefinitions = config.fieldDefinitions;
@@ -49,11 +48,11 @@ function buildExtractionPrompt(config) {
 
     if (fieldDefinitions) {
         // Data-driven mode
-        let enabledFields = fieldDefinitions.filter(f => f.enabled);
+        let enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
         // When tag system is active, skip fields that are now handled as tags
         if (tagDefinitions) {
-            enabledFields = enabledFields.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+            enabledFields = enabledFields.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
         }
 
         for (const field of enabledFields) {
@@ -61,13 +60,17 @@ function buildExtractionPrompt(config) {
 
             // Special handling for fields that need dynamic content (legacy compat when no tagDefinitions)
             if (!tagDefinitions && field.key === 'documentTypes') {
-                instructions.push(`- For documentTypes, analyze the document and return an array of applicable types from: ${documentTypeIds.join(', ')}`);
+                instructions.push(
+                    `- For documentTypes, analyze the document and return an array of applicable types from: ${documentTypeIds.join(', ')}`
+                );
                 for (const dt of documentTypes) {
                     instructions.push(`  * ${dt.id}: ${dt.description || dt.label}`);
                 }
                 instructions.push('  Multiple types can apply (e.g., a receipt that is also a commercial invoice)');
             } else if (!tagDefinitions && field.key === 'isPrivate' && privateAddressMarker) {
-                instructions.push(`- For isPrivate, set to true if the address "${privateAddressMarker}" appears anywhere in the document, otherwise false`);
+                instructions.push(
+                    `- For isPrivate, set to true if the address "${privateAddressMarker}" appears anywhere in the document, otherwise false`
+                );
             } else {
                 instructions.push(`- For ${field.key}, ${field.instruction}`);
             }
@@ -78,22 +81,30 @@ function buildExtractionPrompt(config) {
             switch (field) {
                 case 'supplierName':
                     jsonStructure.supplierName = 'Full company/supplier name as it appears on the invoice';
-                    instructions.push('- For supplierName, extract the full company name with proper spacing (e.g., "Acme Corporation" not "AcmeCorporation")');
+                    instructions.push(
+                        '- For supplierName, extract the full company name with proper spacing (e.g., "Acme Corporation" not "AcmeCorporation")'
+                    );
                     break;
 
                 case 'paymentDate':
                     jsonStructure.paymentDate = 'YYYYMMDD format - the date payment is due';
-                    instructions.push('- For paymentDate, look for "Due Date", "Payment Due", "Pay By", or similar fields. Convert to YYYYMMDD format. If not found, use the invoiceDate.');
+                    instructions.push(
+                        '- For paymentDate, look for "Due Date", "Payment Due", "Pay By", or similar fields. Convert to YYYYMMDD format. If not found, use the invoiceDate.'
+                    );
                     break;
 
                 case 'invoiceDate':
                     jsonStructure.invoiceDate = 'YYYYMMDD format - the date the invoice was issued';
-                    instructions.push('- For invoiceDate, convert any date format to YYYYMMDD (e.g., "2024-01-15" becomes "20240115")');
+                    instructions.push(
+                        '- For invoiceDate, convert any date format to YYYYMMDD (e.g., "2024-01-15" becomes "20240115")'
+                    );
                     break;
 
                 case 'invoiceNumber':
                     jsonStructure.invoiceNumber = 'Invoice number/reference';
-                    instructions.push('- For invoiceNumber, extract the invoice number or reference as shown on the document');
+                    instructions.push(
+                        '- For invoiceNumber, extract the invoice number or reference as shown on the document'
+                    );
                     break;
 
                 case 'currency':
@@ -102,13 +113,18 @@ function buildExtractionPrompt(config) {
                     break;
 
                 case 'totalAmount':
-                    jsonStructure.totalAmount = 'Total amount as a number (no currency symbol, no thousands separators)';
-                    instructions.push('- For totalAmount, provide just the numeric value without currency symbol or separators (e.g., "1500.50" not "$1,500.50")');
+                    jsonStructure.totalAmount =
+                        'Total amount as a number (no currency symbol, no thousands separators)';
+                    instructions.push(
+                        '- For totalAmount, provide just the numeric value without currency symbol or separators (e.g., "1500.50" not "$1,500.50")'
+                    );
                     break;
 
                 case 'documentTypes':
                     jsonStructure.documentTypes = 'Array of document type tags that apply to this document';
-                    instructions.push(`- For documentTypes, analyze the document and return an array of applicable types from: ${documentTypeIds.join(', ')}`);
+                    instructions.push(
+                        `- For documentTypes, analyze the document and return an array of applicable types from: ${documentTypeIds.join(', ')}`
+                    );
                     for (const dt of documentTypes) {
                         instructions.push(`  * ${dt.id}: ${dt.description || dt.label}`);
                     }
@@ -118,9 +134,13 @@ function buildExtractionPrompt(config) {
                 case 'isPrivate':
                     jsonStructure.isPrivate = 'Boolean - true if this appears to be a private/personal invoice';
                     if (privateAddressMarker) {
-                        instructions.push(`- For isPrivate, set to true if the address "${privateAddressMarker}" appears anywhere in the document, otherwise false`);
+                        instructions.push(
+                            `- For isPrivate, set to true if the address "${privateAddressMarker}" appears anywhere in the document, otherwise false`
+                        );
                     } else {
-                        instructions.push('- For isPrivate, set to true if this appears to be a personal/private invoice rather than business');
+                        instructions.push(
+                            '- For isPrivate, set to true if this appears to be a personal/private invoice rather than business'
+                        );
                     }
                     break;
 
@@ -133,13 +153,15 @@ function buildExtractionPrompt(config) {
 
     if (includeSummary) {
         jsonStructure.summary = 'Brief summary of the invoice including key items, services, or products';
-        instructions.push('- For summary, provide a concise description of what this invoice is for (2-3 sentences max)');
+        instructions.push(
+            '- For summary, provide a concise description of what this invoice is for (2-3 sentences max)'
+        );
     }
 
     // Build tags section from tagDefinitions
     const tagInstructions = [];
     if (tagDefinitions) {
-        const enabledTags = tagDefinitions.filter(t => t.enabled);
+        const enabledTags = tagDefinitions.filter((t) => t.enabled);
         if (enabledTags.length > 0) {
             const tagsSchema = {};
             for (const tag of enabledTags) {
@@ -166,8 +188,11 @@ function buildExtractionPrompt(config) {
 
     // Use promptTemplate from config, or hardcoded defaults for backward compatibility
     const template = config.promptTemplate || {};
-    const preamble = template.preamble || 'Analyze this invoice PDF and extract the following information in JSON format:';
-    const generalRules = template.generalRules || 'If any field cannot be determined, use "Unknown" for text fields, "0" for amounts, false for booleans, or [] for arrays.';
+    const preamble =
+        template.preamble || 'Analyze this invoice PDF and extract the following information in JSON format:';
+    const generalRules =
+        template.generalRules ||
+        'If any field cannot be determined, use "Unknown" for text fields, "0" for amounts, false for booleans, or [] for arrays.';
     const suffix = template.suffix || 'Always return valid JSON that can be parsed directly.';
 
     const prompt = `${preamble}
@@ -203,7 +228,9 @@ function parseGeminiResponse(responseText) {
     try {
         return JSON.parse(jsonText);
     } catch (error) {
-        throw new Error(`Failed to parse Gemini response as JSON: ${error.message}\nResponse was: ${jsonText.substring(0, 200)}...`);
+        throw new Error(
+            `Failed to parse Gemini response as JSON: ${error.message}\nResponse was: ${jsonText.substring(0, 200)}...`
+        );
     }
 }
 
@@ -218,29 +245,37 @@ function validateAnalysis(analysis, config) {
 
     // Get document types from config or use defaults
     const documentTypes = config.documentTypes || getDefaultDocumentTypes();
-    const validTypeIds = documentTypes.map(dt => dt.id);
+    const validTypeIds = documentTypes.map((dt) => dt.id);
 
     const fieldDefinitions = config.fieldDefinitions;
     const tagDefinitions = config.tagDefinitions;
 
     if (fieldDefinitions) {
         // Data-driven: type-aware defaults from field definitions
-        let enabledFields = fieldDefinitions.filter(f => f.enabled);
+        let enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
         // When tag system is active, skip tag-replaced fields
         if (tagDefinitions) {
-            enabledFields = enabledFields.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+            enabledFields = enabledFields.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
         }
 
         for (const field of enabledFields) {
             if (validated[field.key] === undefined || validated[field.key] === null) {
                 switch (field.type) {
-                    case 'number': validated[field.key] = 0; break;
-                    case 'boolean': validated[field.key] = false; break;
-                    case 'array': validated[field.key] = []; break;
+                    case 'number':
+                        validated[field.key] = 0;
+                        break;
+                    case 'boolean':
+                        validated[field.key] = false;
+                        break;
+                    case 'array':
+                        validated[field.key] = [];
+                        break;
                     case 'date':
                     case 'text':
-                    default: validated[field.key] = 'Unknown'; break;
+                    default:
+                        validated[field.key] = 'Unknown';
+                        break;
                 }
             }
         }
@@ -268,7 +303,7 @@ function validateAnalysis(analysis, config) {
 
     // Validate tags when tag system is active
     if (tagDefinitions) {
-        const enabledTags = tagDefinitions.filter(t => t.enabled);
+        const enabledTags = tagDefinitions.filter((t) => t.enabled);
         if (!validated.tags || typeof validated.tags !== 'object') {
             validated.tags = {};
         }
@@ -285,8 +320,8 @@ function validateAnalysis(analysis, config) {
                 validated.documentTypes = validated.documentTypes ? [validated.documentTypes] : [];
             }
             validated.documentTypes = validated.documentTypes
-                .map(t => String(t).toLowerCase().replace(/\s+/g, '_'))
-                .filter(t => validTypeIds.includes(t));
+                .map((t) => String(t).toLowerCase().replace(/\s+/g, '_'))
+                .filter((t) => validTypeIds.includes(t));
         }
     }
 
@@ -309,7 +344,7 @@ function formatDocumentTypes(types, documentTypes = null) {
         labels[dt.id] = dt.label;
     }
 
-    return types.map(t => labels[t] || t).join(', ');
+    return types.map((t) => labels[t] || t).join(', ');
 }
 
 /**
@@ -319,7 +354,9 @@ function formatDocumentTypes(types, documentTypes = null) {
  */
 function getActiveTags(tags) {
     if (!tags || typeof tags !== 'object') return [];
-    return Object.entries(tags).filter(([_, v]) => v === true).map(([k]) => k);
+    return Object.entries(tags)
+        .filter(([_, v]) => v === true)
+        .map(([k]) => k);
 }
 
 /**

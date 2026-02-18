@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Characters that are illegal in filenames across different operating systems
+// eslint-disable-next-line no-control-regex
 const ILLEGAL_CHARS = /[<>:"/\\|?*\x00-\x1f]/g;
 
 // Maximum filename length (conservative for cross-platform compatibility)
@@ -23,8 +24,8 @@ function sanitizeForFilename(str) {
     }
 
     let sanitized = String(str)
-        .replace(ILLEGAL_CHARS, '')  // Remove illegal characters
-        .replace(/\s+/g, ' ')        // Normalize multiple spaces to single space
+        .replace(ILLEGAL_CHARS, '') // Remove illegal characters
+        .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
         .trim();
 
     // Ensure we have something
@@ -110,7 +111,7 @@ async function getUniqueFilename(outputDir, filename) {
             // File exists, try next number
             uniqueFilename = `${baseName} (${counter})${ext}`;
             counter++;
-        } catch (error) {
+        } catch {
             // File doesn't exist, we can use this name
             break;
         }
@@ -129,17 +130,15 @@ async function getUniqueFilename(outputDir, filename) {
  */
 function formatFieldValue(fieldName, value, analysis = {}) {
     switch (fieldName) {
-        case 'totalAmount':
-            // Ensure it's a clean number string
+        case 'totalAmount': {
             const numValue = analysis.totalAmount !== undefined ? analysis.totalAmount : value;
             const num = parseFloat(numValue);
             if (isNaN(num)) return '0';
-            // Format with 2 decimal places if there are decimals
             return Number.isInteger(num) ? String(num) : num.toFixed(2);
+        }
 
         case 'invoiceDate':
-        case 'paymentDate':
-            // Keep YYYYMMDD format for raw fields
+        case 'paymentDate': {
             const rawDateValue = analysis[fieldName] || value;
             if (!rawDateValue || rawDateValue === 'Unknown') return 'Unknown';
             const dateStr = String(rawDateValue).replace(/\D/g, '');
@@ -147,57 +146,54 @@ function formatFieldValue(fieldName, value, analysis = {}) {
                 return dateStr.substring(0, 8);
             }
             return dateStr || 'Unknown';
+        }
 
-        case 'paymentDateFormatted':
-            // Convert paymentDate to DD.MM.YYYY format
+        case 'paymentDateFormatted': {
             const paymentDateRaw = analysis.paymentDate;
             if (!paymentDateRaw || paymentDateRaw === 'Unknown') return 'Unknown';
             return formatDateForDisplay(paymentDateRaw);
+        }
 
-        case 'invoiceDateFormatted':
-            // Convert invoiceDate to DD.MM.YYYY format
+        case 'invoiceDateFormatted': {
             const invoiceDateRaw = analysis.invoiceDate;
             if (!invoiceDateRaw || invoiceDateRaw === 'Unknown') return 'Unknown';
             return formatDateForDisplay(invoiceDateRaw);
+        }
 
-        case 'invoiceDateIfDifferent':
-            // Only show invoice date if different from payment date
+        case 'invoiceDateIfDifferent': {
             const payDate = analysis.paymentDate;
             const invDate = analysis.invoiceDate;
             if (!invDate || invDate === 'Unknown') return '';
-            if (payDate === invDate) return '';  // Same date, don't repeat
+            if (payDate === invDate) return '';
             return ' - ' + formatDateForDisplay(invDate);
+        }
 
-        case 'currency':
-            // Uppercase currency codes
+        case 'currency': {
             const currencyValue = analysis.currency || value;
             if (!currencyValue || currencyValue === 'Unknown') return 'Unknown';
             return String(currencyValue).toUpperCase();
+        }
 
-        case 'privateTag':
-            // Legacy support: check analysis.tags.private (unified) or analysis.isPrivate (legacy)
+        case 'privateTag': {
             const isPrivate = (analysis.tags && analysis.tags.private) || analysis.isPrivate;
             return isPrivate ? ' - PRIVATE' : '';
+        }
 
         case 'isPrivate':
-            // Don't include boolean in filename directly
             return '';
 
         case 'documentTypes':
-            // Don't include array in filename directly
             return '';
 
-        default:
-            // For custom fields, handle based on value type
+        default: {
             const fieldValue = analysis[fieldName] !== undefined ? analysis[fieldName] : value;
             if (fieldValue === undefined || fieldValue === null) return 'Unknown';
-            // Skip arrays and booleans in filenames
             if (Array.isArray(fieldValue)) return '';
             if (typeof fieldValue === 'boolean') return '';
-            // Format date-like strings (8 digits = YYYYMMDD)
             const strValue = String(fieldValue);
             if (/^\d{8}$/.test(strValue)) return strValue;
             return strValue;
+        }
     }
 }
 
@@ -234,7 +230,7 @@ function generateFormattedFilename(template, analysis, config) {
         if (tagPlaceholders[fieldName]) {
             const tag = tagPlaceholders[fieldName];
             const isActive = analysis.tags && analysis.tags[tag.id];
-            return isActive ? (tag.output.filenameFormat || '') : '';
+            return isActive ? tag.output.filenameFormat || '' : '';
         }
 
         const value = analysis[fieldName];
@@ -255,10 +251,10 @@ function generateFormattedFilename(template, analysis, config) {
 
     // Clean up any double spaces or leading/trailing dashes from empty tags
     filename = filename
-        .replace(/\s+-\s+-/g, ' - ')   // Remove double dashes
-        .replace(/^\s*-\s*/g, '')       // Remove leading dash
-        .replace(/\s*-\s*\.pdf$/i, '.pdf')  // Remove trailing dash before .pdf
-        .replace(/\s+/g, ' ')           // Normalize spaces
+        .replace(/\s+-\s+-/g, ' - ') // Remove double dashes
+        .replace(/^\s*-\s*/g, '') // Remove leading dash
+        .replace(/\s*-\s*\.pdf$/i, '.pdf') // Remove trailing dash before .pdf
+        .replace(/\s+/g, ' ') // Normalize spaces
         .trim();
 
     // Ensure filename ends with .pdf

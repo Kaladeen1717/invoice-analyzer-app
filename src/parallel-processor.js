@@ -4,15 +4,21 @@
 
 const path = require('path');
 const { processInvoice, getPdfFiles } = require('./processor');
-const { getEnabledClients, getClientConfig, resolveApiKey, ensureClientDirectories, clientFolderExists } = require('./client-manager');
-const { appendInvoiceRow, getCsvRowCount } = require('./csv-logger');
+const {
+    getEnabledClients,
+    getClientConfig,
+    resolveApiKey,
+    ensureClientDirectories,
+    clientFolderExists
+} = require('./client-manager');
+const { appendInvoiceRow } = require('./csv-logger');
 
 /**
  * Sleep for a specified number of milliseconds
  * @param {number} ms - Milliseconds to sleep
  */
 function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -111,7 +117,7 @@ async function processAllInvoices(config, options = {}) {
     const results = [];
 
     // Create processing tasks with concurrency limit
-    const tasks = pdfFiles.map(filePath => {
+    const tasks = pdfFiles.map((filePath) => {
         return limit(async () => {
             const result = await processWithRetry(filePath, config, {
                 apiKey,
@@ -163,19 +169,22 @@ async function processAllInvoices(config, options = {}) {
     await Promise.all(tasks);
 
     // Aggregate token usage
-    const tokenUsage = results.reduce((acc, r) => {
-        const usage = r.tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
-        return {
-            promptTokens: acc.promptTokens + usage.promptTokens,
-            outputTokens: acc.outputTokens + usage.outputTokens,
-            totalTokens: acc.totalTokens + usage.totalTokens
-        };
-    }, { promptTokens: 0, outputTokens: 0, totalTokens: 0 });
+    const tokenUsage = results.reduce(
+        (acc, r) => {
+            const usage = r.tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
+            return {
+                promptTokens: acc.promptTokens + usage.promptTokens,
+                outputTokens: acc.outputTokens + usage.outputTokens,
+                totalTokens: acc.totalTokens + usage.totalTokens
+            };
+        },
+        { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+    );
 
     const summary = {
         total: pdfFiles.length,
-        success: results.filter(r => r.success).length,
-        failed: results.filter(r => !r.success).length,
+        success: results.filter((r) => r.success).length,
+        failed: results.filter((r) => !r.success).length,
         results,
         csvRowsAdded,
         tokenUsage

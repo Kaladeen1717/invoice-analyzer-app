@@ -1,5 +1,4 @@
 const fs = require('fs').promises;
-const path = require('path');
 
 // Legacy hardcoded headers (used when no fieldDefinitions in config)
 const LEGACY_CSV_HEADERS = [
@@ -34,11 +33,11 @@ function buildCsvHeaders(config) {
     const tagDefinitions = config.tagDefinitions;
 
     const headers = ['Enriched Filename', 'Original Filename'];
-    let enabledFields = fieldDefinitions.filter(f => f.enabled);
+    let enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
     // When tag system is active, exclude tag-replaced fields
     if (tagDefinitions) {
-        enabledFields = enabledFields.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+        enabledFields = enabledFields.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
     }
 
     for (const field of enabledFields) {
@@ -49,7 +48,7 @@ function buildCsvHeaders(config) {
     }
     // Add tag columns
     if (tagDefinitions) {
-        const csvTags = tagDefinitions.filter(t => t.enabled && t.output && t.output.csv);
+        const csvTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.csv);
         for (const tag of csvTags) {
             headers.push(tag.label);
         }
@@ -108,7 +107,7 @@ async function ensureCsvExists(csvPath, config) {
     } catch {
         // File doesn't exist, create it with headers
         const headers = buildCsvHeaders(config);
-        const headerLine = headers.map(h => escapeCSV(h)).join(',') + '\n';
+        const headerLine = headers.map((h) => escapeCSV(h)).join(',') + '\n';
         await fs.writeFile(csvPath, headerLine, 'utf-8');
     }
 }
@@ -158,11 +157,11 @@ async function appendInvoiceRow(csvPath, data, config) {
     if (fieldDefinitions) {
         // Dynamic mode: build row from enabled field definitions
         row = [outputFilename || '', originalFilename || ''];
-        let enabledFields = fieldDefinitions.filter(f => f.enabled);
+        let enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
         // When tag system is active, exclude tag-replaced fields
         if (tagDefinitions) {
-            enabledFields = enabledFields.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+            enabledFields = enabledFields.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
         }
 
         for (const field of enabledFields) {
@@ -173,7 +172,7 @@ async function appendInvoiceRow(csvPath, data, config) {
         }
         // Add tag values
         if (tagDefinitions) {
-            const csvTags = tagDefinitions.filter(t => t.enabled && t.output && t.output.csv);
+            const csvTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.csv);
             for (const tag of csvTags) {
                 row.push(analysis?.tags?.[tag.id] ? 'Yes' : 'No');
             }
@@ -197,7 +196,7 @@ async function appendInvoiceRow(csvPath, data, config) {
         ];
     }
 
-    const rowLine = row.map(v => escapeCSV(v)).join(',') + '\n';
+    const rowLine = row.map((v) => escapeCSV(v)).join(',') + '\n';
     await fs.appendFile(csvPath, rowLine, 'utf-8');
 }
 
@@ -209,7 +208,7 @@ async function appendInvoiceRow(csvPath, data, config) {
 async function readCsv(csvPath) {
     try {
         const content = await fs.readFile(csvPath, 'utf-8');
-        const lines = content.split('\n').filter(line => line.trim());
+        const lines = content.split('\n').filter((line) => line.trim());
 
         if (lines.length === 0) {
             return [];
@@ -218,7 +217,7 @@ async function readCsv(csvPath) {
         // Skip header row
         const dataLines = lines.slice(1);
 
-        return dataLines.map(line => {
+        return dataLines.map((line) => {
             const values = parseCSVLine(line);
             return {
                 enrichedFilename: values[0] || '',
@@ -299,7 +298,7 @@ function parseCSVLine(line) {
 async function getCsvRowCount(csvPath) {
     try {
         const content = await fs.readFile(csvPath, 'utf-8');
-        const lines = content.split('\n').filter(line => line.trim());
+        const lines = content.split('\n').filter((line) => line.trim());
         return Math.max(0, lines.length - 1); // Subtract header row
     } catch (error) {
         if (error.code === 'ENOENT') {

@@ -1,556 +1,706 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Invoice Analyzer - Admin</title>
+        <meta name="description" content="Manage clients and process invoices with AI-powered analysis" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="styles.css" />
+    </head>
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invoice Analyzer - Admin</title>
-  <meta name="description" content="Manage clients and process invoices with AI-powered analysis">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-</head>
-
-<body>
-  <div class="container">
-    <header>
-      <h1>Invoice Analyzer</h1>
-      <p class="subtitle">Admin - Client Management</p>
-      <div class="status-indicator" id="statusIndicator">
-        <span class="status-dot"></span>
-        <span id="statusText">Checking connection...</span>
-      </div>
-    </header>
-
-    <!-- Tab Navigation -->
-    <nav class="tab-bar">
-      <button class="tab active" data-tab="dashboard">Dashboard</button>
-      <button class="tab" data-tab="global-config">Global Config</button>
-    </nav>
-
-    <main class="main-card">
-      <!-- Alert area (visible across all tabs) -->
-      <div id="alertArea"></div>
-
-      <!-- Tab: Dashboard -->
-      <div class="tab-content active" id="tab-dashboard">
-        <!-- Dashboard List View -->
-        <div id="dashboardListView">
-          <!-- Client Management Section -->
-          <section class="client-management-section">
-            <div class="section-header">
-              <h2>Clients</h2>
-              <div class="section-actions">
-                <button class="btn btn-secondary" id="refreshClientsBtn">
-                  <span>Refresh</span>
-                </button>
-                <button class="btn btn-secondary" id="exportClientsBtn">
-                  <span>Export Clients</span>
-                </button>
-                <button class="btn btn-primary" id="newClientBtn">
-                  <span>+ New Client</span>
-                </button>
-                <button class="btn btn-accent" id="processAllBtn" disabled>
-                  <span>Process All</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Client list -->
-            <div class="client-list" id="clientList">
-              <div class="loading-placeholder">Loading clients...</div>
-            </div>
-          </section>
-
-          <!-- Processing Log Section -->
-          <section class="processing-log-section" id="processingLogSection">
-            <div class="section-header">
-              <h3>Processing Log</h3>
-              <button class="btn btn-small btn-secondary" id="clearLogBtn">Clear</button>
-            </div>
-            <div class="processing-log" id="processingLog">
-              <div class="log-placeholder">Processing output will appear here...</div>
-            </div>
-          </section>
-        </div>
-
-        <!-- Client Detail View (hidden by default) -->
-        <div id="clientDetailView" style="display: none;">
-          <div class="detail-back-row">
-            <button class="btn btn-secondary btn-small" id="backToDashboardBtn">
-              <span>&larr; Back to Dashboard</span>
-            </button>
-          </div>
-
-          <!-- Client Header -->
-          <section class="detail-client-header" id="detailClientHeader">
-            <div class="loading-placeholder">Loading client...</div>
-          </section>
-
-          <!-- Effective Model -->
-          <section class="detail-section">
-            <div class="section-header">
-              <h2>Model</h2>
-              <div class="section-actions">
-                <button class="btn btn-small btn-secondary" id="resetModelBtn" style="display:none">Reset to Default</button>
-                <button class="btn btn-small btn-primary" id="customizeModelBtn">Customize</button>
-              </div>
-            </div>
-            <div id="detailModel">
-              <div class="loading-placeholder">Loading model...</div>
-            </div>
-            <div class="detail-save-bar" id="detailModelSaveBar" style="display:none">
-              <span>You have unsaved model override</span>
-              <div class="detail-save-bar-actions">
-                <button class="btn btn-secondary btn-small" id="discardDetailModelBtn">Cancel</button>
-                <button class="btn btn-primary btn-small" id="saveDetailModelBtn">Save Override</button>
-              </div>
-            </div>
-          </section>
-
-          <!-- Effective Fields -->
-          <section class="detail-section">
-            <div class="section-header">
-              <h2>Extraction Fields</h2>
-              <div class="section-actions">
-                <button class="btn btn-small btn-secondary" id="resetFieldsBtn" style="display:none">Reset to Default</button>
-                <button class="btn btn-small btn-primary" id="customizeFieldsBtn">Customize</button>
-              </div>
-            </div>
-            <div id="detailFieldList">
-              <div class="loading-placeholder">Loading fields...</div>
-            </div>
-            <div class="detail-save-bar" id="detailFieldsSaveBar" style="display:none">
-              <span>You have unsaved field overrides</span>
-              <div class="detail-save-bar-actions">
-                <button class="btn btn-secondary btn-small" id="discardDetailFieldsBtn">Cancel</button>
-                <button class="btn btn-primary btn-small" id="saveDetailFieldsBtn">Save Overrides</button>
-              </div>
-            </div>
-          </section>
-
-          <!-- Effective Tags -->
-          <section class="detail-section">
-            <div class="section-header">
-              <h2>Tag Rules</h2>
-              <div class="section-actions">
-                <button class="btn btn-small btn-secondary" id="resetTagsBtn" style="display:none">Reset to Default</button>
-                <button class="btn btn-small btn-primary" id="customizeTagsBtn">Customize</button>
-              </div>
-            </div>
-            <div id="detailTagList">
-              <div class="loading-placeholder">Loading tags...</div>
-            </div>
-            <div class="detail-save-bar" id="detailTagsSaveBar" style="display:none">
-              <span>You have unsaved tag overrides</span>
-              <div class="detail-save-bar-actions">
-                <button class="btn btn-secondary btn-small" id="discardDetailTagsBtn">Cancel</button>
-                <button class="btn btn-primary btn-small" id="saveDetailTagsBtn">Save Overrides</button>
-              </div>
-            </div>
-          </section>
-
-          <!-- Effective Filename Template -->
-          <section class="detail-section">
-            <div class="section-header">
-              <h2>Filename Template</h2>
-              <div class="section-actions">
-                <button class="btn btn-small btn-secondary" id="resetFilenameBtn" style="display:none">Reset to Default</button>
-                <button class="btn btn-small btn-primary" id="customizeFilenameBtn">Customize</button>
-              </div>
-            </div>
-            <div id="detailFilenameTemplate">
-              <div class="loading-placeholder">Loading template...</div>
-            </div>
-            <div class="detail-save-bar" id="detailFilenameSaveBar" style="display:none">
-              <span>You have unsaved filename override</span>
-              <div class="detail-save-bar-actions">
-                <button class="btn btn-secondary btn-small" id="discardDetailFilenameBtn">Cancel</button>
-                <button class="btn btn-primary btn-small" id="saveDetailFilenameBtn">Save Override</button>
-              </div>
-            </div>
-          </section>
-
-          <!-- Effective Prompt Template -->
-          <section class="detail-section">
-            <div class="section-header">
-              <h2>Prompt Template</h2>
-              <div class="section-actions">
-                <button class="btn btn-small btn-secondary" id="resetPromptBtn" style="display:none">Reset to Default</button>
-                <button class="btn btn-small btn-primary" id="customizePromptBtn">Customize</button>
-              </div>
-            </div>
-            <div id="detailPromptTemplate">
-              <div class="loading-placeholder">Loading prompt...</div>
-            </div>
-            <div class="detail-save-bar" id="detailPromptSaveBar" style="display:none">
-              <span>You have unsaved prompt overrides</span>
-              <div class="detail-save-bar-actions">
-                <button class="btn btn-secondary btn-small" id="discardDetailPromptBtn">Cancel</button>
-                <button class="btn btn-primary btn-small" id="saveDetailPromptBtn">Save Overrides</button>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <!-- Tab: Global Config -->
-      <div class="tab-content" id="tab-global-config">
-        <!-- Export / Import / Backup Section -->
-        <section class="export-import-section">
-          <div class="section-header">
-            <h2>Export &amp; Import</h2>
-          </div>
-          <p class="section-description">Export your configuration as JSON, import from a file, or restore from a backup.</p>
-
-          <div class="export-import-grid">
-            <!-- Export Panel -->
-            <div class="ei-panel">
-              <h3>Export</h3>
-              <div class="export-buttons">
-                <button class="btn btn-secondary btn-small" id="exportFieldsBtn">Export Fields</button>
-                <button class="btn btn-secondary btn-small" id="exportGlobalBtn">Export Global Config</button>
-                <button class="btn btn-primary btn-small" id="exportEverythingBtn">Export Everything</button>
-              </div>
-            </div>
-
-            <!-- Import Panel -->
-            <div class="ei-panel">
-              <h3>Import</h3>
-              <div class="import-drop-zone" id="importDropZone">
-                <div class="drop-zone-content">
-                  <div class="drop-zone-icon">&#8681;</div>
-                  <p>Drop a JSON config file here</p>
-                  <p class="drop-zone-hint">or <button class="btn-link" id="importFilePickerBtn">browse files</button></p>
+    <body>
+        <div class="container">
+            <header>
+                <h1>Invoice Analyzer</h1>
+                <p class="subtitle">Admin - Client Management</p>
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot"></span>
+                    <span id="statusText">Checking connection...</span>
                 </div>
-                <input type="file" id="importFileInput" accept=".json" style="display: none;">
-              </div>
-            </div>
-          </div>
+            </header>
 
-          <!-- Backup Management -->
-          <div class="backup-section">
-            <div class="backup-header">
-              <h3>Backups</h3>
-              <button class="btn btn-secondary btn-small" id="refreshBackupsBtn">Refresh</button>
-            </div>
-            <div class="backup-list" id="backupList">
-              <div class="loading-placeholder">Click refresh to load backups</div>
-            </div>
-          </div>
-        </section>
+            <!-- Tab Navigation -->
+            <nav class="tab-bar">
+                <button class="tab active" data-tab="dashboard">Dashboard</button>
+                <button class="tab" data-tab="global-config">Global Config</button>
+            </nav>
 
-        <!-- Model Selection Section -->
-        <section class="model-editor-section">
-          <div class="section-header">
-            <h2>Model</h2>
-          </div>
-          <p class="section-description">Select the Gemini model used for invoice analysis. Per-client overrides can be set in the client detail view.</p>
-          <div class="model-selector">
-            <select id="modelSelect" class="model-select">
-              <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
-              <option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</option>
-              <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview-05-06</option>
-              <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-              <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-              <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-            </select>
-            <div class="model-custom-row">
-              <input type="text" id="modelCustomInput" class="model-custom-input" placeholder="Or enter a custom model ID...">
-              <button class="btn btn-small btn-secondary" id="modelUseCustomBtn">Use Custom</button>
-            </div>
-          </div>
-        </section>
+            <main class="main-card">
+                <!-- Alert area (visible across all tabs) -->
+                <div id="alertArea"></div>
 
-        <!-- Model save bar -->
-        <div class="model-save-bar" id="modelSaveBar" style="display: none;">
-          <span>You have unsaved model changes</span>
-          <div class="model-save-bar-actions">
-            <button class="btn btn-secondary btn-small" id="discardModelBtn">Discard</button>
-            <button class="btn btn-primary btn-small" id="saveModelBtn">Save Changes</button>
-          </div>
-        </div>
+                <!-- Tab: Dashboard -->
+                <div class="tab-content active" id="tab-dashboard">
+                    <!-- Dashboard List View -->
+                    <div id="dashboardListView">
+                        <!-- Client Management Section -->
+                        <section class="client-management-section">
+                            <div class="section-header">
+                                <h2>Clients</h2>
+                                <div class="section-actions">
+                                    <button class="btn btn-secondary" id="refreshClientsBtn">
+                                        <span>Refresh</span>
+                                    </button>
+                                    <button class="btn btn-secondary" id="exportClientsBtn">
+                                        <span>Export Clients</span>
+                                    </button>
+                                    <button class="btn btn-primary" id="newClientBtn">
+                                        <span>+ New Client</span>
+                                    </button>
+                                    <button class="btn btn-accent" id="processAllBtn" disabled>
+                                        <span>Process All</span>
+                                    </button>
+                                </div>
+                            </div>
 
-        <section class="fields-editor-section">
-          <div class="section-header">
-            <h2>Extraction Fields</h2>
-            <div class="section-actions">
-              <button class="btn btn-small edit-toggle-btn" id="editToggleBtn">
-                <span>Locked</span>
-              </button>
-              <button class="btn btn-secondary btn-small" id="reloadFieldsBtn">
-                <span>Reload</span>
-              </button>
-              <button class="btn btn-primary btn-small" id="addFieldBtn" style="display: none;">
-                <span>+ Add Custom Field</span>
-              </button>
-            </div>
-          </div>
-          <p class="section-description">Configure the fields that Gemini extracts from invoices. Reorder, toggle, or add custom fields to match your workflow.</p>
-          <div class="fields-table-wrapper" id="fieldList">
-            <div class="loading-placeholder">Loading fields...</div>
-          </div>
-        </section>
+                            <!-- Client list -->
+                            <div class="client-list" id="clientList">
+                                <div class="loading-placeholder">Loading clients...</div>
+                            </div>
+                        </section>
 
-        <!-- Sticky save bar -->
-        <div class="fields-save-bar" id="fieldsSaveBar" style="display: none;">
-          <span>You have unsaved changes</span>
-          <div class="fields-save-bar-actions">
-            <button class="btn btn-secondary btn-small" id="discardFieldsBtn">Discard</button>
-            <button class="btn btn-primary btn-small" id="saveFieldsBtn">Save Changes</button>
-          </div>
-        </div>
+                        <!-- Processing Log Section -->
+                        <section class="processing-log-section" id="processingLogSection">
+                            <div class="section-header">
+                                <h3>Processing Log</h3>
+                                <button class="btn btn-small btn-secondary" id="clearLogBtn">Clear</button>
+                            </div>
+                            <div class="processing-log" id="processingLog">
+                                <div class="log-placeholder">Processing output will appear here...</div>
+                            </div>
+                        </section>
+                    </div>
 
-        <!-- Tag Rules Editor Section -->
-        <section class="tags-editor-section">
-          <div class="section-header">
-            <h2>Tag Rules</h2>
-            <div class="section-actions">
-              <button class="btn btn-small edit-toggle-btn" id="tagEditToggleBtn">
-                <span>Locked</span>
-              </button>
-              <button class="btn btn-secondary btn-small" id="reloadTagsBtn"><span>Reload</span></button>
-              <div class="add-tag-dropdown" id="addTagDropdown" style="display: none;">
-                <button class="btn btn-primary btn-small" id="addTagBtn"><span>+ Add Tag Rule</span></button>
-                <div class="dropdown-menu" id="addTagMenu">
-                  <button class="dropdown-item" data-preset="address-match">Address Match</button>
-                  <button class="dropdown-item" data-preset="content-keyword">Content Keyword</button>
-                  <button class="dropdown-item" data-preset="document-classification">Document Classification</button>
-                  <button class="dropdown-item" data-preset="custom">Custom</button>
+                    <!-- Client Detail View (hidden by default) -->
+                    <div id="clientDetailView" style="display: none">
+                        <div class="detail-back-row">
+                            <button class="btn btn-secondary btn-small" id="backToDashboardBtn">
+                                <span>&larr; Back to Dashboard</span>
+                            </button>
+                        </div>
+
+                        <!-- Client Header -->
+                        <section class="detail-client-header" id="detailClientHeader">
+                            <div class="loading-placeholder">Loading client...</div>
+                        </section>
+
+                        <!-- Effective Model -->
+                        <section class="detail-section">
+                            <div class="section-header">
+                                <h2>Model</h2>
+                                <div class="section-actions">
+                                    <button
+                                        class="btn btn-small btn-secondary"
+                                        id="resetModelBtn"
+                                        style="display: none"
+                                    >
+                                        Reset to Default
+                                    </button>
+                                    <button class="btn btn-small btn-primary" id="customizeModelBtn">Customize</button>
+                                </div>
+                            </div>
+                            <div id="detailModel">
+                                <div class="loading-placeholder">Loading model...</div>
+                            </div>
+                            <div class="detail-save-bar" id="detailModelSaveBar" style="display: none">
+                                <span>You have unsaved model override</span>
+                                <div class="detail-save-bar-actions">
+                                    <button class="btn btn-secondary btn-small" id="discardDetailModelBtn">
+                                        Cancel
+                                    </button>
+                                    <button class="btn btn-primary btn-small" id="saveDetailModelBtn">
+                                        Save Override
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Effective Fields -->
+                        <section class="detail-section">
+                            <div class="section-header">
+                                <h2>Extraction Fields</h2>
+                                <div class="section-actions">
+                                    <button
+                                        class="btn btn-small btn-secondary"
+                                        id="resetFieldsBtn"
+                                        style="display: none"
+                                    >
+                                        Reset to Default
+                                    </button>
+                                    <button class="btn btn-small btn-primary" id="customizeFieldsBtn">Customize</button>
+                                </div>
+                            </div>
+                            <div id="detailFieldList">
+                                <div class="loading-placeholder">Loading fields...</div>
+                            </div>
+                            <div class="detail-save-bar" id="detailFieldsSaveBar" style="display: none">
+                                <span>You have unsaved field overrides</span>
+                                <div class="detail-save-bar-actions">
+                                    <button class="btn btn-secondary btn-small" id="discardDetailFieldsBtn">
+                                        Cancel
+                                    </button>
+                                    <button class="btn btn-primary btn-small" id="saveDetailFieldsBtn">
+                                        Save Overrides
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Effective Tags -->
+                        <section class="detail-section">
+                            <div class="section-header">
+                                <h2>Tag Rules</h2>
+                                <div class="section-actions">
+                                    <button class="btn btn-small btn-secondary" id="resetTagsBtn" style="display: none">
+                                        Reset to Default
+                                    </button>
+                                    <button class="btn btn-small btn-primary" id="customizeTagsBtn">Customize</button>
+                                </div>
+                            </div>
+                            <div id="detailTagList">
+                                <div class="loading-placeholder">Loading tags...</div>
+                            </div>
+                            <div class="detail-save-bar" id="detailTagsSaveBar" style="display: none">
+                                <span>You have unsaved tag overrides</span>
+                                <div class="detail-save-bar-actions">
+                                    <button class="btn btn-secondary btn-small" id="discardDetailTagsBtn">
+                                        Cancel
+                                    </button>
+                                    <button class="btn btn-primary btn-small" id="saveDetailTagsBtn">
+                                        Save Overrides
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Effective Filename Template -->
+                        <section class="detail-section">
+                            <div class="section-header">
+                                <h2>Filename Template</h2>
+                                <div class="section-actions">
+                                    <button
+                                        class="btn btn-small btn-secondary"
+                                        id="resetFilenameBtn"
+                                        style="display: none"
+                                    >
+                                        Reset to Default
+                                    </button>
+                                    <button class="btn btn-small btn-primary" id="customizeFilenameBtn">
+                                        Customize
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="detailFilenameTemplate">
+                                <div class="loading-placeholder">Loading template...</div>
+                            </div>
+                            <div class="detail-save-bar" id="detailFilenameSaveBar" style="display: none">
+                                <span>You have unsaved filename override</span>
+                                <div class="detail-save-bar-actions">
+                                    <button class="btn btn-secondary btn-small" id="discardDetailFilenameBtn">
+                                        Cancel
+                                    </button>
+                                    <button class="btn btn-primary btn-small" id="saveDetailFilenameBtn">
+                                        Save Override
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Effective Prompt Template -->
+                        <section class="detail-section">
+                            <div class="section-header">
+                                <h2>Prompt Template</h2>
+                                <div class="section-actions">
+                                    <button
+                                        class="btn btn-small btn-secondary"
+                                        id="resetPromptBtn"
+                                        style="display: none"
+                                    >
+                                        Reset to Default
+                                    </button>
+                                    <button class="btn btn-small btn-primary" id="customizePromptBtn">Customize</button>
+                                </div>
+                            </div>
+                            <div id="detailPromptTemplate">
+                                <div class="loading-placeholder">Loading prompt...</div>
+                            </div>
+                            <div class="detail-save-bar" id="detailPromptSaveBar" style="display: none">
+                                <span>You have unsaved prompt overrides</span>
+                                <div class="detail-save-bar-actions">
+                                    <button class="btn btn-secondary btn-small" id="discardDetailPromptBtn">
+                                        Cancel
+                                    </button>
+                                    <button class="btn btn-primary btn-small" id="saveDetailPromptBtn">
+                                        Save Overrides
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
                 </div>
-              </div>
-            </div>
-          </div>
-          <p class="section-description">Define boolean tags that classify invoices. Tags can appear in filenames, PDF summaries, and CSV logs. Use parameters for values that differ per client.</p>
-          <div id="tagList">
-            <div class="loading-placeholder">Loading tags...</div>
-          </div>
-        </section>
 
-        <!-- Tags save bar -->
-        <div class="tags-save-bar" id="tagsSaveBar" style="display: none;">
-          <span>You have unsaved tag changes</span>
-          <div class="tags-save-bar-actions">
-            <button class="btn btn-secondary btn-small" id="discardTagsBtn">Discard</button>
-            <button class="btn btn-primary btn-small" id="saveTagsBtn">Save Changes</button>
-          </div>
+                <!-- Tab: Global Config -->
+                <div class="tab-content" id="tab-global-config">
+                    <!-- Export / Import / Backup Section -->
+                    <section class="export-import-section">
+                        <div class="section-header">
+                            <h2>Export &amp; Import</h2>
+                        </div>
+                        <p class="section-description">
+                            Export your configuration as JSON, import from a file, or restore from a backup.
+                        </p>
+
+                        <div class="export-import-grid">
+                            <!-- Export Panel -->
+                            <div class="ei-panel">
+                                <h3>Export</h3>
+                                <div class="export-buttons">
+                                    <button class="btn btn-secondary btn-small" id="exportFieldsBtn">
+                                        Export Fields
+                                    </button>
+                                    <button class="btn btn-secondary btn-small" id="exportGlobalBtn">
+                                        Export Global Config
+                                    </button>
+                                    <button class="btn btn-primary btn-small" id="exportEverythingBtn">
+                                        Export Everything
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Import Panel -->
+                            <div class="ei-panel">
+                                <h3>Import</h3>
+                                <div class="import-drop-zone" id="importDropZone">
+                                    <div class="drop-zone-content">
+                                        <div class="drop-zone-icon">&#8681;</div>
+                                        <p>Drop a JSON config file here</p>
+                                        <p class="drop-zone-hint">
+                                            or <button class="btn-link" id="importFilePickerBtn">browse files</button>
+                                        </p>
+                                    </div>
+                                    <input type="file" id="importFileInput" accept=".json" style="display: none" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Backup Management -->
+                        <div class="backup-section">
+                            <div class="backup-header">
+                                <h3>Backups</h3>
+                                <button class="btn btn-secondary btn-small" id="refreshBackupsBtn">Refresh</button>
+                            </div>
+                            <div class="backup-list" id="backupList">
+                                <div class="loading-placeholder">Click refresh to load backups</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Model Selection Section -->
+                    <section class="model-editor-section">
+                        <div class="section-header">
+                            <h2>Model</h2>
+                        </div>
+                        <p class="section-description">
+                            Select the Gemini model used for invoice analysis. Per-client overrides can be set in the
+                            client detail view.
+                        </p>
+                        <div class="model-selector">
+                            <select id="modelSelect" class="model-select">
+                                <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                                <option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</option>
+                                <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview-05-06</option>
+                                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                            </select>
+                            <div class="model-custom-row">
+                                <input
+                                    type="text"
+                                    id="modelCustomInput"
+                                    class="model-custom-input"
+                                    placeholder="Or enter a custom model ID..."
+                                />
+                                <button class="btn btn-small btn-secondary" id="modelUseCustomBtn">Use Custom</button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Model save bar -->
+                    <div class="model-save-bar" id="modelSaveBar" style="display: none">
+                        <span>You have unsaved model changes</span>
+                        <div class="model-save-bar-actions">
+                            <button class="btn btn-secondary btn-small" id="discardModelBtn">Discard</button>
+                            <button class="btn btn-primary btn-small" id="saveModelBtn">Save Changes</button>
+                        </div>
+                    </div>
+
+                    <section class="fields-editor-section">
+                        <div class="section-header">
+                            <h2>Extraction Fields</h2>
+                            <div class="section-actions">
+                                <button class="btn btn-small edit-toggle-btn" id="editToggleBtn">
+                                    <span>Locked</span>
+                                </button>
+                                <button class="btn btn-secondary btn-small" id="reloadFieldsBtn">
+                                    <span>Reload</span>
+                                </button>
+                                <button class="btn btn-primary btn-small" id="addFieldBtn" style="display: none">
+                                    <span>+ Add Custom Field</span>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="section-description">
+                            Configure the fields that Gemini extracts from invoices. Reorder, toggle, or add custom
+                            fields to match your workflow.
+                        </p>
+                        <div class="fields-table-wrapper" id="fieldList">
+                            <div class="loading-placeholder">Loading fields...</div>
+                        </div>
+                    </section>
+
+                    <!-- Sticky save bar -->
+                    <div class="fields-save-bar" id="fieldsSaveBar" style="display: none">
+                        <span>You have unsaved changes</span>
+                        <div class="fields-save-bar-actions">
+                            <button class="btn btn-secondary btn-small" id="discardFieldsBtn">Discard</button>
+                            <button class="btn btn-primary btn-small" id="saveFieldsBtn">Save Changes</button>
+                        </div>
+                    </div>
+
+                    <!-- Tag Rules Editor Section -->
+                    <section class="tags-editor-section">
+                        <div class="section-header">
+                            <h2>Tag Rules</h2>
+                            <div class="section-actions">
+                                <button class="btn btn-small edit-toggle-btn" id="tagEditToggleBtn">
+                                    <span>Locked</span>
+                                </button>
+                                <button class="btn btn-secondary btn-small" id="reloadTagsBtn">
+                                    <span>Reload</span>
+                                </button>
+                                <div class="add-tag-dropdown" id="addTagDropdown" style="display: none">
+                                    <button class="btn btn-primary btn-small" id="addTagBtn">
+                                        <span>+ Add Tag Rule</span>
+                                    </button>
+                                    <div class="dropdown-menu" id="addTagMenu">
+                                        <button class="dropdown-item" data-preset="address-match">Address Match</button>
+                                        <button class="dropdown-item" data-preset="content-keyword">
+                                            Content Keyword
+                                        </button>
+                                        <button class="dropdown-item" data-preset="document-classification">
+                                            Document Classification
+                                        </button>
+                                        <button class="dropdown-item" data-preset="custom">Custom</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="section-description">
+                            Define boolean tags that classify invoices. Tags can appear in filenames, PDF summaries, and
+                            CSV logs. Use parameters for values that differ per client.
+                        </p>
+                        <div id="tagList">
+                            <div class="loading-placeholder">Loading tags...</div>
+                        </div>
+                    </section>
+
+                    <!-- Tags save bar -->
+                    <div class="tags-save-bar" id="tagsSaveBar" style="display: none">
+                        <span>You have unsaved tag changes</span>
+                        <div class="tags-save-bar-actions">
+                            <button class="btn btn-secondary btn-small" id="discardTagsBtn">Discard</button>
+                            <button class="btn btn-primary btn-small" id="saveTagsBtn">Save Changes</button>
+                        </div>
+                    </div>
+
+                    <!-- Filename Template Editor Section -->
+                    <section class="filename-editor-section">
+                        <div class="section-header">
+                            <h2>Filename Template</h2>
+                            <div class="section-actions">
+                                <button class="btn btn-secondary btn-small" id="reloadFilenameBtn">
+                                    <span>Reload</span>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="section-description">
+                            Define how processed invoice files are named. Use {placeholders} to insert extracted values.
+                            Click a chip to insert at cursor position.
+                        </p>
+
+                        <div class="prompt-form-group">
+                            <label for="filenameTemplateInput">Template</label>
+                            <input
+                                type="text"
+                                id="filenameTemplateInput"
+                                class="filename-template-input"
+                                placeholder="{supplierName} - {paymentDateFormatted} - {invoiceNumber}.pdf"
+                            />
+                        </div>
+
+                        <div class="filename-placeholders">
+                            <div class="filename-placeholder-group" id="fieldPlaceholders">
+                                <h4>Fields</h4>
+                                <div class="placeholder-chips" id="fieldPlaceholderChips"></div>
+                            </div>
+                            <div class="filename-placeholder-group" id="tagPlaceholders">
+                                <h4>Tags</h4>
+                                <div class="placeholder-chips" id="tagPlaceholderChips"></div>
+                            </div>
+                            <div class="filename-placeholder-group" id="specialPlaceholders">
+                                <h4>Special</h4>
+                                <div class="placeholder-chips" id="specialPlaceholderChips"></div>
+                            </div>
+                        </div>
+
+                        <div class="filename-preview-section">
+                            <div class="filename-preview-header">
+                                <h3>Live Preview</h3>
+                            </div>
+                            <div class="filename-preview" id="filenamePreview">Loading preview...</div>
+                        </div>
+                    </section>
+
+                    <!-- Filename save bar -->
+                    <div class="filename-save-bar" id="filenameSaveBar" style="display: none">
+                        <span>You have unsaved filename template changes</span>
+                        <div class="filename-save-bar-actions">
+                            <button class="btn btn-secondary btn-small" id="discardFilenameBtn">Discard</button>
+                            <button class="btn btn-primary btn-small" id="saveFilenameBtn">Save Changes</button>
+                        </div>
+                    </div>
+
+                    <!-- Prompt Editor Section -->
+                    <section class="prompt-editor-section">
+                        <div class="section-header">
+                            <h2>Prompt Template</h2>
+                            <div class="section-actions">
+                                <button class="btn btn-secondary btn-small" id="reloadPromptBtn">
+                                    <span>Reload</span>
+                                </button>
+                                <button class="btn btn-small" id="rawEditToggleBtn"><span>Raw Edit</span></button>
+                            </div>
+                        </div>
+                        <p class="section-description">
+                            Configure the prompt sent to Gemini for invoice analysis. The JSON schema, field
+                            instructions, and tag instructions are auto-generated from your field and tag definitions
+                            above.
+                        </p>
+
+                        <!-- Structured mode -->
+                        <div id="promptStructuredMode">
+                            <div class="prompt-form-group">
+                                <label for="promptPreamble">Preamble</label>
+                                <p class="prompt-field-desc">
+                                    This text appears at the beginning of the prompt, before the JSON schema. It tells
+                                    the AI what task to perform.
+                                </p>
+                                <textarea
+                                    id="promptPreamble"
+                                    rows="3"
+                                    placeholder="Analyze this invoice PDF and extract the following information in JSON format:"
+                                ></textarea>
+                            </div>
+                            <div class="prompt-form-group">
+                                <label for="promptGeneralRules">General Rules</label>
+                                <p class="prompt-field-desc">
+                                    These rules appear after the field-specific and tag-specific instructions. Use for
+                                    general extraction guidelines that apply to all fields.
+                                </p>
+                                <textarea
+                                    id="promptGeneralRules"
+                                    rows="3"
+                                    placeholder='If any field cannot be determined, use "Unknown" for text fields...'
+                                ></textarea>
+                            </div>
+                            <div class="prompt-form-group">
+                                <label for="promptSuffix">Suffix</label>
+                                <p class="prompt-field-desc">
+                                    This text appears at the very end of the prompt. Use for output format requirements.
+                                </p>
+                                <textarea
+                                    id="promptSuffix"
+                                    rows="2"
+                                    placeholder="Always return valid JSON that can be parsed directly."
+                                ></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Raw edit mode -->
+                        <div id="promptRawMode" style="display: none">
+                            <div class="prompt-raw-warning">
+                                Editing the raw prompt gives you full control but bypasses the structured sections. The
+                                raw prompt will be used as-is, replacing the auto-generated schema and instructions.
+                            </div>
+                            <div class="prompt-form-group">
+                                <label for="promptRawText">Full Prompt</label>
+                                <textarea
+                                    id="promptRawText"
+                                    rows="16"
+                                    placeholder="Enter the complete prompt text..."
+                                ></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Live Preview -->
+                        <div class="prompt-preview-section">
+                            <div class="prompt-preview-header">
+                                <h3>Live Preview</h3>
+                                <span class="prompt-preview-length" id="promptPreviewLength"></span>
+                            </div>
+                            <pre class="prompt-preview" id="promptPreview"><code>Loading preview...</code></pre>
+                        </div>
+                    </section>
+
+                    <!-- Prompt save bar -->
+                    <div class="prompt-save-bar" id="promptSaveBar" style="display: none">
+                        <span>You have unsaved prompt changes</span>
+                        <div class="prompt-save-bar-actions">
+                            <button class="btn btn-secondary btn-small" id="discardPromptBtn">Discard</button>
+                            <button class="btn btn-primary btn-small" id="savePromptBtn">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
         </div>
 
-        <!-- Filename Template Editor Section -->
-        <section class="filename-editor-section">
-          <div class="section-header">
-            <h2>Filename Template</h2>
-            <div class="section-actions">
-              <button class="btn btn-secondary btn-small" id="reloadFilenameBtn"><span>Reload</span></button>
-            </div>
-          </div>
-          <p class="section-description">Define how processed invoice files are named. Use {placeholders} to insert extracted values. Click a chip to insert at cursor position.</p>
+        <!-- Client Form Modal -->
+        <div class="modal-overlay" id="clientModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 id="modalTitle">Create New Client</h3>
+                    <button class="modal-close" id="closeModalBtn">&times;</button>
+                </div>
+                <form id="clientForm">
+                    <div class="form-group">
+                        <label for="clientId">Client ID</label>
+                        <input
+                            type="text"
+                            id="clientId"
+                            name="clientId"
+                            placeholder="e.g., acme-corp"
+                            pattern="[a-z0-9-]+"
+                            title="Lowercase letters, numbers, and hyphens only"
+                            required
+                        />
+                        <span class="form-hint"
+                            >Lowercase letters, numbers, and hyphens only. Cannot be changed after creation.</span
+                        >
+                    </div>
 
-          <div class="prompt-form-group">
-            <label for="filenameTemplateInput">Template</label>
-            <input type="text" id="filenameTemplateInput" class="filename-template-input"
-              placeholder="{supplierName} - {paymentDateFormatted} - {invoiceNumber}.pdf">
-          </div>
+                    <div class="form-group">
+                        <label for="clientName">Display Name</label>
+                        <input type="text" id="clientName" name="name" placeholder="e.g., Acme Corporation" required />
+                    </div>
 
-          <div class="filename-placeholders">
-            <div class="filename-placeholder-group" id="fieldPlaceholders">
-              <h4>Fields</h4>
-              <div class="placeholder-chips" id="fieldPlaceholderChips"></div>
-            </div>
-            <div class="filename-placeholder-group" id="tagPlaceholders">
-              <h4>Tags</h4>
-              <div class="placeholder-chips" id="tagPlaceholderChips"></div>
-            </div>
-            <div class="filename-placeholder-group" id="specialPlaceholders">
-              <h4>Special</h4>
-              <div class="placeholder-chips" id="specialPlaceholderChips"></div>
-            </div>
-          </div>
+                    <div class="form-group">
+                        <label for="folderPath">Folder Path</label>
+                        <input
+                            type="text"
+                            id="folderPath"
+                            name="folderPath"
+                            placeholder="e.g., /Users/you/Documents/acme-invoices"
+                            required
+                        />
+                        <span class="form-hint">Absolute path to the folder containing invoice PDFs.</span>
+                    </div>
 
-          <div class="filename-preview-section">
-            <div class="filename-preview-header">
-              <h3>Live Preview</h3>
-            </div>
-            <div class="filename-preview" id="filenamePreview">Loading preview...</div>
-          </div>
-        </section>
+                    <div class="form-group">
+                        <label for="apiKeyEnvVar">API Key Environment Variable (Optional)</label>
+                        <input
+                            type="text"
+                            id="apiKeyEnvVar"
+                            name="apiKeyEnvVar"
+                            placeholder="e.g., GEMINI_API_KEY_ACME"
+                        />
+                        <span class="form-hint"
+                            >Custom environment variable for this client's API key. Leave empty to use default.</span
+                        >
+                    </div>
 
-        <!-- Filename save bar -->
-        <div class="filename-save-bar" id="filenameSaveBar" style="display: none;">
-          <span>You have unsaved filename template changes</span>
-          <div class="filename-save-bar-actions">
-            <button class="btn btn-secondary btn-small" id="discardFilenameBtn">Discard</button>
-            <button class="btn btn-primary btn-small" id="saveFilenameBtn">Save Changes</button>
-          </div>
+                    <div class="form-group form-checkbox">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="clientEnabled" name="enabled" checked />
+                            <span class="checkbox-text">Enabled</span>
+                        </label>
+                        <span class="form-hint">Disabled clients are excluded from "Process All".</span>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelFormBtn">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="deleteClientBtn" style="display: none">
+                            Delete
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="saveClientBtn">Save</button>
+                    </div>
+                </form>
+            </div>
         </div>
 
-        <!-- Prompt Editor Section -->
-        <section class="prompt-editor-section">
-          <div class="section-header">
-            <h2>Prompt Template</h2>
-            <div class="section-actions">
-              <button class="btn btn-secondary btn-small" id="reloadPromptBtn"><span>Reload</span></button>
-              <button class="btn btn-small" id="rawEditToggleBtn"><span>Raw Edit</span></button>
+        <!-- Delete Confirmation Modal -->
+        <div class="modal-overlay" id="deleteModal">
+            <div class="modal modal-small">
+                <div class="modal-header">
+                    <h3>Confirm Delete</h3>
+                    <button class="modal-close" id="closeDeleteModalBtn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete client "<strong id="deleteClientName"></strong>"?</p>
+                    <p class="text-warning">
+                        This action cannot be undone. The client configuration file will be permanently removed.
+                    </p>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+                </div>
             </div>
-          </div>
-          <p class="section-description">Configure the prompt sent to Gemini for invoice analysis. The JSON schema, field instructions, and tag instructions are auto-generated from your field and tag definitions above.</p>
+        </div>
 
-          <!-- Structured mode -->
-          <div id="promptStructuredMode">
-            <div class="prompt-form-group">
-              <label for="promptPreamble">Preamble</label>
-              <p class="prompt-field-desc">This text appears at the beginning of the prompt, before the JSON schema. It tells the AI what task to perform.</p>
-              <textarea id="promptPreamble" rows="3" placeholder="Analyze this invoice PDF and extract the following information in JSON format:"></textarea>
+        <!-- Import Preview Modal -->
+        <div class="modal-overlay" id="importPreviewModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>Import Preview</h3>
+                    <button class="modal-close" id="closeImportPreviewBtn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="import-preview-meta" id="importPreviewMeta"></div>
+                    <div class="import-preview-details" id="importPreviewDetails"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelImportBtn">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
+                </div>
             </div>
-            <div class="prompt-form-group">
-              <label for="promptGeneralRules">General Rules</label>
-              <p class="prompt-field-desc">These rules appear after the field-specific and tag-specific instructions. Use for general extraction guidelines that apply to all fields.</p>
-              <textarea id="promptGeneralRules" rows="3" placeholder='If any field cannot be determined, use "Unknown" for text fields...'></textarea>
+        </div>
+
+        <!-- Restore Confirmation Modal -->
+        <div class="modal-overlay" id="restoreModal">
+            <div class="modal modal-small">
+                <div class="modal-header">
+                    <h3>Confirm Restore</h3>
+                    <button class="modal-close" id="closeRestoreModalBtn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>Restore configuration from backup "<strong id="restoreBackupLabel"></strong>"?</p>
+                    <p class="text-warning">
+                        A safety backup will be created before restoring. Current config will be overwritten.
+                    </p>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelRestoreBtn">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmRestoreBtn">Restore</button>
+                </div>
             </div>
-            <div class="prompt-form-group">
-              <label for="promptSuffix">Suffix</label>
-              <p class="prompt-field-desc">This text appears at the very end of the prompt. Use for output format requirements.</p>
-              <textarea id="promptSuffix" rows="2" placeholder="Always return valid JSON that can be parsed directly."></textarea>
-            </div>
-          </div>
-
-          <!-- Raw edit mode -->
-          <div id="promptRawMode" style="display: none;">
-            <div class="prompt-raw-warning">Editing the raw prompt gives you full control but bypasses the structured sections. The raw prompt will be used as-is, replacing the auto-generated schema and instructions.</div>
-            <div class="prompt-form-group">
-              <label for="promptRawText">Full Prompt</label>
-              <textarea id="promptRawText" rows="16" placeholder="Enter the complete prompt text..."></textarea>
-            </div>
-          </div>
-
-          <!-- Live Preview -->
-          <div class="prompt-preview-section">
-            <div class="prompt-preview-header">
-              <h3>Live Preview</h3>
-              <span class="prompt-preview-length" id="promptPreviewLength"></span>
-            </div>
-            <pre class="prompt-preview" id="promptPreview"><code>Loading preview...</code></pre>
-          </div>
-        </section>
-
-        <!-- Prompt save bar -->
-        <div class="prompt-save-bar" id="promptSaveBar" style="display: none;">
-          <span>You have unsaved prompt changes</span>
-          <div class="prompt-save-bar-actions">
-            <button class="btn btn-secondary btn-small" id="discardPromptBtn">Discard</button>
-            <button class="btn btn-primary btn-small" id="savePromptBtn">Save Changes</button>
-          </div>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <!-- Client Form Modal -->
-  <div class="modal-overlay" id="clientModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="modalTitle">Create New Client</h3>
-        <button class="modal-close" id="closeModalBtn">&times;</button>
-      </div>
-      <form id="clientForm">
-        <div class="form-group">
-          <label for="clientId">Client ID</label>
-          <input type="text" id="clientId" name="clientId" placeholder="e.g., acme-corp" pattern="[a-z0-9-]+"
-            title="Lowercase letters, numbers, and hyphens only" required>
-          <span class="form-hint">Lowercase letters, numbers, and hyphens only. Cannot be changed after creation.</span>
         </div>
 
-        <div class="form-group">
-          <label for="clientName">Display Name</label>
-          <input type="text" id="clientName" name="name" placeholder="e.g., Acme Corporation" required>
-        </div>
-
-        <div class="form-group">
-          <label for="folderPath">Folder Path</label>
-          <input type="text" id="folderPath" name="folderPath" placeholder="e.g., /Users/you/Documents/acme-invoices"
-            required>
-          <span class="form-hint">Absolute path to the folder containing invoice PDFs.</span>
-        </div>
-
-        <div class="form-group">
-          <label for="apiKeyEnvVar">API Key Environment Variable (Optional)</label>
-          <input type="text" id="apiKeyEnvVar" name="apiKeyEnvVar" placeholder="e.g., GEMINI_API_KEY_ACME">
-          <span class="form-hint">Custom environment variable for this client's API key. Leave empty to use default.</span>
-        </div>
-
-        <div class="form-group form-checkbox">
-          <label class="checkbox-label">
-            <input type="checkbox" id="clientEnabled" name="enabled" checked>
-            <span class="checkbox-text">Enabled</span>
-          </label>
-          <span class="form-hint">Disabled clients are excluded from "Process All".</span>
-        </div>
-
-        <div class="form-actions">
-          <button type="button" class="btn btn-secondary" id="cancelFormBtn">Cancel</button>
-          <button type="button" class="btn btn-danger" id="deleteClientBtn" style="display: none;">Delete</button>
-          <button type="submit" class="btn btn-primary" id="saveClientBtn">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Delete Confirmation Modal -->
-  <div class="modal-overlay" id="deleteModal">
-    <div class="modal modal-small">
-      <div class="modal-header">
-        <h3>Confirm Delete</h3>
-        <button class="modal-close" id="closeDeleteModalBtn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Are you sure you want to delete client "<strong id="deleteClientName"></strong>"?</p>
-        <p class="text-warning">This action cannot be undone. The client configuration file will be permanently removed.</p>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Import Preview Modal -->
-  <div class="modal-overlay" id="importPreviewModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>Import Preview</h3>
-        <button class="modal-close" id="closeImportPreviewBtn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="import-preview-meta" id="importPreviewMeta"></div>
-        <div class="import-preview-details" id="importPreviewDetails"></div>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-secondary" id="cancelImportBtn">Cancel</button>
-        <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Restore Confirmation Modal -->
-  <div class="modal-overlay" id="restoreModal">
-    <div class="modal modal-small">
-      <div class="modal-header">
-        <h3>Confirm Restore</h3>
-        <button class="modal-close" id="closeRestoreModalBtn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Restore configuration from backup "<strong id="restoreBackupLabel"></strong>"?</p>
-        <p class="text-warning">A safety backup will be created before restoring. Current config will be overwritten.</p>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-secondary" id="cancelRestoreBtn">Cancel</button>
-        <button type="button" class="btn btn-primary" id="confirmRestoreBtn">Restore</button>
-      </div>
-    </div>
-  </div>
-
-  <script type="module" src="app.js"></script>
-</body>
-
+        <script type="module" src="app.js"></script>
+    </body>
 </html>

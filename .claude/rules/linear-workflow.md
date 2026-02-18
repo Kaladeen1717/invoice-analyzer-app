@@ -31,6 +31,7 @@ Always confirm with the user before changing ticket status.
 Format: `{type}(INV-{number}): {description}`
 
 Types:
+
 - `feat` — New capability
 - `fix` — Bug fix
 - `improve` — Enhancement to existing feature
@@ -40,6 +41,7 @@ Types:
 - `test` — Adding or updating tests
 
 Examples:
+
 ```
 feat(INV-12): add multi-currency support to filename generator
 fix(INV-7): handle PDF parse failure for scanned invoices
@@ -54,6 +56,7 @@ For work without a ticket (rare), omit the scope: `chore: update .gitignore`
 Format: `{type}/INV-{number}-{short-kebab-description}`
 
 Examples:
+
 ```
 feat/INV-12-multi-currency
 fix/INV-7-scanned-pdf-handling
@@ -63,6 +66,7 @@ chore/INV-15-upgrade-gemini-sdk
 ## Creating New Tickets
 
 When discovering bugs or improvements during work:
+
 1. Suggest creating a ticket to the user
 2. Use Linear MCP to create the issue in the Invoice Analyzer team
 3. Apply the appropriate label (bug, feature, improvement, chore, docs)
