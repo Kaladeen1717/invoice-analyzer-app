@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Import modules
-const { loadConfig, updateFieldDefinitions, updateTagDefinitions, updatePromptTemplate, updateRawPrompt, clearRawPrompt, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
+const { loadConfig, saveConfig, updateFieldDefinitions, updateTagDefinitions, updatePromptTemplate, updateRawPrompt, clearRawPrompt, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
 const { buildPromptPreview } = require('./src/prompt-builder');
 const { processAllInvoices } = require('./src/parallel-processor');
 const {
@@ -383,6 +383,23 @@ app.post('/api/config/prompt/preview', async (req, res) => {
         res.json({ preview });
     } catch (error) {
         res.status(500).json({ error: 'Failed to build prompt preview', details: error.message });
+    }
+});
+
+/**
+ * PUT /api/config/output - Update output configuration (filenameTemplate)
+ */
+app.put('/api/config/output', async (req, res) => {
+    try {
+        const { filenameTemplate } = req.body;
+        if (!filenameTemplate || typeof filenameTemplate !== 'string') {
+            return res.status(400).json({ error: 'filenameTemplate must be a non-empty string' });
+        }
+        const config = await loadConfig({ requireFolders: false });
+        await saveConfig({ output: { ...config.output, filenameTemplate } });
+        res.json({ success: true, message: 'Filename template updated' });
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to update output config', details: error.message });
     }
 });
 
