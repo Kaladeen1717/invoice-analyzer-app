@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const sanitize = require('sanitize-filename');
 const {
     VALID_OVERRIDE_SECTIONS,
     DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
@@ -394,7 +395,7 @@ async function createClient(clientId, config) {
     }
 
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = safeJoin(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
     // Ensure clients directory exists
     await fs.mkdir(clientsDir, { recursive: true });
@@ -427,7 +428,7 @@ async function createClient(clientId, config) {
  */
 async function updateClient(clientId, config) {
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = safeJoin(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
     // Check if client exists
     try {
@@ -456,7 +457,7 @@ async function updateClient(clientId, config) {
  */
 async function deleteClient(clientId) {
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = safeJoin(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
     // Check if client exists and delete
     try {
@@ -668,7 +669,7 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
  */
 async function saveClientOverrides(clientId, section, data) {
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = safeJoin(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
     let config;
     try {
@@ -713,7 +714,7 @@ async function saveClientOverrides(clientId, section, data) {
  */
 async function removeClientOverrides(clientId, section) {
     const clientsDir = path.join(process.cwd(), 'clients');
-    const filePath = safeJoin(clientsDir, `${clientId}.json`);
+    const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
     let config;
     try {

@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const sanitize = require('sanitize-filename');
 
 const {
     VALID_FIELD_TYPES,
@@ -463,7 +464,7 @@ async function exportConfig(scope) {
 
         default:
             if (scope.startsWith('client:')) {
-                const clientId = scope.substring(7);
+                const clientId = sanitize(scope.substring(7));
                 const clientPath = safeJoin(CLIENTS_DIR, `${clientId}.json`);
                 try {
                     data = { clientId, config: JSON.parse(await fs.readFile(clientPath, 'utf-8')) };
@@ -596,7 +597,7 @@ async function importConfig(bundle) {
 
         default:
             if (bundle.scope.startsWith('client:')) {
-                const clientId = bundle.scope.substring(7);
+                const clientId = sanitize(bundle.scope.substring(7));
                 if (!bundle.data.config) {
                     throw new Error('Import bundle for single client must have data.config');
                 }
@@ -623,7 +624,7 @@ async function createBackup(label) {
     await fs.mkdir(BACKUPS_DIR, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const id = label ? `${timestamp}_${label}` : timestamp;
+    const id = label ? `${timestamp}_${sanitize(label)}` : timestamp;
     const backupDir = safeJoin(BACKUPS_DIR, id);
     await fs.mkdir(backupDir);
 
@@ -692,7 +693,7 @@ async function listBackups() {
  * @returns {Promise<Object>} Restore result { restoredFrom, safetyBackupId, restored }
  */
 async function restoreBackup(backupId) {
-    const backupDir = safeJoin(BACKUPS_DIR, backupId);
+    const backupDir = safeJoin(BACKUPS_DIR, sanitize(backupId));
 
     // Verify backup exists
     try {
