@@ -18,7 +18,9 @@ const {
     getClientFolderStatus,
     isMultiClientMode,
     clearClientsCache,
-    ensureClientDirectories
+    ensureClientDirectories,
+    saveClientOverrides,
+    removeClientOverrides
 } = require('./src/client-manager');
 
 const app = express();
@@ -262,6 +264,71 @@ app.get('/api/clients/:id/config', async (req, res) => {
         }
         res.status(500).json({
             error: 'Failed to get client config',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * PUT /api/clients/:id/overrides - Save per-section config overrides
+ */
+app.put('/api/clients/:id/overrides', async (req, res) => {
+    try {
+        const clientId = req.params.id;
+        const { section, data } = req.body;
+
+        if (!section || !data) {
+            return res.status(400).json({ error: 'section and data are required' });
+        }
+
+        const validSections = ['fields', 'tags', 'prompt', 'output'];
+        if (!validSections.includes(section)) {
+            return res.status(400).json({ error: `Invalid section. Must be one of: ${validSections.join(', ')}` });
+        }
+
+        await saveClientOverrides(clientId, section, data);
+
+        // Return updated annotated config
+        const globalConfig = await loadConfig({ requireFolders: false });
+        const annotated = await getAnnotatedClientConfig(clientId, globalConfig);
+
+        res.json({ success: true, ...annotated });
+    } catch (error) {
+        if (error.message.includes('not found')) {
+            return res.status(404).json({ error: error.message });
+        }
+        res.status(400).json({
+            error: 'Failed to save overrides',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * DELETE /api/clients/:id/overrides/:section - Remove per-section config overrides
+ */
+app.delete('/api/clients/:id/overrides/:section', async (req, res) => {
+    try {
+        const { id: clientId, section } = req.params;
+
+        const validSections = ['fields', 'tags', 'prompt', 'output'];
+        if (!validSections.includes(section)) {
+            return res.status(400).json({ error: `Invalid section. Must be one of: ${validSections.join(', ')}` });
+        }
+
+        await removeClientOverrides(clientId, section);
+
+        // Return updated annotated config
+        const globalConfig = await loadConfig({ requireFolders: false });
+        const annotated = await getAnnotatedClientConfig(clientId, globalConfig);
+
+        res.json({ success: true, ...annotated });
+    } catch (error) {
+        if (error.message.includes('not found')) {
+            return res.status(404).json({ error: error.message });
+        }
+        res.status(400).json({
+            error: 'Failed to remove overrides',
             details: error.message
         });
     }
@@ -544,7 +611,8 @@ app.post('/api/clients/:id/process', async (req, res) => {
             output: clientConfig.output,
             documentTypes: clientConfig.documentTypes,
             fieldDefinitions: clientConfig.fieldDefinitions,
-            tagDefinitions: clientConfig.tagDefinitions
+            tagDefinitions: clientConfig.tagDefinitions,
+            promptTemplate: clientConfig.promptTemplate
         };
 
         // Start processing with progress streaming
