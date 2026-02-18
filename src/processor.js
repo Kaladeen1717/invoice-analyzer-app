@@ -7,7 +7,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-const { buildExtractionPrompt, parseGeminiResponse, validateAnalysis, formatDocumentTypes } = require('./prompt-builder');
+const { buildExtractionPrompt, parseGeminiResponse, validateAnalysis, formatDocumentTypes, TAG_REPLACED_FIELDS } = require('./prompt-builder');
 const { generateFormattedFilename, getUniqueFilename, formatDateForDisplay } = require('./filename-generator');
 
 // Cache for Gemini AI instances per API key
@@ -139,20 +139,45 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     const margin = 50;
     let yPosition = height - margin;
 
-    // Title - show PRIVATE badge if applicable
-    const titleText = analysis.isPrivate ? 'Invoice Analysis Summary [PRIVATE]' : 'Invoice Analysis Summary';
+    // Title - show PRIVATE badge if applicable (check unified tags first, then legacy)
+    const isPrivate = (analysis.tags && analysis.tags.private) || analysis.isPrivate;
+    const titleText = isPrivate ? 'Invoice Analysis Summary [PRIVATE]' : 'Invoice Analysis Summary';
     page.drawText(titleText, {
         x: margin,
         y: yPosition,
         size: titleFontSize,
         font: boldFont,
-        color: analysis.isPrivate ? rgb(0.8, 0, 0) : rgb(0, 0, 0.5)
+        color: isPrivate ? rgb(0.8, 0, 0) : rgb(0, 0, 0.5)
     });
 
     yPosition -= 40;
 
-    // Document Type Tags section
-    if (analysis.documentTypes && analysis.documentTypes.length > 0) {
+    // Tags section (unified tag system)
+    const tagDefinitions = config.tagDefinitions;
+    if (tagDefinitions && analysis.tags) {
+        const pdfTags = tagDefinitions.filter(t => t.enabled && t.output && t.output.pdf && analysis.tags[t.id]);
+        if (pdfTags.length > 0) {
+            page.drawText('Tags:', {
+                x: margin,
+                y: yPosition,
+                size: fontSize,
+                font: boldFont,
+                color: rgb(0, 0, 0)
+            });
+
+            const tagLabels = sanitizeTextForPdf(pdfTags.map(t => t.label).join(', '));
+            page.drawText(tagLabels, {
+                x: margin + 120,
+                y: yPosition,
+                size: fontSize,
+                font: font,
+                color: rgb(0.2, 0.4, 0.6)
+            });
+
+            yPosition -= 25;
+        }
+    } else if (analysis.documentTypes && analysis.documentTypes.length > 0) {
+        // Legacy: Document Type Tags section
         page.drawText('Document Type:', {
             x: margin,
             y: yPosition,
@@ -178,11 +203,18 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     const skipTypes = ['array', 'boolean'];
 
     const fieldDefinitions = config.fieldDefinitions;
-    const fieldEntries = fieldDefinitions
-        ? fieldDefinitions.filter(f => f.enabled && !skipTypes.includes(f.type))
-        : config.extraction.fields
+    let fieldEntries;
+    if (fieldDefinitions) {
+        fieldEntries = fieldDefinitions.filter(f => f.enabled && !skipTypes.includes(f.type));
+        // When tag system is active, exclude tag-replaced fields
+        if (tagDefinitions) {
+            fieldEntries = fieldEntries.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+        }
+    } else {
+        fieldEntries = config.extraction.fields
             .filter(f => f !== 'documentTypes' && f !== 'isPrivate')
             .map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1).replace(/([A-Z])/g, ' $1'), type: 'text' }));
+    }
 
     for (const field of fieldEntries) {
         const key = field.key;
@@ -300,7 +332,8 @@ async function processInvoice(inputPath, config, options = {}) {
         // Generate output filename
         const outputFilename = generateFormattedFilename(
             config.output.filenameTemplate,
-            analysis
+            analysis,
+            config
         );
 
         // Determine output folder (multi-client uses processedEnriched, single-client uses output)

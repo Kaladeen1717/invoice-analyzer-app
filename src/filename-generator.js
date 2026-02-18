@@ -175,8 +175,9 @@ function formatFieldValue(fieldName, value, analysis = {}) {
             return String(currencyValue).toUpperCase();
 
         case 'privateTag':
-            // Return " - PRIVATE" if private, empty string otherwise (for end of filename)
-            return analysis.isPrivate ? ' - PRIVATE' : '';
+            // Legacy support: check analysis.tags.private (unified) or analysis.isPrivate (legacy)
+            const isPrivate = (analysis.tags && analysis.tags.private) || analysis.isPrivate;
+            return isPrivate ? ' - PRIVATE' : '';
 
         case 'isPrivate':
             // Don't include boolean in filename directly
@@ -204,9 +205,10 @@ function formatFieldValue(fieldName, value, analysis = {}) {
  * Generate filename with formatted field values
  * @param {string} template - The filename template
  * @param {Object} analysis - The extracted invoice data
+ * @param {Object} [config] - Optional config for tag definitions
  * @returns {string} The generated filename
  */
-function generateFormattedFilename(template, analysis) {
+function generateFormattedFilename(template, analysis, config) {
     let filename = template;
 
     // Replace all placeholders with their formatted values
@@ -215,7 +217,26 @@ function generateFormattedFilename(template, analysis) {
     // Fields that include their own separators and should not be sanitized
     const separatorFields = ['invoiceDateIfDifferent', 'privateTag'];
 
+    // Build dynamic tag placeholder map from tagDefinitions
+    const tagPlaceholders = {};
+    if (config && config.tagDefinitions) {
+        for (const tag of config.tagDefinitions) {
+            if (tag.enabled && tag.output && tag.output.filename && tag.output.filenamePlaceholder) {
+                tagPlaceholders[tag.output.filenamePlaceholder] = tag;
+                // Tag placeholders include their own separators
+                separatorFields.push(tag.output.filenamePlaceholder);
+            }
+        }
+    }
+
     filename = filename.replace(placeholderRegex, (match, fieldName) => {
+        // Check if this is a dynamic tag placeholder
+        if (tagPlaceholders[fieldName]) {
+            const tag = tagPlaceholders[fieldName];
+            const isActive = analysis.tags && analysis.tags[tag.id];
+            return isActive ? (tag.output.filenameFormat || '') : '';
+        }
+
         const value = analysis[fieldName];
         const formatted = formatFieldValue(fieldName, value, analysis);
 
