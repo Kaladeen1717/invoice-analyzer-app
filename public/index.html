@@ -137,6 +137,54 @@
           </div>
         </div>
 
+        <!-- Filename Template Editor Section -->
+        <section class="filename-editor-section">
+          <div class="section-header">
+            <h2>Filename Template</h2>
+            <div class="section-actions">
+              <button class="btn btn-secondary btn-small" id="reloadFilenameBtn"><span>Reload</span></button>
+            </div>
+          </div>
+          <p class="section-description">Define how processed invoice files are named. Use {placeholders} to insert extracted values. Click a chip to insert at cursor position.</p>
+
+          <div class="prompt-form-group">
+            <label for="filenameTemplateInput">Template</label>
+            <input type="text" id="filenameTemplateInput" class="filename-template-input"
+              placeholder="{supplierName} - {paymentDateFormatted} - {invoiceNumber}.pdf">
+          </div>
+
+          <div class="filename-placeholders">
+            <div class="filename-placeholder-group" id="fieldPlaceholders">
+              <h4>Fields</h4>
+              <div class="placeholder-chips" id="fieldPlaceholderChips"></div>
+            </div>
+            <div class="filename-placeholder-group" id="tagPlaceholders">
+              <h4>Tags</h4>
+              <div class="placeholder-chips" id="tagPlaceholderChips"></div>
+            </div>
+            <div class="filename-placeholder-group" id="specialPlaceholders">
+              <h4>Special</h4>
+              <div class="placeholder-chips" id="specialPlaceholderChips"></div>
+            </div>
+          </div>
+
+          <div class="filename-preview-section">
+            <div class="filename-preview-header">
+              <h3>Live Preview</h3>
+            </div>
+            <div class="filename-preview" id="filenamePreview">Loading preview...</div>
+          </div>
+        </section>
+
+        <!-- Filename save bar -->
+        <div class="filename-save-bar" id="filenameSaveBar" style="display: none;">
+          <span>You have unsaved filename template changes</span>
+          <div class="filename-save-bar-actions">
+            <button class="btn btn-secondary btn-small" id="discardFilenameBtn">Discard</button>
+            <button class="btn btn-primary btn-small" id="saveFilenameBtn">Save Changes</button>
+          </div>
+        </div>
+
         <!-- Prompt Editor Section -->
         <section class="prompt-editor-section">
           <div class="section-header">
