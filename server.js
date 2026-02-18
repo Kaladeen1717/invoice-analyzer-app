@@ -61,8 +61,8 @@ app.get('/api/clients', async (req, res) => {
                     name: client.name,
                     enabled: client.enabled,
                     folderPath: client.folderPath,
-                    privateAddressMarker: client.privateAddressMarker,
                     apiKeyEnvVar: client.apiKeyEnvVar || null,
+                    tagOverrides: client.tagOverrides || null,
                     folderStatus
                 };
             })
@@ -114,7 +114,7 @@ app.get('/api/clients/:id', async (req, res) => {
  */
 app.post('/api/clients', async (req, res) => {
     try {
-        const { clientId, name, enabled, folderPath, privateAddressMarker, apiKeyEnvVar } = req.body;
+        const { clientId, name, enabled, folderPath, apiKeyEnvVar, tagOverrides } = req.body;
 
         if (!clientId) {
             return res.status(400).json({ error: 'clientId is required' });
@@ -123,12 +123,15 @@ app.post('/api/clients', async (req, res) => {
         const config = {
             name,
             enabled: enabled !== false,
-            folderPath,
-            privateAddressMarker
+            folderPath
         };
 
         if (apiKeyEnvVar) {
             config.apiKeyEnvVar = apiKeyEnvVar;
+        }
+
+        if (tagOverrides) {
+            config.tagOverrides = tagOverrides;
         }
 
         await createClient(clientId, config);
@@ -155,17 +158,20 @@ app.post('/api/clients', async (req, res) => {
 app.put('/api/clients/:id', async (req, res) => {
     try {
         const clientId = req.params.id;
-        const { name, enabled, folderPath, privateAddressMarker, apiKeyEnvVar } = req.body;
+        const { name, enabled, folderPath, apiKeyEnvVar, tagOverrides } = req.body;
 
         const config = {
             name,
             enabled: enabled !== false,
-            folderPath,
-            privateAddressMarker
+            folderPath
         };
 
         if (apiKeyEnvVar) {
             config.apiKeyEnvVar = apiKeyEnvVar;
+        }
+
+        if (tagOverrides) {
+            config.tagOverrides = tagOverrides;
         }
 
         await updateClient(clientId, config);
@@ -424,7 +430,9 @@ app.post('/api/clients/:id/process', async (req, res) => {
             folders: clientConfig.folders,
             extraction: clientConfig.extraction,
             output: clientConfig.output,
-            documentTypes: clientConfig.documentTypes
+            documentTypes: clientConfig.documentTypes,
+            fieldDefinitions: clientConfig.fieldDefinitions,
+            tagDefinitions: clientConfig.tagDefinitions
         };
 
         // Start processing with progress streaming
@@ -552,7 +560,9 @@ app.post('/api/clients/process-all', async (req, res) => {
                     folders: clientConfig.folders,
                     extraction: clientConfig.extraction,
                     output: clientConfig.output,
-                    documentTypes: clientConfig.documentTypes
+                    documentTypes: clientConfig.documentTypes,
+                    fieldDefinitions: clientConfig.fieldDefinitions,
+                    tagDefinitions: clientConfig.tagDefinitions
                 };
 
                 await processAllInvoices(processingConfig, {

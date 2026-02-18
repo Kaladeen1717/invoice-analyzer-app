@@ -15,7 +15,6 @@ This folder contains individual configuration files for each client. Each `.json
   "name": "Client Display Name",
   "enabled": true,
   "folderPath": "/absolute/path/to/invoice/folder",
-  "privateAddressMarker": "Address to identify private invoices",
   "apiKeyEnvVar": null
 }
 ```
@@ -27,13 +26,13 @@ This folder contains individual configuration files for each client. Each `.json
 | `name` | string | Display name shown in logs and reports |
 | `enabled` | boolean | Set to `false` to skip this client during batch processing |
 | `folderPath` | string | Absolute path to the folder containing invoices |
-| `privateAddressMarker` | string | Address text used to identify private/personal invoices. If this text appears anywhere in the invoice, `isPrivate` is set to `true` |
 
 ### Optional Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `apiKeyEnvVar` | string | Environment variable name for client-specific Gemini API key. Falls back to `GEMINI_API_KEY` if not set |
+| `tagOverrides` | object | Per-client overrides for global tag definitions (parameter values and enabled state) |
 | `extraction` | object | Override global extraction settings (replaces entirely, does not merge) |
 | `output` | object | Override global output settings (replaces entirely, does not merge) |
 | `documentTypes` | array | Override global document types |
@@ -45,7 +44,13 @@ This folder contains individual configuration files for each client. Each `.json
   "name": "Acme Corporation",
   "enabled": true,
   "folderPath": "/Users/john/Documents/Acme/Invoices",
-  "privateAddressMarker": "123 Home Street, Apt 4B",
+  "tagOverrides": {
+    "private": {
+      "parameters": {
+        "address": "123 Home Street, Apt 4B"
+      }
+    }
+  },
   "apiKeyEnvVar": null
 }
 ```
@@ -57,7 +62,13 @@ This folder contains individual configuration files for each client. Each `.json
   "name": "Beta Industries",
   "enabled": true,
   "folderPath": "/Users/john/Documents/Beta/Invoices",
-  "privateAddressMarker": "456 Personal Ave",
+  "tagOverrides": {
+    "private": {
+      "parameters": {
+        "address": "456 Personal Ave"
+      }
+    }
+  },
   "apiKeyEnvVar": "BETA_GEMINI_API_KEY",
   "extraction": {
     "fields": ["supplierName", "invoiceDate", "totalAmount", "currency"],

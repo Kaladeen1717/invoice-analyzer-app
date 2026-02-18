@@ -66,9 +66,9 @@ function validateClientConfig(clientId, config) {
     if (!config.folderPath || typeof config.folderPath !== 'string') {
         throw new Error(`Client "${clientId}": must have a "folderPath" string`);
     }
-    // privateAddressMarker is REQUIRED
-    if (!config.privateAddressMarker || typeof config.privateAddressMarker !== 'string') {
-        throw new Error(`Client "${clientId}": missing required "privateAddressMarker" field`);
+    // tagOverrides is optional but must be an object if present
+    if (config.tagOverrides !== undefined && (typeof config.tagOverrides !== 'object' || config.tagOverrides === null)) {
+        throw new Error(`Client "${clientId}": "tagOverrides" must be an object`);
     }
 }
 
@@ -91,12 +91,8 @@ function validateLegacyClientsConfig(config) {
         if (!client.folderPath || typeof client.folderPath !== 'string') {
             throw new Error(`Client "${clientId}" must have a "folderPath" string`);
         }
-        // For legacy config, privateAddressMarker can be in extraction or top-level
-        const hasPrivateMarker = client.privateAddressMarker ||
-            (client.extraction && client.extraction.privateAddressMarker);
-        if (!hasPrivateMarker) {
-            throw new Error(`Client "${clientId}": missing required "privateAddressMarker" field`);
-        }
+        // For legacy config, privateAddressMarker can be in extraction, top-level, or tagOverrides
+        // (no longer required — handled by unified tag system)
     }
 }
 
@@ -212,12 +208,7 @@ async function getClientConfig(clientId, globalConfig) {
         csvPath: path.join(client.folderPath, csvFilename)
     };
 
-    // Determine privateAddressMarker - prioritize top-level, fall back to extraction (legacy)
-    const privateAddressMarker = client.privateAddressMarker ||
-        (client.extraction && client.extraction.privateAddressMarker);
-
     // Extraction config: client OVERRIDES global entirely (not merge)
-    // Then inject privateAddressMarker
     let extraction;
     if (client.extraction) {
         // Client has extraction config - use it entirely (override)
@@ -226,8 +217,6 @@ async function getClientConfig(clientId, globalConfig) {
         // No client extraction - use global
         extraction = { ...globalConfig.extraction };
     }
-    // Always set privateAddressMarker from client's top-level field
-    extraction.privateAddressMarker = privateAddressMarker;
 
     // Output config: client OVERRIDES global entirely (not merge)
     const output = client.output || globalConfig.output;

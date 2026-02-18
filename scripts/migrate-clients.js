@@ -91,24 +91,28 @@ async function main() {
             // File doesn't exist, proceed with migration
         }
 
-        // Extract privateAddressMarker from extraction block if needed
+        // Extract privateAddressMarker from extraction block if needed (migrate to tagOverrides)
         const privateAddressMarker = client.privateAddressMarker ||
             (client.extraction && client.extraction.privateAddressMarker);
-
-        if (!privateAddressMarker) {
-            console.log(`  ERROR: ${clientId} - missing privateAddressMarker, skipping`);
-            skipped++;
-            continue;
-        }
 
         // Build new client config structure
         const newConfig = {
             name: client.name,
             enabled: client.enabled,
             folderPath: client.folderPath,
-            privateAddressMarker: privateAddressMarker,
             apiKeyEnvVar: client.apiKeyEnvVar || null
         };
+
+        // Migrate privateAddressMarker to tagOverrides
+        if (privateAddressMarker) {
+            newConfig.tagOverrides = {
+                private: {
+                    parameters: {
+                        address: privateAddressMarker
+                    }
+                }
+            };
+        }
 
         // Optionally include extraction overrides (without privateAddressMarker)
         if (client.extraction) {
@@ -132,7 +136,9 @@ async function main() {
         console.log(`    Name: ${newConfig.name}`);
         console.log(`    Enabled: ${newConfig.enabled}`);
         console.log(`    Folder: ${newConfig.folderPath}`);
-        console.log(`    Private Address Marker: ${newConfig.privateAddressMarker}`);
+        if (newConfig.tagOverrides) {
+            console.log(`    Tag Overrides: private.address = "${privateAddressMarker}"`);
+        }
         console.log();
 
         if (!dryRun) {
