@@ -174,30 +174,26 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     }
 
     // Build details from configured fields
-    const fieldLabels = {
-        supplierName: 'Supplier:',
-        paymentDate: 'Payment Date:',
-        invoiceDate: 'Invoice Date:',
-        invoiceNumber: 'Invoice Number:',
-        currency: 'Currency:',
-        totalAmount: 'Total Amount:'
-    };
+    // Types handled separately (rendered above or in title)
+    const skipTypes = ['array', 'boolean'];
 
-    // Fields to skip in the main list (handled separately)
-    const skipFields = ['documentTypes', 'isPrivate'];
+    const fieldDefinitions = config.fieldDefinitions;
+    const fieldEntries = fieldDefinitions
+        ? fieldDefinitions.filter(f => f.enabled && !skipTypes.includes(f.type))
+        : config.extraction.fields
+            .filter(f => f !== 'documentTypes' && f !== 'isPrivate')
+            .map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1).replace(/([A-Z])/g, ' $1'), type: 'text' }));
 
-    for (const field of config.extraction.fields) {
-        // Skip fields that are handled separately
-        if (skipFields.includes(field)) continue;
-
-        const label = fieldLabels[field] || `${field}:`;
+    for (const field of fieldEntries) {
+        const key = field.key;
+        const label = `${field.label}:`;
         let value;
 
         // Format dates for display
-        if (field === 'paymentDate' || field === 'invoiceDate') {
-            value = sanitizeTextForPdf(formatDateForDisplay(analysis[field]));
+        if (field.type === 'date') {
+            value = sanitizeTextForPdf(formatDateForDisplay(analysis[key]));
         } else {
-            value = sanitizeTextForPdf(analysis[field] !== undefined ? String(analysis[field]) : 'N/A');
+            value = sanitizeTextForPdf(analysis[key] !== undefined ? String(analysis[key]) : 'N/A');
         }
 
         page.drawText(label, {

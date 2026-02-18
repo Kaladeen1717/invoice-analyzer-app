@@ -187,10 +187,16 @@ function formatFieldValue(fieldName, value, analysis = {}) {
             return '';
 
         default:
-            // For other fields, get from analysis or use value
+            // For custom fields, handle based on value type
             const fieldValue = analysis[fieldName] !== undefined ? analysis[fieldName] : value;
             if (fieldValue === undefined || fieldValue === null) return 'Unknown';
-            return String(fieldValue);
+            // Skip arrays and booleans in filenames
+            if (Array.isArray(fieldValue)) return '';
+            if (typeof fieldValue === 'boolean') return '';
+            // Format date-like strings (8 digits = YYYYMMDD)
+            const strValue = String(fieldValue);
+            if (/^\d{8}$/.test(strValue)) return strValue;
+            return strValue;
     }
 }
 
