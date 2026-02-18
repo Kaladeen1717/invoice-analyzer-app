@@ -267,6 +267,344 @@ async function updateFieldDefinitions(fieldDefinitions) {
     await saveConfig({ fieldDefinitions });
 }
 
+// ============================================================================
+// CONFIG EXPORT / IMPORT / BACKUP
+// ============================================================================
+
+const BACKUPS_DIR = path.join(process.cwd(), 'backups');
+const CLIENTS_DIR = path.join(process.cwd(), 'clients');
+
+/**
+ * Export configuration by scope
+ * @param {string} scope - 'fields', 'global', 'client:<id>', 'clients', 'all'
+ * @returns {Promise<Object>} Export bundle with metadata envelope
+ */
+async function exportConfig(scope) {
+    const configPath = path.join(process.cwd(), CONFIG_FILE);
+    const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+
+    let data;
+
+    switch (scope) {
+        case 'fields':
+            data = {
+                fieldDefinitions: rawConfig.fieldDefinitions || null,
+                extraction: rawConfig.extraction
+            };
+            break;
+
+        case 'global':
+            data = { ...rawConfig };
+            // Exclude folders (environment-specific)
+            delete data.folders;
+            break;
+
+        case 'clients': {
+            const clients = await loadClientFiles();
+            data = { clients };
+            break;
+        }
+
+        case 'all': {
+            const allClients = await loadClientFiles();
+            data = {
+                config: { ...rawConfig },
+                clients: allClients
+            };
+            delete data.config.folders;
+            break;
+        }
+
+        default:
+            if (scope.startsWith('client:')) {
+                const clientId = scope.substring(7);
+                const clientPath = path.join(CLIENTS_DIR, `${clientId}.json`);
+                try {
+                    data = { clientId, config: JSON.parse(await fs.readFile(clientPath, 'utf-8')) };
+                } catch (err) {
+                    if (err.code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
+                    throw err;
+                }
+            } else {
+                throw new Error(`Unknown export scope: "${scope}". Valid: fields, global, client:<id>, clients, all`);
+            }
+    }
+
+    return {
+        exportVersion: 1,
+        exportedAt: new Date().toISOString(),
+        scope,
+        data
+    };
+}
+
+/**
+ * Read all client JSON files from clients/ directory
+ * @returns {Promise<Object>} Map of clientId -> client config
+ */
+async function loadClientFiles() {
+    const clients = {};
+    try {
+        const files = await fs.readdir(CLIENTS_DIR);
+        for (const file of files) {
+            if (!file.endsWith('.json')) continue;
+            const clientId = path.basename(file, '.json');
+            const content = await fs.readFile(path.join(CLIENTS_DIR, file), 'utf-8');
+            clients[clientId] = JSON.parse(content);
+        }
+    } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+    }
+    return clients;
+}
+
+/**
+ * Import a config bundle (auto-backup before write)
+ * @param {Object} bundle - The export bundle to import
+ * @returns {Promise<Object>} Import result summary
+ */
+async function importConfig(bundle) {
+    // Validate envelope
+    if (!bundle || typeof bundle !== 'object') {
+        throw new Error('Invalid import bundle: must be a JSON object');
+    }
+    if (!bundle.scope || !bundle.data) {
+        throw new Error('Invalid import bundle: missing "scope" or "data"');
+    }
+
+    // Auto-backup before import
+    const backup = await createBackup(`pre-import-${bundle.scope}`);
+
+    const configPath = path.join(process.cwd(), CONFIG_FILE);
+    const imported = { scope: bundle.scope, backupId: backup.id, updated: [] };
+
+    switch (bundle.scope) {
+        case 'fields': {
+            if (bundle.data.fieldDefinitions) {
+                validateFieldDefinitions(bundle.data.fieldDefinitions);
+            }
+            const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+            if (bundle.data.fieldDefinitions !== undefined) {
+                rawConfig.fieldDefinitions = bundle.data.fieldDefinitions;
+                imported.updated.push('fieldDefinitions');
+            }
+            if (bundle.data.extraction) {
+                rawConfig.extraction = bundle.data.extraction;
+                imported.updated.push('extraction');
+            }
+            await fs.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
+            clearConfigCache();
+            break;
+        }
+
+        case 'global': {
+            const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+            const folders = rawConfig.folders; // Preserve environment-specific folders
+            Object.assign(rawConfig, bundle.data);
+            rawConfig.folders = folders;
+            if (rawConfig.fieldDefinitions) {
+                validateFieldDefinitions(rawConfig.fieldDefinitions);
+            }
+            await fs.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
+            clearConfigCache();
+            imported.updated.push('config.json');
+            break;
+        }
+
+        case 'clients': {
+            if (!bundle.data.clients || typeof bundle.data.clients !== 'object') {
+                throw new Error('Import bundle for "clients" scope must have data.clients object');
+            }
+            await fs.mkdir(CLIENTS_DIR, { recursive: true });
+            for (const [clientId, config] of Object.entries(bundle.data.clients)) {
+                await fs.writeFile(
+                    path.join(CLIENTS_DIR, `${clientId}.json`),
+                    JSON.stringify(config, null, 2)
+                );
+                imported.updated.push(`clients/${clientId}.json`);
+            }
+            break;
+        }
+
+        case 'all': {
+            // Import global config
+            if (bundle.data.config) {
+                const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+                const folders = rawConfig.folders;
+                Object.assign(rawConfig, bundle.data.config);
+                rawConfig.folders = folders;
+                if (rawConfig.fieldDefinitions) {
+                    validateFieldDefinitions(rawConfig.fieldDefinitions);
+                }
+                await fs.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
+                clearConfigCache();
+                imported.updated.push('config.json');
+            }
+            // Import clients
+            if (bundle.data.clients && typeof bundle.data.clients === 'object') {
+                await fs.mkdir(CLIENTS_DIR, { recursive: true });
+                for (const [clientId, config] of Object.entries(bundle.data.clients)) {
+                    await fs.writeFile(
+                        path.join(CLIENTS_DIR, `${clientId}.json`),
+                        JSON.stringify(config, null, 2)
+                    );
+                    imported.updated.push(`clients/${clientId}.json`);
+                }
+            }
+            break;
+        }
+
+        default:
+            if (bundle.scope.startsWith('client:')) {
+                const clientId = bundle.scope.substring(7);
+                if (!bundle.data.config) {
+                    throw new Error('Import bundle for single client must have data.config');
+                }
+                await fs.mkdir(CLIENTS_DIR, { recursive: true });
+                await fs.writeFile(
+                    path.join(CLIENTS_DIR, `${clientId}.json`),
+                    JSON.stringify(bundle.data.config, null, 2)
+                );
+                imported.updated.push(`clients/${clientId}.json`);
+            } else {
+                throw new Error(`Unknown import scope: "${bundle.scope}"`);
+            }
+    }
+
+    return imported;
+}
+
+/**
+ * Create a timestamped backup of current config
+ * @param {string} [label] - Optional label for the backup
+ * @returns {Promise<Object>} Backup metadata { id, path, timestamp, label }
+ */
+async function createBackup(label) {
+    await fs.mkdir(BACKUPS_DIR, { recursive: true });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const id = label ? `${timestamp}_${label}` : timestamp;
+    const backupDir = path.join(BACKUPS_DIR, id);
+    await fs.mkdir(backupDir);
+
+    // Copy config.json
+    const configPath = path.join(process.cwd(), CONFIG_FILE);
+    try {
+        await fs.copyFile(configPath, path.join(backupDir, 'config.json'));
+    } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+    }
+
+    // Copy clients/ directory
+    try {
+        const clientFiles = await fs.readdir(CLIENTS_DIR);
+        if (clientFiles.length > 0) {
+            const clientsBackupDir = path.join(backupDir, 'clients');
+            await fs.mkdir(clientsBackupDir);
+            for (const file of clientFiles) {
+                if (file.endsWith('.json')) {
+                    await fs.copyFile(
+                        path.join(CLIENTS_DIR, file),
+                        path.join(clientsBackupDir, file)
+                    );
+                }
+            }
+        }
+    } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+    }
+
+    // Write metadata
+    const metadata = { id, timestamp: new Date().toISOString(), label: label || null };
+    await fs.writeFile(path.join(backupDir, '_metadata.json'), JSON.stringify(metadata, null, 2));
+
+    return metadata;
+}
+
+/**
+ * List available backups sorted newest-first
+ * @returns {Promise<Array>} Array of backup metadata objects
+ */
+async function listBackups() {
+    try {
+        const entries = await fs.readdir(BACKUPS_DIR);
+        const backups = [];
+
+        for (const entry of entries) {
+            const metaPath = path.join(BACKUPS_DIR, entry, '_metadata.json');
+            try {
+                const meta = JSON.parse(await fs.readFile(metaPath, 'utf-8'));
+                backups.push(meta);
+            } catch {
+                // Skip entries without valid metadata
+            }
+        }
+
+        // Sort newest first
+        backups.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        return backups;
+    } catch (err) {
+        if (err.code === 'ENOENT') return [];
+        throw err;
+    }
+}
+
+/**
+ * Restore from a specific backup (creates safety backup first)
+ * @param {string} backupId - The backup ID to restore
+ * @returns {Promise<Object>} Restore result { restoredFrom, safetyBackupId, restored }
+ */
+async function restoreBackup(backupId) {
+    const backupDir = path.join(BACKUPS_DIR, backupId);
+
+    // Verify backup exists
+    try {
+        await fs.access(backupDir);
+    } catch {
+        throw new Error(`Backup "${backupId}" not found`);
+    }
+
+    // Create safety backup before restoring
+    const safety = await createBackup('pre-restore-safety');
+
+    const restored = [];
+
+    // Restore config.json
+    const backupConfigPath = path.join(backupDir, 'config.json');
+    const configPath = path.join(process.cwd(), CONFIG_FILE);
+    try {
+        await fs.copyFile(backupConfigPath, configPath);
+        clearConfigCache();
+        restored.push('config.json');
+    } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+    }
+
+    // Restore clients/
+    const backupClientsDir = path.join(backupDir, 'clients');
+    try {
+        const clientFiles = await fs.readdir(backupClientsDir);
+        await fs.mkdir(CLIENTS_DIR, { recursive: true });
+        for (const file of clientFiles) {
+            if (file.endsWith('.json')) {
+                await fs.copyFile(
+                    path.join(backupClientsDir, file),
+                    path.join(CLIENTS_DIR, file)
+                );
+                restored.push(`clients/${file}`);
+            }
+        }
+    } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+    }
+
+    return {
+        restoredFrom: backupId,
+        safetyBackupId: safety.id,
+        restored
+    };
+}
+
 module.exports = {
     loadConfig,
     getConfig,
@@ -277,5 +615,10 @@ module.exports = {
     validateFieldDefinitions,
     getFieldDefinitions,
     saveConfig,
-    updateFieldDefinitions
+    updateFieldDefinitions,
+    exportConfig,
+    importConfig,
+    createBackup,
+    listBackups,
+    restoreBackup
 };

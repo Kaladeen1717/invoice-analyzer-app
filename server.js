@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Import modules
-const { loadConfig, updateFieldDefinitions } = require('./src/config');
+const { loadConfig, updateFieldDefinitions, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
 const { processAllInvoices } = require('./src/parallel-processor');
 const {
     getAllClients,
@@ -274,6 +274,67 @@ app.put('/api/config/fields', async (req, res) => {
         res.json({ success: true, message: 'Field definitions updated' });
     } catch (error) {
         res.status(400).json({ error: 'Failed to update field definitions', details: error.message });
+    }
+});
+
+// ============================================================================
+// CONFIG EXPORT / IMPORT / BACKUP API ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/config/export?scope=<scope> - Export configuration as JSON bundle
+ * Scopes: fields, global, client:<id>, clients, all
+ */
+app.get('/api/config/export', async (req, res) => {
+    try {
+        const scope = req.query.scope || 'all';
+        const bundle = await exportConfig(scope);
+        res.json(bundle);
+    } catch (error) {
+        const status = error.message.includes('not found') ? 404 : 400;
+        res.status(status).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/config/import - Import a config bundle (auto-backup before write)
+ */
+app.post('/api/config/import', async (req, res) => {
+    try {
+        const bundle = req.body;
+        const result = await importConfig(bundle);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        res.status(400).json({ error: 'Import failed', details: error.message });
+    }
+});
+
+/**
+ * GET /api/config/backups - List available config backups
+ */
+app.get('/api/config/backups', async (req, res) => {
+    try {
+        const backups = await listBackups();
+        res.json({ backups });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to list backups', details: error.message });
+    }
+});
+
+/**
+ * POST /api/config/restore - Restore from a backup (creates safety backup first)
+ */
+app.post('/api/config/restore', async (req, res) => {
+    try {
+        const { backupId } = req.body;
+        if (!backupId) {
+            return res.status(400).json({ error: 'backupId is required' });
+        }
+        const result = await restoreBackup(backupId);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        const status = error.message.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: 'Restore failed', details: error.message });
     }
 });
 
