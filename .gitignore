@@ -14,7 +14,8 @@ output/
 # Config backups
 backups/
 
-# Per-client processing results
+# Per-client config and processing results
+clients/*.json
 **/processing-results.json
 
 # Test data
