@@ -4,7 +4,7 @@
 
 Local application that analyzes invoice PDFs using Google's Gemini Vision API. Supports multi-client management with both a web-based Admin UI and CLI for batch processing.
 
-- **Model**: `gemini-2.5-flash-preview-05-20`
+- **Model**: `gemini-3-flash-preview`
 - **Runtime**: Node.js (v18+), CommonJS modules
 - **Server**: Express.js on port 3000 (configurable via `PORT` in `.env`)
 

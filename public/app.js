@@ -32,6 +32,11 @@ let filenameTemplate = '';
 let originalFilenameTemplate = '';
 let filenameLoaded = false;
 
+// Model editor state
+let currentModel = '';
+let originalModel = '';
+let modelLoaded = false;
+
 // Export/import state
 let pendingImportBundle = null;
 let restoreBackupId = null;
@@ -49,6 +54,8 @@ let detailPromptEditMode = false;
 let detailPromptOverride = null; // working copy
 let detailFilenameEditMode = false;
 let detailFilenameOverride = null; // working copy
+let detailModelEditMode = false;
+let detailModelOverride = null; // working copy
 
 // DOM elements
 const statusIndicator = document.getElementById('statusIndicator');
@@ -168,6 +175,22 @@ const saveFilenameBtn = document.getElementById('saveFilenameBtn');
 const discardFilenameBtn = document.getElementById('discardFilenameBtn');
 const reloadFilenameBtn = document.getElementById('reloadFilenameBtn');
 
+// Model editor elements
+const modelSelect = document.getElementById('modelSelect');
+const modelCustomInput = document.getElementById('modelCustomInput');
+const modelUseCustomBtn = document.getElementById('modelUseCustomBtn');
+const modelSaveBar = document.getElementById('modelSaveBar');
+const saveModelBtn = document.getElementById('saveModelBtn');
+const discardModelBtn = document.getElementById('discardModelBtn');
+
+// Client detail model elements
+const detailModelEl = document.getElementById('detailModel');
+const customizeModelBtn = document.getElementById('customizeModelBtn');
+const resetModelBtn = document.getElementById('resetModelBtn');
+const saveDetailModelBtn = document.getElementById('saveDetailModelBtn');
+const discardDetailModelBtn = document.getElementById('discardDetailModelBtn');
+const detailModelSaveBar = document.getElementById('detailModelSaveBar');
+
 // Export/Import elements
 const exportFieldsBtn = document.getElementById('exportFieldsBtn');
 const exportGlobalBtn = document.getElementById('exportGlobalBtn');
@@ -219,7 +242,8 @@ function switchTab(tabName) {
         const unsavedTags = hasUnsavedTagChanges();
         const unsavedPrompt = hasUnsavedPromptChanges();
         const unsavedFilename = hasUnsavedFilenameChanges();
-        if (unsavedFields || unsavedTags || unsavedPrompt || unsavedFilename) {
+        const unsavedModel = hasUnsavedModelChanges();
+        if (unsavedFields || unsavedTags || unsavedPrompt || unsavedFilename || unsavedModel) {
             if (!confirm('You have unsaved changes. Discard and switch tabs?')) {
                 return;
             }
@@ -227,6 +251,7 @@ function switchTab(tabName) {
             if (unsavedTags) discardTagChanges();
             if (unsavedPrompt) discardPromptChanges();
             if (unsavedFilename) discardFilenameChanges();
+            if (unsavedModel) discardModelChanges();
         }
     }
 
@@ -244,6 +269,7 @@ function switchTab(tabName) {
 
     // Load data on first visit to global-config
     if (tabName === 'global-config') {
+        if (!modelLoaded) loadModelSetting();
         if (!fieldsLoaded) loadFieldDefinitions();
         if (!tagsLoaded) loadTagDefinitions();
         if (!promptLoaded) loadPromptTemplate();
@@ -292,10 +318,10 @@ async function loadClients() {
             renderClientList();
             updateProcessAllButton();
         } else {
-            clientList.innerHTML = `<div class="error-placeholder">Error: ${data.error}</div>`;
+            clientList.innerHTML = `<div class="error-placeholder">Error: ${escapeHtml(data.error)}</div>`;
         }
     } catch (error) {
-        clientList.innerHTML = `<div class="error-placeholder">Failed to load clients: ${error.message}</div>`;
+        clientList.innerHTML = `<div class="error-placeholder">Failed to load clients: ${escapeHtml(error.message)}</div>`;
     }
 }
 
@@ -2279,6 +2305,82 @@ function discardPromptChanges() {
 }
 
 // ============================================================================
+// MODEL EDITOR
+// ============================================================================
+
+const KNOWN_MODELS = [
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash-preview-05-20',
+    'gemini-2.5-pro-preview-05-06',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro'
+];
+
+async function loadModelSetting() {
+    try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+
+        if (response.ok) {
+            currentModel = data.model || 'gemini-3-flash-preview';
+            originalModel = currentModel;
+            modelLoaded = true;
+            syncModelSelect();
+            updateModelSaveBar();
+        }
+    } catch (error) {
+        showAlert('Failed to load model setting: ' + error.message, 'error');
+    }
+}
+
+function syncModelSelect() {
+    if (KNOWN_MODELS.includes(currentModel)) {
+        modelSelect.value = currentModel;
+        modelCustomInput.value = '';
+    } else {
+        // Custom model — select first option as placeholder and show in custom input
+        modelSelect.value = KNOWN_MODELS[0];
+        modelCustomInput.value = currentModel;
+    }
+}
+
+function hasUnsavedModelChanges() {
+    return modelLoaded && currentModel !== originalModel;
+}
+
+function updateModelSaveBar() {
+    modelSaveBar.style.display = hasUnsavedModelChanges() ? 'flex' : 'none';
+}
+
+async function saveModelSetting() {
+    try {
+        const response = await fetch('/api/config/model', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: currentModel })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to save model');
+        }
+
+        originalModel = currentModel;
+        updateModelSaveBar();
+        showAlert('Model updated successfully', 'success');
+    } catch (error) {
+        showAlert('Failed to save model: ' + error.message, 'error');
+    }
+}
+
+function discardModelChanges() {
+    currentModel = originalModel;
+    syncModelSelect();
+    updateModelSaveBar();
+}
+
+// ============================================================================
 // FILENAME TEMPLATE EDITOR
 // ============================================================================
 
@@ -2455,7 +2557,7 @@ async function openClientDetail(clientId) {
 
     // Show loading state
     detailClientHeader.textContent = '';
-    [detailFieldList, detailTagList, detailFilenameTemplate, detailPromptTemplate].forEach(el => {
+    [detailModelEl, detailFieldList, detailTagList, detailFilenameTemplate, detailPromptTemplate].forEach(el => {
         el.textContent = '';
         const placeholder = document.createElement('div');
         placeholder.className = 'loading-placeholder';
@@ -2562,10 +2664,139 @@ function renderClientDetail() {
 
     detailClientHeader.appendChild(meta);
 
+    renderDetailModel(data.model);
     renderDetailFieldList(data.fieldDefinitions);
     renderDetailTagList(data.tagDefinitions);
     renderDetailFilenameTemplate(data.filenameTemplate);
     renderDetailPromptTemplate(data.promptTemplate);
+}
+
+function renderDetailModel(modelData) {
+    detailModelEl.textContent = '';
+
+    if (!modelData) {
+        const p = document.createElement('div');
+        p.className = 'empty-placeholder';
+        p.textContent = 'No model configured.';
+        detailModelEl.appendChild(p);
+        return;
+    }
+
+    if (detailModelEditMode) {
+        renderDetailModelEditable(modelData);
+        return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'model-display';
+
+    const code = document.createElement('code');
+    code.textContent = modelData.value || '(default)';
+    wrapper.appendChild(code);
+
+    wrapper.appendChild(createSourceBadge(modelData._source));
+
+    detailModelEl.appendChild(wrapper);
+}
+
+function renderDetailModelEditable(modelData) {
+    detailModelEl.textContent = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'model-detail-edit';
+
+    const select = document.createElement('select');
+    KNOWN_MODELS.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        select.appendChild(opt);
+    });
+
+    const currentValue = detailModelOverride || modelData.value || KNOWN_MODELS[0];
+    if (KNOWN_MODELS.includes(currentValue)) {
+        select.value = currentValue;
+    }
+
+    select.addEventListener('change', () => {
+        detailModelOverride = select.value;
+        detailModelSaveBar.style.display = 'flex';
+    });
+
+    wrapper.appendChild(select);
+
+    const customRow = document.createElement('div');
+    customRow.className = 'model-custom-row';
+    customRow.style.marginTop = '0.5rem';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Or enter a custom model ID...';
+    if (!KNOWN_MODELS.includes(currentValue)) {
+        input.value = currentValue;
+    }
+
+    const useBtn = document.createElement('button');
+    useBtn.type = 'button';
+    useBtn.className = 'btn btn-small btn-secondary';
+    useBtn.textContent = 'Use Custom';
+    useBtn.addEventListener('click', () => {
+        if (input.value.trim()) {
+            detailModelOverride = input.value.trim();
+            detailModelSaveBar.style.display = 'flex';
+        }
+    });
+
+    customRow.appendChild(input);
+    customRow.appendChild(useBtn);
+    wrapper.appendChild(customRow);
+
+    detailModelEl.appendChild(wrapper);
+}
+
+function customizeModel() {
+    detailModelEditMode = true;
+    detailModelOverride = clientDetailData.model?.value || null;
+    customizeModelBtn.textContent = 'Cancel';
+    detailModelSaveBar.style.display = 'flex';
+    renderDetailModel(clientDetailData.model);
+}
+
+function cancelDetailModelEdit() {
+    detailModelEditMode = false;
+    detailModelOverride = null;
+    customizeModelBtn.textContent = 'Customize';
+    detailModelSaveBar.style.display = 'none';
+    renderDetailModel(clientDetailData.model);
+}
+
+async function saveDetailModelOverride() {
+    if (!clientDetailData || !detailModelOverride) return;
+
+    try {
+        const response = await fetch(`/api/clients/${clientDetailData.client.clientId}/overrides`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: 'model', data: detailModelOverride })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to save model override');
+        }
+
+        const updated = await response.json();
+        clientDetailData = updated;
+        detailModelEditMode = false;
+        detailModelOverride = null;
+        customizeModelBtn.textContent = 'Customize';
+        detailModelSaveBar.style.display = 'none';
+        renderDetailModel(updated.model);
+        updateDetailResetButtons();
+        showAlert('Model override saved', 'success');
+    } catch (error) {
+        showAlert('Failed to save model override: ' + error.message, 'error');
+    }
 }
 
 function renderDetailFieldList(fields) {
@@ -2903,10 +3134,13 @@ function resetDetailEditState() {
     detailPromptOverride = null;
     detailFilenameEditMode = false;
     detailFilenameOverride = null;
+    detailModelEditMode = false;
+    detailModelOverride = null;
     detailFieldsSaveBar.style.display = 'none';
     detailTagsSaveBar.style.display = 'none';
     detailPromptSaveBar.style.display = 'none';
     detailFilenameSaveBar.style.display = 'none';
+    detailModelSaveBar.style.display = 'none';
 }
 
 function updateDetailResetButtons() {
@@ -2916,6 +3150,7 @@ function updateDetailResetButtons() {
     resetTagsBtn.style.display = d.tagDefinitions.some(t => t._source === 'override' || Object.values(t._parameterSources || {}).some(k => k === 'override')) ? 'inline-flex' : 'none';
     resetPromptBtn.style.display = d.promptTemplate._source === 'override' ? 'inline-flex' : 'none';
     resetFilenameBtn.style.display = d.filenameTemplate._source === 'override' ? 'inline-flex' : 'none';
+    resetModelBtn.style.display = (d.model && d.model._source === 'override') ? 'inline-flex' : 'none';
 }
 
 // --- FIELDS OVERRIDE ---
@@ -3981,6 +4216,22 @@ function setupEventListeners() {
         updatePromptSaveBar();
     });
 
+    // Model editor
+    modelSelect.addEventListener('change', () => {
+        currentModel = modelSelect.value;
+        modelCustomInput.value = '';
+        updateModelSaveBar();
+    });
+    modelUseCustomBtn.addEventListener('click', () => {
+        const custom = modelCustomInput.value.trim();
+        if (custom) {
+            currentModel = custom;
+            updateModelSaveBar();
+        }
+    });
+    saveModelBtn.addEventListener('click', saveModelSetting);
+    discardModelBtn.addEventListener('click', discardModelChanges);
+
     // Filename editor buttons
     reloadFilenameBtn.addEventListener('click', () => {
         filenameLoaded = false;
@@ -4011,6 +4262,11 @@ function setupEventListeners() {
     resetPromptBtn.addEventListener('click', () => resetOverride('prompt'));
     saveDetailPromptBtn.addEventListener('click', saveDetailPromptOverrides);
     discardDetailPromptBtn.addEventListener('click', cancelDetailPromptEdit);
+
+    customizeModelBtn.addEventListener('click', () => detailModelEditMode ? cancelDetailModelEdit() : customizeModel());
+    resetModelBtn.addEventListener('click', () => resetOverride('model'));
+    saveDetailModelBtn.addEventListener('click', saveDetailModelOverride);
+    discardDetailModelBtn.addEventListener('click', cancelDetailModelEdit);
 
     customizeFilenameBtn.addEventListener('click', () => detailFilenameEditMode ? cancelDetailFilenameEdit() : customizeFilename());
     resetFilenameBtn.addEventListener('click', () => resetOverride('output'));

@@ -281,7 +281,7 @@ app.put('/api/clients/:id/overrides', async (req, res) => {
             return res.status(400).json({ error: 'section and data are required' });
         }
 
-        const validSections = ['fields', 'tags', 'prompt', 'output'];
+        const validSections = ['fields', 'tags', 'prompt', 'output', 'model'];
         if (!validSections.includes(section)) {
             return res.status(400).json({ error: `Invalid section. Must be one of: ${validSections.join(', ')}` });
         }
@@ -311,7 +311,7 @@ app.delete('/api/clients/:id/overrides/:section', async (req, res) => {
     try {
         const { id: clientId, section } = req.params;
 
-        const validSections = ['fields', 'tags', 'prompt', 'output'];
+        const validSections = ['fields', 'tags', 'prompt', 'output', 'model'];
         if (!validSections.includes(section)) {
             return res.status(400).json({ error: `Invalid section. Must be one of: ${validSections.join(', ')}` });
         }
@@ -345,6 +345,7 @@ app.get('/api/config', async (req, res) => {
     try {
         const config = await loadConfig({ requireFolders: false });
         res.json({
+            model: config.model || null,
             fieldDefinitions: config.fieldDefinitions || null,
             tagDefinitions: config.tagDefinitions || null,
             extraction: config.extraction,
@@ -491,6 +492,22 @@ app.put('/api/config/output', async (req, res) => {
     }
 });
 
+/**
+ * PUT /api/config/model - Update global model
+ */
+app.put('/api/config/model', async (req, res) => {
+    try {
+        const { model } = req.body;
+        if (!model || typeof model !== 'string') {
+            return res.status(400).json({ error: 'model must be a non-empty string' });
+        }
+        await saveConfig({ model });
+        res.json({ success: true, message: 'Model updated' });
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to update model', details: error.message });
+    }
+});
+
 // ============================================================================
 // CONFIG EXPORT / IMPORT / BACKUP API ENDPOINTS
 // ============================================================================
@@ -606,6 +623,7 @@ app.post('/api/clients/:id/process', async (req, res) => {
         // Merge client config with global config for processing
         const processingConfig = {
             ...globalConfig,
+            model: clientConfig.model,
             folders: clientConfig.folders,
             extraction: clientConfig.extraction,
             output: clientConfig.output,
@@ -737,6 +755,7 @@ app.post('/api/clients/process-all', async (req, res) => {
 
                 const processingConfig = {
                     ...globalConfig,
+                    model: clientConfig.model,
                     folders: clientConfig.folders,
                     extraction: clientConfig.extraction,
                     output: clientConfig.output,
