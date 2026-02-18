@@ -218,14 +218,35 @@ async function getClientConfig(clientId, globalConfig) {
         extraction = { ...globalConfig.extraction };
     }
 
-    // Output config: client OVERRIDES global entirely (not merge)
-    const output = client.output || globalConfig.output;
+    // Output config: outputOverride merges into global, legacy output replaces entirely
+    let output = globalConfig.output;
+    if (client.outputOverride) {
+        output = { ...globalConfig.output, ...client.outputOverride };
+    } else if (client.output) {
+        output = client.output;
+    }
 
     // Document types: client can override, otherwise use global
     const documentTypes = client.documentTypes || globalConfig.documentTypes;
 
-    // Field definitions: client can override, otherwise use global
-    const fieldDefinitions = client.fieldDefinitions || globalConfig.fieldDefinitions;
+    // Field definitions: apply per-field overrides if present, otherwise use global
+    let fieldDefinitions = globalConfig.fieldDefinitions || [];
+    if (client.fieldOverrides) {
+        fieldDefinitions = fieldDefinitions.map(field => {
+            const override = client.fieldOverrides[field.key];
+            if (!override) return field;
+            return { ...field, ...override, key: field.key, builtIn: field.builtIn };
+        });
+        // Add client-specific custom fields
+        for (const [key, def] of Object.entries(client.fieldOverrides)) {
+            if (!fieldDefinitions.find(f => f.key === key)) {
+                fieldDefinitions.push({ ...def, key });
+            }
+        }
+    } else if (client.fieldDefinitions) {
+        // Legacy: full field definitions override
+        fieldDefinitions = client.fieldDefinitions;
+    }
 
     // Tag definitions: start with global, merge client tagOverrides (parameter values and enabled state)
     let tagDefinitions = globalConfig.tagDefinitions || null;
@@ -252,6 +273,14 @@ async function getClientConfig(clientId, globalConfig) {
         });
     }
 
+    // Prompt template: promptOverride merges section-by-section into global
+    let promptTemplate = globalConfig.promptTemplate || {};
+    if (client.promptOverride) {
+        promptTemplate = { ...promptTemplate, ...client.promptOverride };
+    } else if (client.promptTemplate) {
+        promptTemplate = client.promptTemplate;
+    }
+
     return {
         clientId,
         name: client.name,
@@ -263,7 +292,8 @@ async function getClientConfig(clientId, globalConfig) {
         output,
         documentTypes,
         fieldDefinitions,
-        tagDefinitions
+        tagDefinitions,
+        promptTemplate
     };
 }
 
@@ -505,10 +535,26 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
     const client = clientsConfig.clients[clientId];
     if (!client) throw new Error(`Client "${clientId}" not found`);
 
-    // Field definitions: client overrides entirely or inherits global
-    const hasFieldOverride = !!client.fieldDefinitions;
-    const effectiveFields = (hasFieldOverride ? client.fieldDefinitions : globalConfig.fieldDefinitions || [])
-        .map(f => ({ ...f, _source: hasFieldOverride ? 'override' : 'global' }));
+    // Field definitions: per-field granular overrides or full override
+    const globalFields = globalConfig.fieldDefinitions || [];
+    let effectiveFields;
+    if (client.fieldOverrides) {
+        effectiveFields = globalFields.map(f => {
+            const override = client.fieldOverrides[f.key];
+            if (!override) return { ...f, _source: 'global' };
+            return { ...f, ...override, key: f.key, builtIn: f.builtIn, _source: 'override' };
+        });
+        // Add client-specific custom fields
+        for (const [key, def] of Object.entries(client.fieldOverrides)) {
+            if (!globalFields.find(f => f.key === key)) {
+                effectiveFields.push({ ...def, key, _source: 'override' });
+            }
+        }
+    } else if (client.fieldDefinitions) {
+        effectiveFields = client.fieldDefinitions.map(f => ({ ...f, _source: 'override' }));
+    } else {
+        effectiveFields = globalFields.map(f => ({ ...f, _source: 'global' }));
+    }
 
     // Tag definitions: start with global, merge client tagOverrides
     const globalTags = globalConfig.tagDefinitions || [];
@@ -539,20 +585,27 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
         return merged;
     });
 
-    // Prompt template
-    const hasPromptOverride = !!client.promptTemplate;
-    const effectivePrompt = {
-        ...(hasPromptOverride ? client.promptTemplate : globalConfig.promptTemplate || {}),
-        _source: hasPromptOverride ? 'override' : 'global'
-    };
+    // Prompt template: section-level overrides or full override
+    const globalPrompt = globalConfig.promptTemplate || {};
+    let effectivePrompt;
+    if (client.promptOverride) {
+        effectivePrompt = { ...globalPrompt, ...client.promptOverride, _source: 'override' };
+    } else if (client.promptTemplate) {
+        effectivePrompt = { ...client.promptTemplate, _source: 'override' };
+    } else {
+        effectivePrompt = { ...globalPrompt, _source: 'global' };
+    }
 
-    // Filename template
-    const hasFilenameOverride = !!(client.output && client.output.filenameTemplate);
+    // Filename template: outputOverride or legacy output
+    const hasOutputOverride = !!(client.outputOverride && client.outputOverride.filenameTemplate);
+    const hasLegacyOutput = !!(client.output && client.output.filenameTemplate);
     const effectiveFilename = {
-        template: hasFilenameOverride
-            ? client.output.filenameTemplate
-            : (globalConfig.output?.filenameTemplate || ''),
-        _source: hasFilenameOverride ? 'override' : 'global'
+        template: hasOutputOverride
+            ? client.outputOverride.filenameTemplate
+            : hasLegacyOutput
+                ? client.output.filenameTemplate
+                : (globalConfig.output?.filenameTemplate || ''),
+        _source: (hasOutputOverride || hasLegacyOutput) ? 'override' : 'global'
     };
 
     // Folder status
@@ -577,6 +630,89 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
     };
 }
 
+/**
+ * Save per-section overrides to a client's config file (partial update)
+ * @param {string} clientId - Client identifier
+ * @param {string} section - Override section: 'fields', 'tags', 'prompt', 'output'
+ * @param {Object} data - The override data
+ * @returns {Promise<void>}
+ */
+async function saveClientOverrides(clientId, section, data) {
+    const clientsDir = path.join(process.cwd(), 'clients');
+    const filePath = path.join(clientsDir, `${clientId}.json`);
+
+    let config;
+    try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        config = JSON.parse(content);
+    } catch (error) {
+        if (error.code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
+        throw error;
+    }
+
+    switch (section) {
+        case 'fields':
+            config.fieldOverrides = data;
+            break;
+        case 'tags':
+            config.tagOverrides = data;
+            break;
+        case 'prompt':
+            config.promptOverride = data;
+            break;
+        case 'output':
+            config.outputOverride = data;
+            break;
+        default:
+            throw new Error(`Invalid override section: ${section}`);
+    }
+
+    await fs.writeFile(filePath, JSON.stringify(config, null, 2));
+    clearClientsCache();
+}
+
+/**
+ * Remove a per-section override from a client's config file
+ * @param {string} clientId - Client identifier
+ * @param {string} section - Override section: 'fields', 'tags', 'prompt', 'output'
+ * @returns {Promise<void>}
+ */
+async function removeClientOverrides(clientId, section) {
+    const clientsDir = path.join(process.cwd(), 'clients');
+    const filePath = path.join(clientsDir, `${clientId}.json`);
+
+    let config;
+    try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        config = JSON.parse(content);
+    } catch (error) {
+        if (error.code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
+        throw error;
+    }
+
+    switch (section) {
+        case 'fields':
+            delete config.fieldOverrides;
+            delete config.fieldDefinitions; // remove legacy too
+            break;
+        case 'tags':
+            delete config.tagOverrides;
+            break;
+        case 'prompt':
+            delete config.promptOverride;
+            delete config.promptTemplate; // remove legacy too
+            break;
+        case 'output':
+            delete config.outputOverride;
+            break;
+        default:
+            throw new Error(`Invalid override section: ${section}`);
+    }
+
+    await fs.writeFile(filePath, JSON.stringify(config, null, 2));
+    clearClientsCache();
+}
+
 module.exports = {
     loadClientsConfig,
     getEnabledClients,
@@ -594,6 +730,8 @@ module.exports = {
     clearClientsCache,
     isMultiClientMode,
     isUsingLegacyConfig,
+    saveClientOverrides,
+    removeClientOverrides,
     discoverClientFiles,
     validateClientConfig
 };
