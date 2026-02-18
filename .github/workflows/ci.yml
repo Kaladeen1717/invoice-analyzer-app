@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 jobs:
   lint-and-test:
@@ -38,6 +40,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js 20
         uses: actions/setup-node@v4
@@ -64,7 +68,10 @@ jobs:
         uses: semgrep/semgrep-action@v1
         continue-on-error: true
         with:
-          config: auto
+          config: >-
+            p/owasp-top-ten
+            p/javascript
+            p/secrets
 
   codeql:
     runs-on: ubuntu-latest
