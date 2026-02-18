@@ -11,6 +11,9 @@ config.json
 uploads/
 output/
 
+# Config backups
+backups/
+
 # Test data
 test-invoices/
 
