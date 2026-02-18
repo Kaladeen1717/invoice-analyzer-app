@@ -1,11 +1,22 @@
 require('dotenv').config();
 const express = require('express');
-const path = require('path');
 const fs = require('fs').promises;
 
 // Import modules
 const { VALID_OVERRIDE_SECTIONS, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER } = require('./src/constants');
-const { loadConfig, saveConfig, updateFieldDefinitions, updateTagDefinitions, updatePromptTemplate, updateRawPrompt, clearRawPrompt, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
+const {
+    loadConfig,
+    saveConfig,
+    updateFieldDefinitions,
+    updateTagDefinitions,
+    updatePromptTemplate,
+    updateRawPrompt,
+    clearRawPrompt,
+    exportConfig,
+    importConfig,
+    listBackups,
+    restoreBackup
+} = require('./src/config');
 const { buildPromptPreview } = require('./src/prompt-builder');
 const { processAllInvoices } = require('./src/parallel-processor');
 const {
@@ -18,7 +29,6 @@ const {
     getAnnotatedClientConfig,
     getClientFolderStatus,
     isMultiClientMode,
-    clearClientsCache,
     ensureClientDirectories,
     saveClientOverrides,
     removeClientOverrides
@@ -283,7 +293,9 @@ app.put('/api/clients/:id/overrides', async (req, res) => {
         }
 
         if (!VALID_OVERRIDE_SECTIONS.includes(section)) {
-            return res.status(400).json({ error: `Invalid section. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}` });
+            return res
+                .status(400)
+                .json({ error: `Invalid section. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}` });
         }
 
         await saveClientOverrides(clientId, section, data);
@@ -312,7 +324,9 @@ app.delete('/api/clients/:id/overrides/:section', async (req, res) => {
         const { id: clientId, section } = req.params;
 
         if (!VALID_OVERRIDE_SECTIONS.includes(section)) {
-            return res.status(400).json({ error: `Invalid section. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}` });
+            return res
+                .status(400)
+                .json({ error: `Invalid section. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}` });
         }
 
         await removeClientOverrides(clientId, section);
@@ -590,10 +604,14 @@ app.post('/api/clients/:id/process', async (req, res) => {
     try {
         // Check if already processing this client
         if (activeProcessing.has(clientId)) {
-            res.write('data: ' + JSON.stringify({
-                status: 'error',
-                error: `Client "${clientId}" is already being processed`
-            }) + '\n\n');
+            res.write(
+                'data: ' +
+                    JSON.stringify({
+                        status: 'error',
+                        error: `Client "${clientId}" is already being processed`
+                    }) +
+                    '\n\n'
+            );
             res.end();
             return;
         }
@@ -607,10 +625,14 @@ app.post('/api/clients/:id/process', async (req, res) => {
         try {
             await fs.access(clientConfig.folders.base);
         } catch {
-            res.write('data: ' + JSON.stringify({
-                status: 'error',
-                error: `Folder does not exist: ${clientConfig.folders.base}`
-            }) + '\n\n');
+            res.write(
+                'data: ' +
+                    JSON.stringify({
+                        status: 'error',
+                        error: `Folder does not exist: ${clientConfig.folders.base}`
+                    }) +
+                    '\n\n'
+            );
             res.end();
             activeProcessing.delete(clientId);
             return;
@@ -644,13 +666,16 @@ app.post('/api/clients/:id/process', async (req, res) => {
                 activeProcessing.delete(clientId);
             }
         });
-
     } catch (error) {
-        res.write('data: ' + JSON.stringify({
-            status: 'error',
-            clientId,
-            error: error.message
-        }) + '\n\n');
+        res.write(
+            'data: ' +
+                JSON.stringify({
+                    status: 'error',
+                    clientId,
+                    error: error.message
+                }) +
+                '\n\n'
+        );
         res.end();
         activeProcessing.delete(clientId);
     }
@@ -677,10 +702,14 @@ app.post('/api/clients/process-all', async (req, res) => {
     try {
         // Check if already processing all
         if (activeProcessing.has('all')) {
-            res.write('data: ' + JSON.stringify({
-                status: 'error',
-                error: 'Processing all clients is already in progress'
-            }) + '\n\n');
+            res.write(
+                'data: ' +
+                    JSON.stringify({
+                        status: 'error',
+                        error: 'Processing all clients is already in progress'
+                    }) +
+                    '\n\n'
+            );
             res.end();
             return;
         }
@@ -691,10 +720,14 @@ app.post('/api/clients/process-all', async (req, res) => {
         const globalConfig = await loadConfig();
 
         if (!clients || Object.keys(clients).length === 0) {
-            res.write('data: ' + JSON.stringify({
-                status: 'error',
-                error: 'No clients configured'
-            }) + '\n\n');
+            res.write(
+                'data: ' +
+                    JSON.stringify({
+                        status: 'error',
+                        error: 'No clients configured'
+                    }) +
+                    '\n\n'
+            );
             res.end();
             activeProcessing.delete('all');
             return;
@@ -704,20 +737,28 @@ app.post('/api/clients/process-all', async (req, res) => {
         const enabledClients = Object.entries(clients).filter(([_, client]) => client.enabled);
 
         if (enabledClients.length === 0) {
-            res.write('data: ' + JSON.stringify({
-                status: 'error',
-                error: 'No enabled clients found'
-            }) + '\n\n');
+            res.write(
+                'data: ' +
+                    JSON.stringify({
+                        status: 'error',
+                        error: 'No enabled clients found'
+                    }) +
+                    '\n\n'
+            );
             res.end();
             activeProcessing.delete('all');
             return;
         }
 
-        res.write('data: ' + JSON.stringify({
-            status: 'starting-batch',
-            totalClients: enabledClients.length,
-            clients: enabledClients.map(([id, c]) => ({ clientId: id, name: c.name }))
-        }) + '\n\n');
+        res.write(
+            'data: ' +
+                JSON.stringify({
+                    status: 'starting-batch',
+                    totalClients: enabledClients.length,
+                    clients: enabledClients.map(([id, c]) => ({ clientId: id, name: c.name }))
+                }) +
+                '\n\n'
+        );
 
         let totalSuccess = 0;
         let totalFailed = 0;
@@ -725,13 +766,17 @@ app.post('/api/clients/process-all', async (req, res) => {
 
         // Process each enabled client sequentially
         for (const [clientId, client] of enabledClients) {
-            res.write('data: ' + JSON.stringify({
-                status: 'client-starting',
-                clientId,
-                clientName: client.name,
-                clientNumber: completedClients + 1,
-                totalClients: enabledClients.length
-            }) + '\n\n');
+            res.write(
+                'data: ' +
+                    JSON.stringify({
+                        status: 'client-starting',
+                        clientId,
+                        clientName: client.name,
+                        clientNumber: completedClients + 1,
+                        totalClients: enabledClients.length
+                    }) +
+                    '\n\n'
+            );
 
             try {
                 const clientConfig = await getClientConfig(clientId, globalConfig);
@@ -740,11 +785,15 @@ app.post('/api/clients/process-all', async (req, res) => {
                 try {
                     await fs.access(clientConfig.folders.base);
                 } catch {
-                    res.write('data: ' + JSON.stringify({
-                        status: 'client-error',
-                        clientId,
-                        error: `Folder does not exist: ${clientConfig.folders.base}`
-                    }) + '\n\n');
+                    res.write(
+                        'data: ' +
+                            JSON.stringify({
+                                status: 'client-error',
+                                clientId,
+                                error: `Folder does not exist: ${clientConfig.folders.base}`
+                            }) +
+                            '\n\n'
+                    );
                     completedClients++;
                     continue;
                 }
@@ -771,40 +820,54 @@ app.post('/api/clients/process-all', async (req, res) => {
                     onComplete: (summary) => {
                         totalSuccess += summary.success || 0;
                         totalFailed += summary.failed || 0;
-                        res.write('data: ' + JSON.stringify({
-                            status: 'client-done',
-                            clientId,
-                            ...summary
-                        }) + '\n\n');
+                        res.write(
+                            'data: ' +
+                                JSON.stringify({
+                                    status: 'client-done',
+                                    clientId,
+                                    ...summary
+                                }) +
+                                '\n\n'
+                        );
                     }
                 });
-
             } catch (error) {
-                res.write('data: ' + JSON.stringify({
-                    status: 'client-error',
-                    clientId,
-                    error: error.message
-                }) + '\n\n');
+                res.write(
+                    'data: ' +
+                        JSON.stringify({
+                            status: 'client-error',
+                            clientId,
+                            error: error.message
+                        }) +
+                        '\n\n'
+                );
             }
 
             completedClients++;
         }
 
-        res.write('data: ' + JSON.stringify({
-            status: 'done',
-            mode: 'all',
-            totalClients: enabledClients.length,
-            totalSuccess,
-            totalFailed
-        }) + '\n\n');
+        res.write(
+            'data: ' +
+                JSON.stringify({
+                    status: 'done',
+                    mode: 'all',
+                    totalClients: enabledClients.length,
+                    totalSuccess,
+                    totalFailed
+                }) +
+                '\n\n'
+        );
         res.end();
         activeProcessing.delete('all');
-
     } catch (error) {
-        res.write('data: ' + JSON.stringify({
-            status: 'error',
-            error: error.message
-        }) + '\n\n');
+        res.write(
+            'data: ' +
+                JSON.stringify({
+                    status: 'error',
+                    error: error.message
+                }) +
+                '\n\n'
+        );
         res.end();
         activeProcessing.delete('all');
     }

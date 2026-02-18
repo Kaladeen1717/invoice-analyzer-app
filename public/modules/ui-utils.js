@@ -45,7 +45,9 @@ export function showAlert(message, type = 'error') {
     alertArea.appendChild(alert);
 
     if (type === 'success' || type === 'info') {
-        setTimeout(() => { if (alert.parentElement) alert.remove(); }, 5000);
+        setTimeout(() => {
+            if (alert.parentElement) alert.remove();
+        }, 5000);
     }
 }
 

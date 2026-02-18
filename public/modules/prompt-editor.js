@@ -46,15 +46,31 @@ export function initPromptEditor() {
     discardPromptBtn.addEventListener('click', discardPromptChanges);
 
     // Live preview on input
-    promptPreambleInput.addEventListener('input', () => { updatePromptPreview(); updatePromptSaveBar(); });
-    promptGeneralRulesInput.addEventListener('input', () => { updatePromptPreview(); updatePromptSaveBar(); });
-    promptSuffixInput.addEventListener('input', () => { updatePromptPreview(); updatePromptSaveBar(); });
-    promptRawTextInput.addEventListener('input', () => { updatePromptPreview(); updatePromptSaveBar(); });
+    promptPreambleInput.addEventListener('input', () => {
+        updatePromptPreview();
+        updatePromptSaveBar();
+    });
+    promptGeneralRulesInput.addEventListener('input', () => {
+        updatePromptPreview();
+        updatePromptSaveBar();
+    });
+    promptSuffixInput.addEventListener('input', () => {
+        updatePromptPreview();
+        updatePromptSaveBar();
+    });
+    promptRawTextInput.addEventListener('input', () => {
+        updatePromptPreview();
+        updatePromptSaveBar();
+    });
 }
 
-export function isPromptLoaded() { return promptLoaded; }
+export function isPromptLoaded() {
+    return promptLoaded;
+}
 
-export function invalidatePrompt() { promptLoaded = false; }
+export function invalidatePrompt() {
+    promptLoaded = false;
+}
 
 export async function loadPromptTemplate() {
     try {
@@ -99,9 +115,11 @@ export function hasUnsavedPromptChanges() {
         const currentRaw = promptRawTextInput.value;
         return currentRaw !== (originalRawPrompt || '');
     }
-    return promptPreambleInput.value !== (originalPromptTemplate.preamble || '') ||
-           promptGeneralRulesInput.value !== (originalPromptTemplate.generalRules || '') ||
-           promptSuffixInput.value !== (originalPromptTemplate.suffix || '');
+    return (
+        promptPreambleInput.value !== (originalPromptTemplate.preamble || '') ||
+        promptGeneralRulesInput.value !== (originalPromptTemplate.generalRules || '') ||
+        promptSuffixInput.value !== (originalPromptTemplate.suffix || '')
+    );
 }
 
 export function discardPromptChanges() {

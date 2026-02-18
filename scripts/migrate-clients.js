@@ -37,10 +37,10 @@ async function main() {
     // Check if clients/ folder already has files
     try {
         const existingFiles = await fs.readdir(CLIENTS_DIR);
-        const jsonFiles = existingFiles.filter(f => f.endsWith('.json'));
+        const jsonFiles = existingFiles.filter((f) => f.endsWith('.json'));
         if (jsonFiles.length > 0) {
             console.log('WARNING: clients/ folder already contains client files:');
-            jsonFiles.forEach(f => console.log(`  - ${f}`));
+            jsonFiles.forEach((f) => console.log(`  - ${f}`));
             console.log('\nMigration will skip existing clients.\n');
         }
     } catch {
@@ -92,8 +92,8 @@ async function main() {
         }
 
         // Extract privateAddressMarker from extraction block if needed (migrate to tagOverrides)
-        const privateAddressMarker = client.privateAddressMarker ||
-            (client.extraction && client.extraction.privateAddressMarker);
+        const privateAddressMarker =
+            client.privateAddressMarker || (client.extraction && client.extraction.privateAddressMarker);
 
         // Build new client config structure
         const newConfig = {
@@ -159,7 +159,7 @@ async function main() {
     }
 }
 
-main().catch(error => {
+main().catch((error) => {
     console.error('Migration failed:', error.message);
     process.exit(1);
 });

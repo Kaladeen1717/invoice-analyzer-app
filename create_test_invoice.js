@@ -47,7 +47,7 @@ async function createTestInvoice() {
     page.drawText('Quantity', { x: 300, y: y, size: 11, font: boldFont });
     page.drawText('Price', { x: 400, y: y, size: 11, font: boldFont });
     page.drawText('Total', { x: 500, y: y, size: 11, font: boldFont });
-    
+
     y -= 20;
     page.drawText('Professional Services', { x: 50, y: y, size: 11, font: font });
     page.drawText('10 hrs', { x: 300, y: y, size: 11, font: font });

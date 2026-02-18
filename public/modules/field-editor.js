@@ -46,7 +46,9 @@ export function initFieldEditor() {
     discardFieldsBtn.addEventListener('click', discardFieldChanges);
 }
 
-export function isFieldsLoaded() { return fieldsLoaded; }
+export function isFieldsLoaded() {
+    return fieldsLoaded;
+}
 
 export async function loadFieldDefinitions() {
     try {
@@ -81,7 +83,9 @@ export async function loadFieldDefinitions() {
 }
 
 /** Mark fields as needing reload (e.g. after config import/restore). */
-export function invalidateFields() { fieldsLoaded = false; }
+export function invalidateFields() {
+    fieldsLoaded = false;
+}
 
 export function hasUnsavedFieldChanges() {
     return JSON.stringify(fieldDefinitions) !== JSON.stringify(originalFieldDefinitions);
@@ -104,7 +108,7 @@ export function discardFieldChanges() {
 export function readFieldsFromDOM() {
     const table = document.getElementById('fieldsTable');
     if (table && editMode) {
-        table.querySelectorAll('td.editing').forEach(td => deactivateCellEdit(td));
+        table.querySelectorAll('td.editing').forEach((td) => deactivateCellEdit(td));
     }
 }
 
@@ -113,9 +117,8 @@ export function readFieldsFromDOM() {
 function onCellWrite(index, fieldName, input, tr) {
     if (index >= fieldDefinitions.length || !fieldName) return;
 
-    fieldDefinitions[index][fieldName] = input.tagName === 'INPUT' && input.type === 'checkbox'
-        ? input.checked
-        : input.value.trim();
+    fieldDefinitions[index][fieldName] =
+        input.tagName === 'INPUT' && input.type === 'checkbox' ? input.checked : input.value.trim();
 
     // Auto-generate key from label for new fields
     if (fieldName === 'label') {
@@ -164,7 +167,7 @@ function renderFieldList() {
         { text: 'Source', cls: 'col-source' },
         { text: 'Actions', cls: 'col-actions' }
     ];
-    headers.forEach(h => {
+    headers.forEach((h) => {
         const th = document.createElement('th');
         th.className = h.cls;
         th.textContent = h.text;
@@ -244,7 +247,7 @@ function renderFieldList() {
         typeEdit.className = 'cell-edit';
         const typeSelect = document.createElement('select');
         typeSelect.dataset.field = 'type';
-        VALID_FIELD_TYPES.forEach(t => {
+        VALID_FIELD_TYPES.forEach((t) => {
             const opt = document.createElement('option');
             opt.value = t;
             opt.textContent = t;
@@ -314,13 +317,13 @@ function renderFieldList() {
 
     // Attach click-to-edit handlers only in edit mode
     if (editMode) {
-        table.querySelectorAll('td.cell-editable').forEach(td => {
+        table.querySelectorAll('td.cell-editable').forEach((td) => {
             td.addEventListener('click', () => activateCellEdit(td));
         });
     }
 
     // Auto-generate key from label for new rows
-    table.querySelectorAll('#fieldListBody tr').forEach(row => {
+    table.querySelectorAll('#fieldListBody tr').forEach((row) => {
         const keyEdit = row.querySelector('td.col-key .cell-edit input[data-field="key"]');
         const labelEdit = row.querySelector('td.col-label .cell-edit input[data-field="label"]');
         if (keyEdit && labelEdit) {
@@ -451,15 +454,33 @@ async function saveFieldDefinitions() {
         const field = fieldDefinitions[i];
         const rowNum = i + 1;
 
-        if (!field.label) { showAlert(`Row ${rowNum}: label is required`, 'error'); return; }
-        if (!field.key) { showAlert(`Row ${rowNum}: key is required`, 'error'); return; }
-        if (!/^[a-z][a-zA-Z0-9]*$/.test(field.key)) {
-            showAlert(`Row ${rowNum}: key must start with a lowercase letter and contain only alphanumeric characters`, 'error');
+        if (!field.label) {
+            showAlert(`Row ${rowNum}: label is required`, 'error');
             return;
         }
-        if (!validTypes.includes(field.type)) { showAlert(`Row ${rowNum}: invalid field type`, 'error'); return; }
-        if (!field.schemaHint) { showAlert(`Row ${rowNum}: schema hint is required`, 'error'); return; }
-        if (!field.instruction) { showAlert(`Row ${rowNum}: instruction is required`, 'error'); return; }
+        if (!field.key) {
+            showAlert(`Row ${rowNum}: key is required`, 'error');
+            return;
+        }
+        if (!/^[a-z][a-zA-Z0-9]*$/.test(field.key)) {
+            showAlert(
+                `Row ${rowNum}: key must start with a lowercase letter and contain only alphanumeric characters`,
+                'error'
+            );
+            return;
+        }
+        if (!validTypes.includes(field.type)) {
+            showAlert(`Row ${rowNum}: invalid field type`, 'error');
+            return;
+        }
+        if (!field.schemaHint) {
+            showAlert(`Row ${rowNum}: schema hint is required`, 'error');
+            return;
+        }
+        if (!field.instruction) {
+            showAlert(`Row ${rowNum}: instruction is required`, 'error');
+            return;
+        }
 
         const duplicateIndex = fieldDefinitions.findIndex((f, j) => j !== i && f.key === field.key);
         if (duplicateIndex !== -1) {
