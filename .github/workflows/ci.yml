@@ -32,3 +32,57 @@ jobs:
 
       - name: Test
         run: npm test
+
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Dead code detection (Knip)
+        run: npx knip
+
+      - name: Secret scanning (TruffleHog)
+        uses: trufflesecurity/trufflehog@main
+        continue-on-error: true
+        with:
+          extra_args: --only-verified
+
+      - name: Static analysis (Semgrep)
+        uses: semgrep/semgrep-action@v1
+        continue-on-error: true
+        with:
+          config: auto
+
+  codeql:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    permissions:
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3

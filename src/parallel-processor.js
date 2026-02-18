@@ -28,10 +28,11 @@ function sleep(ms) {
  * @param {Object} config - Configuration object
  * @param {Object} options - Processing options
  * @param {string} options.apiKey - Optional API key for this client
+ * @param {boolean} options.dryRun - If true, skip file moves and PDF enrichment
  * @returns {Promise<Object>} Processing result
  */
 async function processWithRetry(filePath, config, options = {}) {
-    const { apiKey, onProgress } = options;
+    const { apiKey, onProgress, dryRun } = options;
     const maxAttempts = config.processing.retryAttempts + 1;
     const baseDelay = config.processing.retryDelayMs || 1000;
 
@@ -39,7 +40,7 @@ async function processWithRetry(filePath, config, options = {}) {
     const startTime = Date.now();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        const result = await processInvoice(filePath, config, { apiKey, onProgress });
+        const result = await processInvoice(filePath, config, { apiKey, onProgress, dryRun });
 
         if (result.success) {
             result.duration = Date.now() - startTime;
@@ -80,16 +81,21 @@ async function processWithRetry(filePath, config, options = {}) {
  * @param {Object} options - Processing options
  * @param {string} options.apiKey - Optional API key for this client
  * @param {string} options.csvPath - Optional path to CSV log file
+ * @param {string[]} options.files - Optional list of filenames to process (filters from available PDFs)
  * @param {Function} options.onProgress - Progress callback for SSE
  * @param {Function} options.onComplete - Called when all processing is done
  * @param {Function} options.onInvoiceComplete - Called after each invoice is processed
  * @returns {Promise<Object>} Processing results summary
  */
 async function processAllInvoices(config, options = {}) {
-    const { apiKey, csvPath, onProgress, onComplete, onInvoiceComplete, storeResults = true } = options;
+    const { apiKey, csvPath, onProgress, onComplete, onInvoiceComplete, storeResults = true, dryRun, files } = options;
 
-    // Get all PDF files
-    const pdfFiles = await getPdfFiles(config);
+    // Get all PDF files, then filter if specific files requested
+    let pdfFiles = await getPdfFiles(config);
+    if (files && files.length > 0) {
+        const fileSet = new Set(files);
+        pdfFiles = pdfFiles.filter((f) => fileSet.has(path.basename(f)));
+    }
 
     if (pdfFiles.length === 0) {
         const result = {
@@ -125,6 +131,7 @@ async function processAllInvoices(config, options = {}) {
         return limit(async () => {
             const result = await processWithRetry(filePath, config, {
                 apiKey,
+                dryRun,
                 onProgress: (progress) => {
                     if (onProgress) {
                         onProgress({
@@ -139,8 +146,8 @@ async function processAllInvoices(config, options = {}) {
             completed++;
             results.push(result);
 
-            // Log to CSV if successful and csvPath is provided
-            if (result.success && csvPath) {
+            // Log to CSV if successful and csvPath is provided (skip for dry-run)
+            if (result.success && !result.dryRun && csvPath) {
                 try {
                     await appendInvoiceRow(csvPath, result, config);
                     csvRowsAdded++;
@@ -167,8 +174,10 @@ async function processAllInvoices(config, options = {}) {
             }
 
             if (onProgress) {
+                let progressStatus = 'failed';
+                if (result.success) progressStatus = result.dryRun ? 'dry-run-completed' : 'completed';
                 onProgress({
-                    status: result.success ? 'completed' : 'failed',
+                    status: progressStatus,
                     filename: result.originalFilename,
                     outputFilename: result.outputFilename,
                     error: result.error,

@@ -876,6 +876,51 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // ============================================================================
+// FILE LISTING API ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/clients/:id/files - List PDF files in client's input folder
+ */
+app.get('/api/clients/:id/files', async (req, res) => {
+    try {
+        const clientId = req.params.id;
+        const globalConfig = await loadConfig({ requireFolders: false });
+        const clientConfig = await getClientConfig(clientId, globalConfig);
+
+        const inputFolder = clientConfig.folders.base;
+
+        try {
+            await fs.access(inputFolder);
+        } catch {
+            return res.json({ files: [], folderPath: inputFolder, exists: false });
+        }
+
+        const entries = await fs.readdir(inputFolder);
+        const pdfFiles = entries.filter((f) => f.toLowerCase().endsWith('.pdf'));
+
+        const files = await Promise.all(
+            pdfFiles.map(async (filename) => {
+                const filePath = path.join(inputFolder, filename);
+                const stat = await fs.stat(filePath);
+                return {
+                    filename,
+                    size: stat.size,
+                    lastModified: stat.mtime.toISOString()
+                };
+            })
+        );
+
+        files.sort((a, b) => a.filename.localeCompare(b.filename));
+
+        res.json({ files, folderPath: inputFolder, exists: true });
+    } catch (error) {
+        const status = error.message.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: error.message });
+    }
+});
+
+// ============================================================================
 // PROCESSING API ENDPOINTS
 // ============================================================================
 
@@ -947,14 +992,20 @@ app.post('/api/clients/:id/process', async (req, res) => {
             promptTemplate: clientConfig.promptTemplate
         };
 
+        // Check for dry-run mode and file selection
+        const dryRun = req.body && req.body.dryRun === true;
+        const files = req.body && Array.isArray(req.body.files) ? req.body.files : undefined;
+
         // Start processing with progress streaming
         await processAllInvoices(processingConfig, {
             csvPath: clientConfig.folders.csvPath,
+            dryRun,
+            files,
             onProgress: (data) => {
-                res.write('data: ' + JSON.stringify({ ...data, clientId }) + '\n\n');
+                res.write('data: ' + JSON.stringify({ ...data, clientId, dryRun }) + '\n\n');
             },
             onComplete: (summary) => {
-                res.write('data: ' + JSON.stringify({ status: 'done', clientId, ...summary }) + '\n\n');
+                res.write('data: ' + JSON.stringify({ status: 'done', clientId, dryRun, ...summary }) + '\n\n');
                 res.end();
                 activeProcessing.delete(clientId);
             }

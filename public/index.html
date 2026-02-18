@@ -265,6 +265,36 @@
                             </div>
                         </section>
 
+                        <!-- File Selection & Processing -->
+                        <section class="detail-section">
+                            <div class="section-header">
+                                <h2>
+                                    Files
+                                    <span class="results-count" id="fileCount"></span>
+                                </h2>
+                                <div class="section-actions">
+                                    <button class="btn btn-small btn-secondary" id="refreshFilesBtn">Refresh</button>
+                                    <button
+                                        class="btn btn-small btn-secondary"
+                                        id="dryRunSelectedBtn"
+                                        style="display: none"
+                                    >
+                                        Dry Run Selected
+                                    </button>
+                                    <button
+                                        class="btn btn-small btn-primary"
+                                        id="processSelectedBtn"
+                                        style="display: none"
+                                    >
+                                        Process Selected
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="fileSelector">
+                                <div class="empty-placeholder">Loading files...</div>
+                            </div>
+                        </section>
+
                         <!-- Processing History -->
                         <section class="detail-section">
                             <div class="section-header">
@@ -284,6 +314,7 @@
                                         <button class="btn btn-small btn-filter active" data-filter="all">All</button>
                                         <button class="btn btn-small btn-filter" data-filter="success">Success</button>
                                         <button class="btn btn-small btn-filter" data-filter="failed">Failed</button>
+                                        <button class="btn btn-small btn-filter" data-filter="dry-run">Dry Run</button>
                                     </div>
                                 </div>
                             </div>
