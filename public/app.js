@@ -13,6 +13,14 @@ let deleteFieldIndex = null;
 let fieldsLoaded = false;
 let editMode = false;
 
+// Tag editor state
+let tagDefinitions = [];
+let originalTagDefinitions = [];
+let editingTagIndex = null;
+let deleteTagIndex = null;
+let tagsLoaded = false;
+let currentTagParams = [];
+
 // DOM elements
 const statusIndicator = document.getElementById('statusIndicator');
 const statusText = document.getElementById('statusText');
@@ -65,6 +73,44 @@ const closeDeleteFieldModalBtn = document.getElementById('closeDeleteFieldModalB
 const cancelDeleteFieldBtn = document.getElementById('cancelDeleteFieldBtn');
 const confirmDeleteFieldBtn = document.getElementById('confirmDeleteFieldBtn');
 
+// Tag editor elements
+const tagListEl = document.getElementById('tagList');
+const tagsSaveBar = document.getElementById('tagsSaveBar');
+const reloadTagsBtn = document.getElementById('reloadTagsBtn');
+const addTagBtn = document.getElementById('addTagBtn');
+const saveTagsBtn = document.getElementById('saveTagsBtn');
+const discardTagsBtn = document.getElementById('discardTagsBtn');
+
+// Tag edit modal elements
+const tagEditModal = document.getElementById('tagEditModal');
+const tagModalTitle = document.getElementById('tagModalTitle');
+const tagLabelInput = document.getElementById('tagLabel');
+const tagIdInput = document.getElementById('tagId');
+const tagInstructionInput = document.getElementById('tagInstruction');
+const tagEnabledInput = document.getElementById('tagEnabled');
+const tagOutputPdfInput = document.getElementById('tagOutputPdf');
+const tagOutputCsvInput = document.getElementById('tagOutputCsv');
+const tagOutputFilenameInput = document.getElementById('tagOutputFilename');
+const tagFilenameFormatInput = document.getElementById('tagFilenameFormat');
+const tagFilenamePlaceholderInput = document.getElementById('tagFilenamePlaceholder');
+const tagFilenameOptions = document.getElementById('tagFilenameOptions');
+const tagParamsList = document.getElementById('tagParamsList');
+const addTagParamBtn = document.getElementById('addTagParamBtn');
+const closeTagEditModalBtn = document.getElementById('closeTagEditModalBtn');
+const cancelTagFormBtn = document.getElementById('cancelTagFormBtn');
+const saveTagFormBtn = document.getElementById('saveTagFormBtn');
+
+// Tag preset modal elements
+const tagPresetModal = document.getElementById('tagPresetModal');
+const closeTagPresetModalBtn = document.getElementById('closeTagPresetModalBtn');
+
+// Delete tag modal elements
+const deleteTagModal = document.getElementById('deleteTagModal');
+const deleteTagNameEl = document.getElementById('deleteTagName');
+const closeDeleteTagModalBtn = document.getElementById('closeDeleteTagModalBtn');
+const cancelDeleteTagBtn = document.getElementById('cancelDeleteTagBtn');
+const confirmDeleteTagBtn = document.getElementById('confirmDeleteTagBtn');
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -80,14 +126,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 
 function switchTab(tabName) {
-    // Check for unsaved field changes when leaving global-config
+    // Check for unsaved changes when leaving global-config
     if (activeTab === 'global-config' && tabName !== 'global-config') {
         if (editMode) readFieldsFromDOM();
-        if (hasUnsavedFieldChanges()) {
-            if (!confirm('You have unsaved field changes. Discard and switch tabs?')) {
+        const unsavedFields = hasUnsavedFieldChanges();
+        const unsavedTags = hasUnsavedTagChanges();
+        if (unsavedFields || unsavedTags) {
+            if (!confirm('You have unsaved changes. Discard and switch tabs?')) {
                 return;
             }
-            discardFieldChanges();
+            if (unsavedFields) discardFieldChanges();
+            if (unsavedTags) discardTagChanges();
         }
     }
 
@@ -103,9 +152,10 @@ function switchTab(tabName) {
         content.classList.toggle('active', content.id === `tab-${tabName}`);
     });
 
-    // Load fields on first visit to global-config
-    if (tabName === 'global-config' && !fieldsLoaded) {
-        loadFieldDefinitions();
+    // Load data on first visit to global-config
+    if (tabName === 'global-config') {
+        if (!fieldsLoaded) loadFieldDefinitions();
+        if (!tagsLoaded) loadTagDefinitions();
     }
 }
 
@@ -1195,6 +1245,480 @@ function discardFieldChanges() {
 }
 
 // ============================================================================
+// TAG DEFINITIONS EDITOR
+// ============================================================================
+
+const TAG_PRESETS = {
+    'address-match': {
+        label: 'Private',
+        instruction: 'Set to true if the address "{{address}}" appears anywhere in the document.',
+        parameters: [{ name: 'address', defaultValue: '' }],
+        output: { pdf: true, csv: true, filename: true, filenameFormat: ' - PRIVATE', filenamePlaceholder: 'privateTag' }
+    },
+    'content-keyword': {
+        label: 'Contains Keyword',
+        instruction: 'Set to true if the document contains the keyword "{{keyword}}".',
+        parameters: [{ name: 'keyword', defaultValue: '' }],
+        output: { pdf: true, csv: true, filename: false }
+    },
+    'document-classification': {
+        label: 'Credit Note',
+        instruction: 'Set to true if this document is a credit note (negative invoice, refund, or credit memo) rather than a standard invoice.',
+        parameters: [],
+        output: { pdf: true, csv: true, filename: true, filenameFormat: ' - CREDIT', filenamePlaceholder: 'creditTag' }
+    },
+    'custom': {
+        label: '',
+        instruction: '',
+        parameters: [],
+        output: { pdf: false, csv: false, filename: false }
+    }
+};
+
+async function loadTagDefinitions() {
+    try {
+        tagListEl.textContent = '';
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'loading-placeholder';
+        loadingDiv.textContent = 'Loading tags...';
+        tagListEl.appendChild(loadingDiv);
+
+        const response = await fetch('/api/config');
+        const data = await response.json();
+
+        if (response.ok) {
+            // Convert parameter objects to arrays for easier UI editing
+            tagDefinitions = (data.tagDefinitions || []).map(tag => ({
+                ...tag,
+                parameters: Object.entries(tag.parameters || {}).map(([name, param]) => ({
+                    name,
+                    label: param.label || name,
+                    defaultValue: param.default || ''
+                }))
+            }));
+            originalTagDefinitions = JSON.parse(JSON.stringify(tagDefinitions));
+            tagsLoaded = true;
+            renderTagList();
+        } else {
+            tagListEl.textContent = '';
+            const errDiv = document.createElement('div');
+            errDiv.className = 'error-placeholder';
+            errDiv.textContent = 'Error: ' + (data.error || 'Unknown error');
+            tagListEl.appendChild(errDiv);
+        }
+    } catch (error) {
+        tagListEl.textContent = '';
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error-placeholder';
+        errDiv.textContent = 'Failed to load tags: ' + error.message;
+        tagListEl.appendChild(errDiv);
+    }
+}
+
+function renderTagList() {
+    tagListEl.textContent = '';
+
+    if (tagDefinitions.length === 0) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'empty-placeholder';
+        const p1 = document.createElement('p');
+        p1.textContent = 'No tag rules defined yet.';
+        const p2 = document.createElement('p');
+        p2.textContent = 'Click "+ Add Tag Rule" to create one.';
+        placeholder.appendChild(p1);
+        placeholder.appendChild(p2);
+        tagListEl.appendChild(placeholder);
+        updateTagsSaveBar();
+        return;
+    }
+
+    const cards = document.createElement('div');
+    cards.className = 'tag-cards';
+
+    tagDefinitions.forEach((tag, index) => {
+        const card = document.createElement('div');
+        card.className = 'tag-card' + (tag.enabled === false ? ' disabled' : '');
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'tag-card-header';
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'tag-card-label';
+        labelSpan.textContent = tag.label || '(untitled)';
+        header.appendChild(labelSpan);
+
+        const idSpan = document.createElement('span');
+        idSpan.className = 'tag-card-id';
+        idSpan.textContent = tag.id;
+        header.appendChild(idSpan);
+
+        const actions = document.createElement('div');
+        actions.className = 'tag-card-actions';
+
+        const toggle = document.createElement('button');
+        toggle.className = 'btn-icon tag-toggle-btn';
+        toggle.dataset.index = index;
+        toggle.title = tag.enabled !== false ? 'Disable' : 'Enable';
+        toggle.textContent = tag.enabled !== false ? '\u25CF' : '\u25CB';
+        actions.appendChild(toggle);
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn-icon tag-edit-btn';
+        editBtn.dataset.index = index;
+        editBtn.title = 'Edit';
+        editBtn.textContent = '\u270E';
+        actions.appendChild(editBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn-icon btn-icon-danger tag-delete-btn';
+        delBtn.dataset.index = index;
+        delBtn.title = 'Delete';
+        delBtn.textContent = '\u2715';
+        actions.appendChild(delBtn);
+
+        header.appendChild(actions);
+        card.appendChild(header);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'tag-card-body';
+
+        if (tag.instruction) {
+            const instrP = document.createElement('p');
+            instrP.className = 'tag-card-instruction';
+            instrP.textContent = tag.instruction;
+            instrP.title = tag.instruction;
+            body.appendChild(instrP);
+        }
+
+        // Output badges
+        const badges = document.createElement('div');
+        badges.className = 'tag-output-badges';
+
+        const output = tag.output || {};
+        if (output.filename) {
+            const badge = document.createElement('span');
+            badge.className = 'output-badge output-badge-filename';
+            badge.textContent = 'Filename';
+            badges.appendChild(badge);
+        }
+        if (output.pdf) {
+            const badge = document.createElement('span');
+            badge.className = 'output-badge output-badge-pdf';
+            badge.textContent = 'PDF';
+            badges.appendChild(badge);
+        }
+        if (output.csv) {
+            const badge = document.createElement('span');
+            badge.className = 'output-badge output-badge-csv';
+            badge.textContent = 'CSV';
+            badges.appendChild(badge);
+        }
+
+        body.appendChild(badges);
+        card.appendChild(body);
+        cards.appendChild(card);
+    });
+
+    tagListEl.appendChild(cards);
+
+    // Attach event listeners to card buttons
+    document.querySelectorAll('.tag-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = parseInt(btn.dataset.index);
+            tagDefinitions[idx].enabled = tagDefinitions[idx].enabled === false ? true : false;
+            renderTagList();
+        });
+    });
+
+    document.querySelectorAll('.tag-edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openTagForm(parseInt(btn.dataset.index));
+        });
+    });
+
+    document.querySelectorAll('.tag-delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showDeleteTagConfirmation(parseInt(btn.dataset.index));
+        });
+    });
+
+    updateTagsSaveBar();
+}
+
+function openPresetChooser() {
+    tagPresetModal.classList.add('active');
+}
+
+function closePresetChooser() {
+    tagPresetModal.classList.remove('active');
+}
+
+function createTagFromPreset(presetKey) {
+    const preset = TAG_PRESETS[presetKey];
+    if (!preset) return;
+
+    closePresetChooser();
+
+    const newTag = {
+        id: preset.label ? labelToSnakeCase(preset.label) : '',
+        label: preset.label,
+        instruction: preset.instruction,
+        enabled: true,
+        parameters: (preset.parameters || []).map(p => ({ ...p })),
+        output: { ...preset.output }
+    };
+
+    tagDefinitions.push(newTag);
+    openTagForm(tagDefinitions.length - 1);
+}
+
+function openTagForm(index) {
+    editingTagIndex = index;
+    const tag = tagDefinitions[index];
+
+    tagModalTitle.textContent = tag.label ? 'Edit Tag Rule' : 'Create Tag Rule';
+    tagLabelInput.value = tag.label || '';
+    tagIdInput.value = tag.id || '';
+    tagInstructionInput.value = tag.instruction || '';
+    tagEnabledInput.checked = tag.enabled !== false;
+    tagOutputPdfInput.checked = !!(tag.output && tag.output.pdf);
+    tagOutputCsvInput.checked = !!(tag.output && tag.output.csv);
+    tagOutputFilenameInput.checked = !!(tag.output && tag.output.filename);
+
+    const fnOpts = tag.output || {};
+    tagFilenameFormatInput.value = fnOpts.filenameFormat || '';
+    tagFilenamePlaceholderInput.value = fnOpts.filenamePlaceholder || '';
+    tagFilenameOptions.style.display = tagOutputFilenameInput.checked ? 'block' : 'none';
+
+    currentTagParams = (tag.parameters || []).map(p => ({ ...p }));
+    renderTagParams();
+
+    tagEditModal.classList.add('active');
+}
+
+function closeTagForm() {
+    tagEditModal.classList.remove('active');
+    editingTagIndex = null;
+    currentTagParams = [];
+}
+
+function renderTagParams() {
+    tagParamsList.textContent = '';
+
+    if (currentTagParams.length === 0) {
+        const hint = document.createElement('p');
+        hint.className = 'section-description';
+        hint.textContent = 'No parameters defined. Use {{paramName}} in your instruction to reference parameters.';
+        tagParamsList.appendChild(hint);
+        return;
+    }
+
+    currentTagParams.forEach((param, index) => {
+        const row = document.createElement('div');
+        row.className = 'param-row';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.placeholder = 'Parameter name';
+        nameInput.value = param.name || '';
+        nameInput.dataset.paramIndex = index;
+        nameInput.dataset.paramField = 'name';
+        nameInput.addEventListener('input', () => {
+            currentTagParams[index].name = nameInput.value;
+        });
+        row.appendChild(nameInput);
+
+        const defaultInput = document.createElement('input');
+        defaultInput.type = 'text';
+        defaultInput.placeholder = 'Default value';
+        defaultInput.value = param.defaultValue || '';
+        defaultInput.dataset.paramIndex = index;
+        defaultInput.dataset.paramField = 'defaultValue';
+        defaultInput.addEventListener('input', () => {
+            currentTagParams[index].defaultValue = defaultInput.value;
+        });
+        row.appendChild(defaultInput);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn-icon btn-icon-danger';
+        removeBtn.title = 'Remove parameter';
+        removeBtn.textContent = '\u2715';
+        removeBtn.addEventListener('click', () => {
+            currentTagParams.splice(index, 1);
+            renderTagParams();
+        });
+        row.appendChild(removeBtn);
+
+        tagParamsList.appendChild(row);
+    });
+}
+
+function addTagParameter() {
+    currentTagParams.push({ name: '', defaultValue: '' });
+    renderTagParams();
+    // Focus the last name input
+    const inputs = tagParamsList.querySelectorAll('input[data-param-field="name"]');
+    if (inputs.length > 0) inputs[inputs.length - 1].focus();
+}
+
+function saveTagForm() {
+    if (editingTagIndex === null) return;
+
+    const label = tagLabelInput.value.trim();
+    const id = tagIdInput.value.trim();
+    const instruction = tagInstructionInput.value.trim();
+
+    if (!label) {
+        showAlert('Tag label is required', 'error');
+        return;
+    }
+    if (!id) {
+        showAlert('Tag ID is required', 'error');
+        return;
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(id)) {
+        showAlert('Tag ID must start with a lowercase letter and contain only lowercase letters, numbers, and underscores', 'error');
+        return;
+    }
+    if (!instruction) {
+        showAlert('Tag instruction is required', 'error');
+        return;
+    }
+
+    // Check duplicate IDs
+    const dupIndex = tagDefinitions.findIndex((t, i) => i !== editingTagIndex && t.id === id);
+    if (dupIndex !== -1) {
+        showAlert(`Duplicate tag ID "${id}" (already used by "${tagDefinitions[dupIndex].label}")`, 'error');
+        return;
+    }
+
+    // Validate parameters
+    for (let i = 0; i < currentTagParams.length; i++) {
+        if (!currentTagParams[i].name.trim()) {
+            showAlert(`Parameter ${i + 1}: name is required`, 'error');
+            return;
+        }
+    }
+
+    tagDefinitions[editingTagIndex] = {
+        id,
+        label,
+        instruction,
+        enabled: tagEnabledInput.checked,
+        parameters: currentTagParams.map(p => ({
+            name: p.name.trim(),
+            label: p.label || p.name.trim(),
+            defaultValue: p.defaultValue || ''
+        })),
+        output: {
+            pdf: tagOutputPdfInput.checked,
+            csv: tagOutputCsvInput.checked,
+            filename: tagOutputFilenameInput.checked,
+            filenameFormat: tagOutputFilenameInput.checked ? tagFilenameFormatInput.value.trim() : undefined,
+            filenamePlaceholder: tagOutputFilenameInput.checked ? tagFilenamePlaceholderInput.value.trim() : undefined
+        }
+    };
+
+    closeTagForm();
+    renderTagList();
+}
+
+function showDeleteTagConfirmation(index) {
+    deleteTagIndex = index;
+    deleteTagNameEl.textContent = tagDefinitions[index].label || tagDefinitions[index].id;
+    deleteTagModal.classList.add('active');
+}
+
+function closeDeleteTagModalFn() {
+    deleteTagModal.classList.remove('active');
+    deleteTagIndex = null;
+}
+
+function confirmDeleteTag() {
+    if (deleteTagIndex === null) return;
+    tagDefinitions.splice(deleteTagIndex, 1);
+    closeDeleteTagModalFn();
+    renderTagList();
+}
+
+function hasUnsavedTagChanges() {
+    return JSON.stringify(tagDefinitions) !== JSON.stringify(originalTagDefinitions);
+}
+
+function updateTagsSaveBar() {
+    tagsSaveBar.style.display = hasUnsavedTagChanges() ? 'flex' : 'none';
+}
+
+async function saveTagDefinitions() {
+    if (tagDefinitions.length === 0 && originalTagDefinitions.length === 0) {
+        showAlert('No tag changes to save', 'info');
+        return;
+    }
+
+    try {
+        saveTagsBtn.disabled = true;
+        saveTagsBtn.textContent = '';
+        const spinner = document.createElement('span');
+        spinner.className = 'spinner';
+        saveTagsBtn.appendChild(spinner);
+        saveTagsBtn.appendChild(document.createTextNode(' Saving...'));
+
+        // Convert parameter arrays back to objects for the API
+        const apiTagDefs = tagDefinitions.map(tag => ({
+            ...tag,
+            parameters: (tag.parameters || []).reduce((obj, p) => {
+                if (p.name.trim()) {
+                    obj[p.name.trim()] = {
+                        label: p.label || p.name.trim(),
+                        default: p.defaultValue || ''
+                    };
+                }
+                return obj;
+            }, {})
+        }));
+
+        const response = await fetch('/api/config/tags', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tagDefinitions: apiTagDefs })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            originalTagDefinitions = JSON.parse(JSON.stringify(tagDefinitions));
+            renderTagList();
+            showAlert(result.message || 'Tag definitions saved', 'success');
+        } else {
+            showAlert(result.error || result.details || 'Failed to save tags', 'error');
+        }
+    } catch (error) {
+        showAlert('Failed to save tags: ' + error.message, 'error');
+    } finally {
+        saveTagsBtn.disabled = false;
+        saveTagsBtn.textContent = 'Save Changes';
+    }
+}
+
+function discardTagChanges() {
+    tagDefinitions = JSON.parse(JSON.stringify(originalTagDefinitions));
+    renderTagList();
+}
+
+function labelToSnakeCase(label) {
+    return label
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '');
+}
+
+// ============================================================================
 // EVENT LISTENERS
 // ============================================================================
 
@@ -1266,10 +1790,60 @@ function setupEventListeners() {
         }
     });
 
+    // Tag editor buttons
+    reloadTagsBtn.addEventListener('click', () => {
+        tagsLoaded = false;
+        loadTagDefinitions();
+    });
+    addTagBtn.addEventListener('click', openPresetChooser);
+    saveTagsBtn.addEventListener('click', saveTagDefinitions);
+    discardTagsBtn.addEventListener('click', discardTagChanges);
+
+    // Tag edit modal
+    closeTagEditModalBtn.addEventListener('click', closeTagForm);
+    cancelTagFormBtn.addEventListener('click', closeTagForm);
+    saveTagFormBtn.addEventListener('click', saveTagForm);
+    addTagParamBtn.addEventListener('click', addTagParameter);
+
+    tagLabelInput.addEventListener('input', () => {
+        tagIdInput.value = labelToSnakeCase(tagLabelInput.value);
+    });
+
+    tagOutputFilenameInput.addEventListener('change', () => {
+        tagFilenameOptions.style.display = tagOutputFilenameInput.checked ? 'block' : 'none';
+    });
+
+    tagEditModal.addEventListener('click', (e) => {
+        if (e.target === tagEditModal) closeTagForm();
+    });
+
+    // Tag preset modal
+    closeTagPresetModalBtn.addEventListener('click', closePresetChooser);
+    tagPresetModal.addEventListener('click', (e) => {
+        if (e.target === tagPresetModal) closePresetChooser();
+    });
+    document.querySelectorAll('.preset-card').forEach(card => {
+        card.addEventListener('click', () => createTagFromPreset(card.dataset.preset));
+    });
+
+    // Delete tag modal
+    closeDeleteTagModalBtn.addEventListener('click', closeDeleteTagModalFn);
+    cancelDeleteTagBtn.addEventListener('click', closeDeleteTagModalFn);
+    confirmDeleteTagBtn.addEventListener('click', confirmDeleteTag);
+    deleteTagModal.addEventListener('click', (e) => {
+        if (e.target === deleteTagModal) closeDeleteTagModalFn();
+    });
+
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (deleteFieldModal.classList.contains('active')) {
+            if (deleteTagModal.classList.contains('active')) {
+                closeDeleteTagModalFn();
+            } else if (tagEditModal.classList.contains('active')) {
+                closeTagForm();
+            } else if (tagPresetModal.classList.contains('active')) {
+                closePresetChooser();
+            } else if (deleteFieldModal.classList.contains('active')) {
                 closeDeleteFieldModal();
             } else if (deleteModal.classList.contains('active')) {
                 closeDeleteModal();
