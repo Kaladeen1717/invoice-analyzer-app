@@ -917,21 +917,64 @@ h1 {
   white-space: nowrap;
 }
 
-/* Cell view/edit toggle */
-.fields-table .cell-view {
+/* Cell view/edit toggle — click-to-edit pattern */
+.fields-table .cell-view,
+.tags-table .cell-view {
   display: inline;
 }
 
-.fields-table .cell-edit {
+.fields-table .cell-edit,
+.tags-table .cell-edit {
   display: none;
 }
 
-.fields-table.edit-mode .cell-view {
+/* When a single cell is being edited */
+.fields-table td.editing .cell-view,
+.tags-table td.editing .cell-view {
   display: none;
 }
 
-.fields-table.edit-mode .cell-edit {
+.fields-table td.editing .cell-edit,
+.tags-table td.editing .cell-edit {
   display: block;
+}
+
+/* Hover hint on editable cells when table is in edit mode */
+.fields-table.edit-mode td.cell-editable .cell-view,
+.tags-table.edit-mode td.cell-editable .cell-view {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.25rem 0.375rem;
+  margin: -0.25rem -0.375rem;
+  cursor: text;
+  transition: border-color 0.15s;
+}
+
+.fields-table.edit-mode td.cell-editable:hover .cell-view,
+.tags-table.edit-mode td.cell-editable:hover .cell-view {
+  border-color: var(--border);
+}
+
+/* Inline delete confirmation */
+.row-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.row-delete-confirm .confirm-label {
+  color: var(--error);
+  font-weight: 600;
+}
+
+tr.confirm-delete {
+  background: rgba(239, 68, 68, 0.08) !important;
+}
+
+tr.confirm-delete td {
+  border-bottom-color: rgba(239, 68, 68, 0.2);
 }
 
 /* View mode text truncation (multi-line clamp) */
@@ -1111,12 +1154,14 @@ h1 {
 }
 
 /* Toggle icon in table enabled column */
-.fields-table .toggle-icon {
+.fields-table .toggle-icon,
+.tags-table .toggle-icon {
   font-size: 0.875rem;
   cursor: default;
 }
 
-.fields-table.edit-mode .toggle-icon {
+.fields-table.edit-mode .toggle-icon,
+.tags-table.edit-mode .toggle-icon {
   cursor: pointer;
 }
 
@@ -1193,133 +1238,263 @@ h1 {
   border-top: 1px solid var(--border);
 }
 
-/* Tag Cards */
-.tag-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+/* Tags Table */
+.tags-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
 }
 
-.tag-card {
-  background: var(--bg-dark);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 1rem 1.25rem;
-  transition: var(--transition);
-}
-
-.tag-card:hover {
-  border-color: var(--primary);
-  background: var(--bg-card-hover);
-}
-
-.tag-card.disabled {
-  opacity: 0.5;
-}
-
-.tag-card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.tag-card-label {
+.tags-table th {
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
-  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+
+.tags-table td {
+  padding: 0.625rem 0.75rem;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
 }
 
-.tag-card-id {
+.tags-table tbody tr:hover {
+  background: var(--bg-card-hover);
+}
+
+.tags-table tbody tr.disabled {
+  opacity: 0.5;
+}
+
+/* Tags table column widths */
+.tags-table .col-enabled { width: 50px; text-align: center; }
+.tags-table .col-label { min-width: 120px; }
+.tags-table .col-id { min-width: 100px; }
+.tags-table .col-instruction { min-width: 200px; max-width: 350px; }
+.tags-table .col-output { width: 50px; text-align: center; }
+.tags-table .col-actions { width: 100px; white-space: nowrap; }
+
+/* Tags actions column hidden in view mode */
+.tags-table th.col-actions,
+.tags-table td.col-actions {
+  display: none;
+}
+
+.tags-table.edit-mode th.col-actions,
+.tags-table.edit-mode td.col-actions {
+  display: table-cell;
+}
+
+.tags-table td.col-actions {
+  vertical-align: middle;
+}
+
+/* Output checkboxes */
+.output-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--success);
+  cursor: default;
+  pointer-events: none;
+}
+
+.tags-table.edit-mode .output-checkbox {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* Expandable tag detail row */
+.tag-detail-row {
+  background: var(--bg-dark);
+}
+
+.tag-detail-row.collapsed {
+  display: none;
+}
+
+.tag-detail-content {
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+}
+
+.tag-detail-content h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+/* Parameters mini-table inside detail row */
+.params-mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  margin-bottom: 0.75rem;
+}
+
+.params-mini-table th {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.params-mini-table td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.params-mini-table input[type="text"] {
+  width: 100%;
+  padding: 0.25rem 0.375rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-family: inherit;
+}
+
+.params-mini-table input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* Filename options row in detail */
+.filename-options {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-top: 0.5rem;
+}
+
+.filename-options .form-group {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.filename-options .form-group label {
+  font-size: 0.6875rem;
+  margin-bottom: 0.25rem;
+}
+
+.filename-options input[type="text"] {
+  width: 100%;
+  padding: 0.25rem 0.375rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-family: inherit;
+}
+
+.filename-options input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* Inline edit inputs for tags table */
+.tags-table .cell-edit input[type="text"],
+.tags-table .cell-edit textarea {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.tags-table .cell-edit input[type="text"]:focus,
+.tags-table .cell-edit textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.tags-table .cell-edit textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.tags-table .cell-view code {
   font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
   font-size: 0.75rem;
-  color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.05);
   padding: 0.125rem 0.375rem;
   border-radius: 4px;
 }
 
-.tag-card-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 0.25rem;
-}
-
-.tag-card-body {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.tag-card-instruction {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  flex: 1;
-  min-width: 200px;
-  white-space: nowrap;
+.tags-table .cell-view-truncate {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 320px;
+  white-space: normal;
+  line-height: 1.4;
 }
 
-.tag-output-badges {
-  display: flex;
-  gap: 0.375rem;
-  flex-shrink: 0;
+/* Add-tag dropdown */
+.add-tag-dropdown {
+  position: relative;
+  display: inline-block;
 }
 
-.output-badge {
-  font-size: 0.625rem;
-  font-weight: 600;
-  padding: 0.125rem 0.5rem;
-  border-radius: 9999px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  min-width: 200px;
+  overflow: hidden;
 }
 
-.output-badge-filename {
-  background: rgba(251, 146, 60, 0.15);
-  color: var(--warning);
+.dropdown-menu.open {
+  display: block;
 }
 
-.output-badge-pdf {
-  background: rgba(34, 197, 94, 0.15);
-  color: var(--success);
-}
-
-.output-badge-csv {
-  background: rgba(59, 130, 246, 0.15);
-  color: var(--primary-light);
-}
-
-/* Modal wide */
-.modal-wide {
-  max-width: 600px;
-}
-
-/* Tag form sections */
-.tag-form-section {
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.tag-form-section:last-of-type {
-  border-bottom: none;
-}
-
-.tag-form-section h4 {
-  font-size: 1rem;
-  font-weight: 600;
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  background: none;
+  border: none;
   color: var(--text-primary);
-  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
-.tag-form-section .section-description {
-  margin-bottom: 0.75rem;
+.dropdown-item:hover {
+  background: var(--bg-card-hover);
 }
 
-/* Parameter rows */
+.dropdown-item:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Parameter rows (reusable) */
 .param-row {
   display: flex;
   gap: 0.5rem;
@@ -1339,41 +1514,6 @@ h1 {
 
 .param-row .btn-icon {
   margin-bottom: 0.125rem;
-}
-
-/* Preset grid */
-.preset-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.preset-card {
-  background: var(--bg-dark);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 1.25rem;
-  cursor: pointer;
-  transition: var(--transition);
-  text-align: left;
-}
-
-.preset-card:hover {
-  border-color: var(--primary);
-  background: var(--bg-card-hover);
-}
-
-.preset-card-title {
-  font-weight: 600;
-  font-size: 0.9375rem;
-  color: var(--text-primary);
-  margin-bottom: 0.375rem;
-}
-
-.preset-card-desc {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  line-height: 1.4;
 }
 
 /* Tags save bar */
