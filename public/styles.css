@@ -1656,6 +1656,122 @@ tr.confirm-delete td {
   color: #000;
 }
 
+/* Model Editor */
+.model-editor-section {
+  border-top: 1px solid var(--border);
+  padding-top: 2rem;
+  margin-top: 2rem;
+}
+
+.model-selector {
+  max-width: 500px;
+}
+
+.model-select {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
+}
+
+.model-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.model-custom-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.model-custom-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
+}
+
+.model-custom-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.model-save-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+  z-index: 10;
+}
+
+.model-save-bar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.model-display {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.model-display code {
+  font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
+  font-size: 0.85rem;
+  background: var(--surface);
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.model-detail-edit {
+  margin-top: 0.5rem;
+  max-width: 400px;
+}
+
+.model-detail-edit select,
+.model-detail-edit input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
+}
+
+.model-detail-edit select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
+  cursor: pointer;
+}
+
 /* Filename Template Editor */
 .filename-editor-section {
   border-top: 1px solid var(--border);
