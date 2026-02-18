@@ -107,8 +107,19 @@
           <div class="section-header">
             <h2>Tag Rules</h2>
             <div class="section-actions">
+              <button class="btn btn-small edit-toggle-btn" id="tagEditToggleBtn">
+                <span>Locked</span>
+              </button>
               <button class="btn btn-secondary btn-small" id="reloadTagsBtn"><span>Reload</span></button>
-              <button class="btn btn-primary btn-small" id="addTagBtn"><span>+ Add Tag Rule</span></button>
+              <div class="add-tag-dropdown" id="addTagDropdown" style="display: none;">
+                <button class="btn btn-primary btn-small" id="addTagBtn"><span>+ Add Tag Rule</span></button>
+                <div class="dropdown-menu" id="addTagMenu">
+                  <button class="dropdown-item" data-preset="address-match">Address Match</button>
+                  <button class="dropdown-item" data-preset="content-keyword">Content Keyword</button>
+                  <button class="dropdown-item" data-preset="document-classification">Document Classification</button>
+                  <button class="dropdown-item" data-preset="custom">Custom</button>
+                </div>
+              </div>
             </div>
           </div>
           <p class="section-description">Define boolean tags that classify invoices. Tags can appear in filenames, PDF summaries, and CSV logs. Use parameters for values that differ per client.</p>
@@ -251,143 +262,6 @@
       <div class="form-actions">
         <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
         <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Delete Field Confirmation Modal -->
-  <div class="modal-overlay" id="deleteFieldModal">
-    <div class="modal modal-small">
-      <div class="modal-header">
-        <h3>Delete Field</h3>
-        <button class="modal-close" id="closeDeleteFieldModalBtn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Are you sure you want to delete "<strong id="deleteFieldName"></strong>"?</p>
-        <p class="text-warning">This field will be removed from all future extractions after saving.</p>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-secondary" id="cancelDeleteFieldBtn">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteFieldBtn">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Tag Edit Modal -->
-  <div class="modal-overlay" id="tagEditModal">
-    <div class="modal modal-wide">
-      <div class="modal-header">
-        <h3 id="tagModalTitle">Create Tag Rule</h3>
-        <button class="modal-close" id="closeTagEditModalBtn">&times;</button>
-      </div>
-      <form id="tagEditForm" onsubmit="return false">
-        <div class="tag-form-section">
-          <h4>Basic Info</h4>
-          <div class="form-group">
-            <label for="tagLabel">Label</label>
-            <input type="text" id="tagLabel" placeholder="e.g., Private, Recurring, Credit Note">
-          </div>
-          <div class="form-group">
-            <label for="tagId">ID</label>
-            <input type="text" id="tagId" placeholder="Auto-generated from label" readonly>
-            <span class="form-hint">Unique identifier. Auto-generated from label.</span>
-          </div>
-        </div>
-        <div class="tag-form-section">
-          <h4>AI Instruction</h4>
-          <div class="form-group">
-            <label for="tagInstruction">Instruction</label>
-            <textarea id="tagInstruction" rows="3" placeholder='e.g., Set to true if the address "{{address}}" appears anywhere in the document'></textarea>
-            <span class="form-hint">Tell the AI when this tag should be applied. Use {{paramName}} for values that differ per client.</span>
-          </div>
-        </div>
-        <div class="tag-form-section">
-          <h4>Parameters</h4>
-          <p class="section-description">Parameters are placeholders in your instruction that can be customized per client.</p>
-          <div id="tagParamsList"></div>
-          <button type="button" class="btn btn-secondary btn-small" id="addTagParamBtn"><span>+ Add Parameter</span></button>
-        </div>
-        <div class="tag-form-section">
-          <h4>Output Configuration</h4>
-          <div class="form-group form-checkbox">
-            <label class="checkbox-label"><input type="checkbox" id="tagEnabled" checked><span class="checkbox-text">Enabled</span></label>
-            <span class="form-hint">Disabled tags are excluded from extraction.</span>
-          </div>
-          <div class="form-group form-checkbox">
-            <label class="checkbox-label"><input type="checkbox" id="tagOutputPdf"><span class="checkbox-text">Show in PDF summary</span></label>
-          </div>
-          <div class="form-group form-checkbox">
-            <label class="checkbox-label"><input type="checkbox" id="tagOutputCsv"><span class="checkbox-text">Show in CSV log</span></label>
-          </div>
-          <div class="form-group form-checkbox">
-            <label class="checkbox-label"><input type="checkbox" id="tagOutputFilename"><span class="checkbox-text">Show in filename</span></label>
-          </div>
-          <div id="tagFilenameOptions" style="display: none;">
-            <div class="form-group">
-              <label for="tagFilenameFormat">Filename format</label>
-              <input type="text" id="tagFilenameFormat" placeholder='e.g., " - PRIVATE"'>
-              <span class="form-hint">Text added to the filename when this tag is active.</span>
-            </div>
-            <div class="form-group">
-              <label for="tagFilenamePlaceholder">Filename placeholder</label>
-              <input type="text" id="tagFilenamePlaceholder" placeholder="e.g., privateTag">
-              <span class="form-hint">Template variable name. Use as {placeholder} in the filename template.</span>
-            </div>
-          </div>
-        </div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-secondary" id="cancelTagFormBtn">Cancel</button>
-          <button type="button" class="btn btn-primary" id="saveTagFormBtn">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Tag Preset Chooser Modal -->
-  <div class="modal-overlay" id="tagPresetModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>Choose Tag Template</h3>
-        <button class="modal-close" id="closeTagPresetModalBtn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="section-description">Start with a template to quickly set up common tag patterns.</p>
-        <div class="preset-grid">
-          <button class="preset-card" data-preset="address-match">
-            <div class="preset-card-title">Address Match</div>
-            <div class="preset-card-desc">Tag invoices that contain a specific address.</div>
-          </button>
-          <button class="preset-card" data-preset="content-keyword">
-            <div class="preset-card-title">Content Keyword</div>
-            <div class="preset-card-desc">Tag documents that contain a specific keyword.</div>
-          </button>
-          <button class="preset-card" data-preset="document-classification">
-            <div class="preset-card-title">Document Classification</div>
-            <div class="preset-card-desc">Classify documents by type (invoice, receipt, etc.).</div>
-          </button>
-          <button class="preset-card" data-preset="custom">
-            <div class="preset-card-title">Custom</div>
-            <div class="preset-card-desc">Start from scratch with an empty tag rule.</div>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Delete Tag Confirmation Modal -->
-  <div class="modal-overlay" id="deleteTagModal">
-    <div class="modal modal-small">
-      <div class="modal-header">
-        <h3>Delete Tag Rule</h3>
-        <button class="modal-close" id="closeDeleteTagModalBtn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Are you sure you want to delete "<strong id="deleteTagName"></strong>"?</p>
-        <p class="text-warning">This tag will be removed from all future extractions after saving.</p>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-secondary" id="cancelDeleteTagBtn">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteTagBtn">Delete</button>
       </div>
     </div>
   </div>
