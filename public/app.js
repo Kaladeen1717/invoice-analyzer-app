@@ -39,7 +39,6 @@ const saveClientBtn = document.getElementById('saveClientBtn');
 const clientIdInput = document.getElementById('clientId');
 const clientNameInput = document.getElementById('clientName');
 const folderPathInput = document.getElementById('folderPath');
-const privateAddressMarkerInput = document.getElementById('privateAddressMarker');
 const apiKeyEnvVarInput = document.getElementById('apiKeyEnvVar');
 const clientEnabledInput = document.getElementById('clientEnabled');
 
@@ -265,7 +264,6 @@ function openClientForm(clientId = null) {
         clientIdInput.disabled = true;
         clientNameInput.value = client.name;
         folderPathInput.value = client.folderPath;
-        privateAddressMarkerInput.value = client.privateAddressMarker;
         apiKeyEnvVarInput.value = client.apiKeyEnvVar || '';
         clientEnabledInput.checked = client.enabled;
         deleteClientBtn.style.display = 'inline-flex';
@@ -294,7 +292,6 @@ async function saveClient(e) {
         clientId: clientIdInput.value.trim().toLowerCase(),
         name: clientNameInput.value.trim(),
         folderPath: folderPathInput.value.trim(),
-        privateAddressMarker: privateAddressMarkerInput.value.trim(),
         apiKeyEnvVar: apiKeyEnvVarInput.value.trim() || null,
         enabled: clientEnabledInput.checked
     };
@@ -314,10 +311,6 @@ async function saveClient(e) {
     }
     if (!clientData.folderPath) {
         showAlert('Folder path is required', 'error');
-        return;
-    }
-    if (!clientData.privateAddressMarker) {
-        showAlert('Private address marker is required', 'error');
         return;
     }
 

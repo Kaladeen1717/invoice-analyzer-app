@@ -2,6 +2,12 @@
   "name": "Duff Beauty",
   "enabled": true,
   "folderPath": "/Users/lassefeldt-rasmussen/Library/CloudStorage/GoogleDrive-lasse@feldtrasmussen.dk/Fællesdrev/Data Warehouse/[17] Accounting & Bookkeeping/[05] Supplier Invoices/Invoices",
-  "privateAddressMarker": "Christian II's Allé 23, 1",
+  "tagOverrides": {
+    "private": {
+      "parameters": {
+        "address": "Christian II's Allé 23, 1"
+      }
+    }
+  },
   "apiKeyEnvVar": null
 }

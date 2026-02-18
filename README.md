@@ -87,7 +87,13 @@ Create `clients/my-company.json`:
   "name": "My Company",
   "enabled": true,
   "folderPath": "/path/to/invoices",
-  "privateAddressMarker": "Home Address Here"
+  "tagOverrides": {
+    "private": {
+      "parameters": {
+        "address": "Home Address Here"
+      }
+    }
+  }
 }
 ```
 
