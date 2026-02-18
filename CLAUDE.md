@@ -15,12 +15,11 @@ Local application that analyzes invoice PDFs using Google's Gemini Vision API. S
 - `@google/generative-ai` — Gemini Vision API client
 - `express` — Web server and REST API
 - `pdf-lib` — PDF manipulation (embedding analysis)
-- `pdf-parse` — PDF text extraction
 - `p-limit` — Concurrency control for parallel processing
-- `multer` — File upload handling
 - `dotenv` — Environment variable loading
 - `eslint` + `prettier` — Code quality and formatting
 - `jest` — Unit testing
+- `knip` — Dead code and dependency detection
 
 ## Project Structure
 
@@ -39,6 +38,7 @@ src/
   prompt-builder.js     — Gemini API prompt construction from config
   filename-generator.js — Dynamic filename from extracted data + template
   csv-logger.js         — CSV logging of processed invoices
+  result-manager.js     — Processing result storage and retrieval (per-client JSON)
 
 public/
   app.js                — Thin orchestrator (~160 lines): init, tab switching, keyboard shortcuts
@@ -58,6 +58,7 @@ public/
     export-import.js    — Config export/import/backup management
     client-list.js      — Dashboard: client cards, CRUD, processing with SSE
     client-detail.js    — Client detail: view config, customize/reset overrides
+    results-viewer.js   — Processing history viewer with filtering, retry, pagination
 
 clients/                — Per-client JSON config files (e.g., duffbeauty.json)
 tests/                  — Unit tests (Jest)
@@ -126,8 +127,24 @@ When adding a new field type or override section, update both files.
 - Branch from `main` for each ticket
 - Dev server: `npm run dev` (auto-restarts via nodemon)
 - Test changes: open `http://localhost:3000` (UI) or `node batch-process.js --list` (CLI)
-- Run `npm run lint` before committing
-- Run `npm test` to verify no regressions
+
+### Pre-commit Checks
+
+Run before every commit:
+
+```bash
+npm run lint && npm run format:check && npm test && npx knip
+```
+
+Or use the `/run-checks` skill to run all checks and get a summary.
+
+### CI Pipeline
+
+On every PR to `main`, GitHub Actions runs:
+
+1. **lint-and-test** (Node 18 + 20): `npm ci` → `npm run lint` → `npm run format:check` → `npm test`
+2. **security**: `npm audit` → `npx knip` → TruffleHog (secret scanning) → Semgrep (static analysis)
+3. **codeql**: GitHub CodeQL security analysis
 
 ## Linear Integration
 

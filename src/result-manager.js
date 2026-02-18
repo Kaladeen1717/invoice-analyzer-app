@@ -49,17 +49,21 @@ async function appendResult(folderPath, result, options = {}) {
     const data = await readResultsFile(folderPath);
     const now = new Date().toISOString();
 
+    let status = 'failed';
+    if (result.success) status = result.dryRun ? 'dry-run' : 'success';
+
     const record = {
         id: crypto.randomUUID(),
         originalFilename: result.originalFilename,
         outputFilename: result.outputFilename || null,
-        status: result.success ? 'success' : 'failed',
+        status,
         model: options.model || null,
         extractedFields: result.success ? result.analysis || {} : {},
         tags: result.success && result.analysis ? result.analysis.tags || {} : {},
         tokenUsage: result.tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 },
         timestamp: now,
         error: result.error || null,
+        rawResponse: result.rawResponse || null,
         duration: options.duration || null
     };
 
@@ -125,6 +129,7 @@ async function getSummary(folderPath) {
             total: 0,
             success: 0,
             failed: 0,
+            dryRun: 0,
             successRate: 0,
             tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 },
             firstProcessed: null,
@@ -134,6 +139,7 @@ async function getSummary(folderPath) {
 
     const success = results.filter((r) => r.status === 'success').length;
     const failed = results.filter((r) => r.status === 'failed').length;
+    const dryRunCount = results.filter((r) => r.status === 'dry-run').length;
 
     const tokenUsage = results.reduce(
         (acc, r) => {
@@ -153,6 +159,7 @@ async function getSummary(folderPath) {
         total: results.length,
         success,
         failed,
+        dryRun: dryRunCount,
         successRate: Math.round((success / results.length) * 100),
         tokenUsage,
         firstProcessed: timestamps[0],
