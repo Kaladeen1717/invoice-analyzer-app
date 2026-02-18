@@ -9,17 +9,14 @@ let activeTab = 'dashboard';
 // Field editor state
 let fieldDefinitions = [];
 let originalFieldDefinitions = [];
-let deleteFieldIndex = null;
 let fieldsLoaded = false;
 let editMode = false;
 
 // Tag editor state
 let tagDefinitions = [];
 let originalTagDefinitions = [];
-let editingTagIndex = null;
-let deleteTagIndex = null;
 let tagsLoaded = false;
-let currentTagParams = [];
+let tagEditMode = false;
 
 // Prompt editor state
 let promptTemplate = { preamble: '', generalRules: '', suffix: '' };
@@ -75,50 +72,17 @@ const editToggleBtn = document.getElementById('editToggleBtn');
 const saveFieldsBtn = document.getElementById('saveFieldsBtn');
 const discardFieldsBtn = document.getElementById('discardFieldsBtn');
 
-// Delete field modal elements
-const deleteFieldModal = document.getElementById('deleteFieldModal');
-const deleteFieldName = document.getElementById('deleteFieldName');
-const closeDeleteFieldModalBtn = document.getElementById('closeDeleteFieldModalBtn');
-const cancelDeleteFieldBtn = document.getElementById('cancelDeleteFieldBtn');
-const confirmDeleteFieldBtn = document.getElementById('confirmDeleteFieldBtn');
 
 // Tag editor elements
 const tagListEl = document.getElementById('tagList');
 const tagsSaveBar = document.getElementById('tagsSaveBar');
 const reloadTagsBtn = document.getElementById('reloadTagsBtn');
 const addTagBtn = document.getElementById('addTagBtn');
+const addTagDropdown = document.getElementById('addTagDropdown');
+const addTagMenu = document.getElementById('addTagMenu');
+const tagEditToggleBtn = document.getElementById('tagEditToggleBtn');
 const saveTagsBtn = document.getElementById('saveTagsBtn');
 const discardTagsBtn = document.getElementById('discardTagsBtn');
-
-// Tag edit modal elements
-const tagEditModal = document.getElementById('tagEditModal');
-const tagModalTitle = document.getElementById('tagModalTitle');
-const tagLabelInput = document.getElementById('tagLabel');
-const tagIdInput = document.getElementById('tagId');
-const tagInstructionInput = document.getElementById('tagInstruction');
-const tagEnabledInput = document.getElementById('tagEnabled');
-const tagOutputPdfInput = document.getElementById('tagOutputPdf');
-const tagOutputCsvInput = document.getElementById('tagOutputCsv');
-const tagOutputFilenameInput = document.getElementById('tagOutputFilename');
-const tagFilenameFormatInput = document.getElementById('tagFilenameFormat');
-const tagFilenamePlaceholderInput = document.getElementById('tagFilenamePlaceholder');
-const tagFilenameOptions = document.getElementById('tagFilenameOptions');
-const tagParamsList = document.getElementById('tagParamsList');
-const addTagParamBtn = document.getElementById('addTagParamBtn');
-const closeTagEditModalBtn = document.getElementById('closeTagEditModalBtn');
-const cancelTagFormBtn = document.getElementById('cancelTagFormBtn');
-const saveTagFormBtn = document.getElementById('saveTagFormBtn');
-
-// Tag preset modal elements
-const tagPresetModal = document.getElementById('tagPresetModal');
-const closeTagPresetModalBtn = document.getElementById('closeTagPresetModalBtn');
-
-// Delete tag modal elements
-const deleteTagModal = document.getElementById('deleteTagModal');
-const deleteTagNameEl = document.getElementById('deleteTagName');
-const closeDeleteTagModalBtn = document.getElementById('closeDeleteTagModalBtn');
-const cancelDeleteTagBtn = document.getElementById('cancelDeleteTagBtn');
-const confirmDeleteTagBtn = document.getElementById('confirmDeleteTagBtn');
 
 // Prompt editor elements
 const promptPreambleInput = document.getElementById('promptPreamble');
@@ -153,6 +117,9 @@ function switchTab(tabName) {
     // Check for unsaved changes when leaving global-config
     if (activeTab === 'global-config' && tabName !== 'global-config') {
         if (editMode) readFieldsFromDOM();
+        // Flush any editing tag cells
+        const tagsTable = document.getElementById('tagsTable');
+        if (tagsTable) tagsTable.querySelectorAll('td.editing').forEach(td => deactivateCellEdit(td));
         const unsavedFields = hasUnsavedFieldChanges();
         const unsavedTags = hasUnsavedTagChanges();
         const unsavedPrompt = hasUnsavedPromptChanges();
@@ -829,32 +796,26 @@ function renderFieldList() {
         if (!field.enabled) tr.className = 'disabled';
         tr.dataset.index = index;
 
-        // Enabled column
+        // Enabled column — toggle dot (click to toggle in edit mode)
         const tdEnabled = document.createElement('td');
         tdEnabled.className = 'col-enabled';
-        const enabledView = document.createElement('span');
-        enabledView.className = 'cell-view';
         const toggleIcon = document.createElement('span');
         toggleIcon.className = 'toggle-icon ' + (field.enabled ? 'enabled' : 'disabled');
-        toggleIcon.innerHTML = field.enabled ? '&#9679;' : '&#9675;';
-        enabledView.appendChild(toggleIcon);
-        tdEnabled.appendChild(enabledView);
-        const enabledEdit = document.createElement('span');
-        enabledEdit.className = 'cell-edit';
-        const enabledCheckbox = document.createElement('input');
-        enabledCheckbox.type = 'checkbox';
-        enabledCheckbox.dataset.field = 'enabled';
-        enabledCheckbox.checked = field.enabled;
-        enabledEdit.appendChild(enabledCheckbox);
-        tdEnabled.appendChild(enabledEdit);
+        toggleIcon.textContent = field.enabled ? '\u25CF' : '\u25CB';
+        if (editMode) {
+            toggleIcon.addEventListener('click', () => {
+                toggleField(index);
+            });
+        }
+        tdEnabled.appendChild(toggleIcon);
         tr.appendChild(tdEnabled);
 
-        // Label column
+        // Label column — click-to-edit
         const tdLabel = document.createElement('td');
-        tdLabel.className = 'col-label';
+        tdLabel.className = 'col-label cell-editable';
         const labelView = document.createElement('span');
         labelView.className = 'cell-view';
-        labelView.textContent = field.label;
+        labelView.textContent = field.label || '(empty)';
         tdLabel.appendChild(labelView);
         const labelEdit = document.createElement('span');
         labelEdit.className = 'cell-edit';
@@ -866,30 +827,31 @@ function renderFieldList() {
         tdLabel.appendChild(labelEdit);
         tr.appendChild(tdLabel);
 
-        // Key column
+        // Key column — click-to-edit (read-only for built-in or existing keys)
         const tdKey = document.createElement('td');
-        tdKey.className = 'col-key';
+        const isKeyReadonly = field.builtIn || field.key !== '';
+        tdKey.className = 'col-key' + (!isKeyReadonly ? ' cell-editable' : '');
         const keyView = document.createElement('span');
         keyView.className = 'cell-view';
         const keyCode = document.createElement('code');
         keyCode.textContent = field.key;
         keyView.appendChild(keyCode);
         tdKey.appendChild(keyView);
-        const keyEdit = document.createElement('span');
-        keyEdit.className = 'cell-edit';
-        const keyInput = document.createElement('input');
-        keyInput.type = 'text';
-        keyInput.dataset.field = 'key';
-        keyInput.value = field.key;
-        const isKeyReadonly = field.builtIn || field.key !== '';
-        keyInput.readOnly = isKeyReadonly;
-        keyEdit.appendChild(keyInput);
-        tdKey.appendChild(keyEdit);
+        if (!isKeyReadonly) {
+            const keyEdit = document.createElement('span');
+            keyEdit.className = 'cell-edit';
+            const keyInput = document.createElement('input');
+            keyInput.type = 'text';
+            keyInput.dataset.field = 'key';
+            keyInput.value = field.key;
+            keyEdit.appendChild(keyInput);
+            tdKey.appendChild(keyEdit);
+        }
         tr.appendChild(tdKey);
 
-        // Type column
+        // Type column — click-to-edit
         const tdType = document.createElement('td');
-        tdType.className = 'col-type';
+        tdType.className = 'col-type cell-editable';
         const typeView = document.createElement('span');
         typeView.className = 'cell-view';
         typeView.textContent = field.type;
@@ -909,13 +871,13 @@ function renderFieldList() {
         tdType.appendChild(typeEdit);
         tr.appendChild(tdType);
 
-        // Schema Hint column
+        // Schema Hint column — click-to-edit
         const tdHint = document.createElement('td');
-        tdHint.className = 'col-hint';
+        tdHint.className = 'col-hint cell-editable';
         const hintView = document.createElement('span');
         hintView.className = 'cell-view cell-view-truncate';
         hintView.title = field.schemaHint;
-        hintView.textContent = field.schemaHint;
+        hintView.textContent = field.schemaHint || '(empty)';
         tdHint.appendChild(hintView);
         const hintEdit = document.createElement('span');
         hintEdit.className = 'cell-edit';
@@ -927,13 +889,13 @@ function renderFieldList() {
         tdHint.appendChild(hintEdit);
         tr.appendChild(tdHint);
 
-        // Instruction column
+        // Instruction column — click-to-edit
         const tdInstruction = document.createElement('td');
-        tdInstruction.className = 'col-instruction';
+        tdInstruction.className = 'col-instruction cell-editable';
         const instrView = document.createElement('span');
         instrView.className = 'cell-view cell-view-truncate';
         instrView.title = field.instruction;
-        instrView.textContent = field.instruction;
+        instrView.textContent = field.instruction || '(empty)';
         tdInstruction.appendChild(instrView);
         const instrEdit = document.createElement('span');
         instrEdit.className = 'cell-edit';
@@ -957,35 +919,7 @@ function renderFieldList() {
         // Actions column
         const tdActions = document.createElement('td');
         tdActions.className = 'col-actions';
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'row-actions';
-
-        const moveUpBtn = document.createElement('button');
-        moveUpBtn.className = 'btn-icon field-move-up-btn';
-        moveUpBtn.dataset.index = index;
-        moveUpBtn.title = 'Move up';
-        moveUpBtn.innerHTML = '&#9650;';
-        moveUpBtn.disabled = index === 0;
-        actionsDiv.appendChild(moveUpBtn);
-
-        const moveDownBtn = document.createElement('button');
-        moveDownBtn.className = 'btn-icon field-move-down-btn';
-        moveDownBtn.dataset.index = index;
-        moveDownBtn.title = 'Move down';
-        moveDownBtn.innerHTML = '&#9660;';
-        moveDownBtn.disabled = index === fieldDefinitions.length - 1;
-        actionsDiv.appendChild(moveDownBtn);
-
-        if (!field.builtIn) {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn-icon btn-icon-danger field-delete-btn';
-            deleteBtn.dataset.index = index;
-            deleteBtn.title = 'Delete field';
-            deleteBtn.innerHTML = '&#10005;';
-            actionsDiv.appendChild(deleteBtn);
-        }
-
-        tdActions.appendChild(actionsDiv);
+        buildFieldActions(tdActions, index, field);
         tr.appendChild(tdActions);
 
         tbody.appendChild(tr);
@@ -994,53 +928,218 @@ function renderFieldList() {
     table.appendChild(tbody);
     fieldListEl.appendChild(table);
 
-    attachFieldRowListeners();
-    updateFieldsSaveBar();
-}
-
-function attachFieldRowListeners() {
-    document.querySelectorAll('.field-move-up-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            readFieldsFromDOM();
-            moveField(parseInt(btn.dataset.index), -1);
+    // Attach click-to-edit handlers only in edit mode
+    if (editMode) {
+        table.querySelectorAll('td.cell-editable').forEach(td => {
+            td.addEventListener('click', () => activateCellEdit(td));
         });
-    });
+    }
 
-    document.querySelectorAll('.field-move-down-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            readFieldsFromDOM();
-            moveField(parseInt(btn.dataset.index), 1);
-        });
-    });
-
-    document.querySelectorAll('.field-delete-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            readFieldsFromDOM();
-            showDeleteFieldConfirmation(parseInt(btn.dataset.index));
-        });
-    });
-
-    // Auto-generate key from label for new rows (key input not readonly)
-    document.querySelectorAll('#fieldListBody tr').forEach(row => {
-        const keyInput = row.querySelector('input[data-field="key"]');
-        const labelInput = row.querySelector('input[data-field="label"]');
-        if (keyInput && labelInput && !keyInput.readOnly) {
-            labelInput.addEventListener('input', () => {
-                keyInput.value = labelToCamelCase(labelInput.value);
+    // Auto-generate key from label for new rows
+    table.querySelectorAll('#fieldListBody tr').forEach(row => {
+        const keyEdit = row.querySelector('td.col-key .cell-edit input[data-field="key"]');
+        const labelEdit = row.querySelector('td.col-label .cell-edit input[data-field="label"]');
+        if (keyEdit && labelEdit) {
+            labelEdit.addEventListener('input', () => {
+                keyEdit.value = labelToCamelCase(labelEdit.value);
             });
         }
     });
 
-    // Listen for input changes to update save bar
-    document.querySelectorAll('#fieldListBody input, #fieldListBody select, #fieldListBody textarea').forEach(el => {
-        el.addEventListener('change', () => {
-            readFieldsFromDOM();
-            updateFieldsSaveBar();
-        });
+    updateFieldsSaveBar();
+}
+
+function buildFieldActions(tdActions, index, field) {
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'row-actions';
+
+    const moveUpBtn = document.createElement('button');
+    moveUpBtn.className = 'btn-icon';
+    moveUpBtn.title = 'Move up';
+    moveUpBtn.textContent = '\u25B2';
+    moveUpBtn.disabled = index === 0;
+    moveUpBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveField(index, -1);
     });
+    actionsDiv.appendChild(moveUpBtn);
+
+    const moveDownBtn = document.createElement('button');
+    moveDownBtn.className = 'btn-icon';
+    moveDownBtn.title = 'Move down';
+    moveDownBtn.textContent = '\u25BC';
+    moveDownBtn.disabled = index === fieldDefinitions.length - 1;
+    moveDownBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveField(index, 1);
+    });
+    actionsDiv.appendChild(moveDownBtn);
+
+    if (!field.builtIn) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-icon btn-icon-danger';
+        deleteBtn.title = 'Delete field';
+        deleteBtn.textContent = '\u2715';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showInlineDeleteConfirm(index, 'field');
+        });
+        actionsDiv.appendChild(deleteBtn);
+    }
+
+    tdActions.appendChild(actionsDiv);
+}
+
+function activateCellEdit(td) {
+    if (!editMode && !tagEditMode) return;
+    if (td.classList.contains('editing')) return;
+
+    // Close any other editing cell in the same table
+    const table = td.closest('table');
+    table.querySelectorAll('td.editing').forEach(other => {
+        if (other !== td) deactivateCellEdit(other);
+    });
+
+    // Store original value for escape revert
+    const input = td.querySelector('.cell-edit input, .cell-edit textarea, .cell-edit select');
+    if (input) {
+        td._originalValue = input.value;
+    }
+
+    td.classList.add('editing');
+
+    if (input) {
+        input.focus();
+
+        // Blur handler — write back and deactivate
+        const blurHandler = () => {
+            input.removeEventListener('blur', blurHandler);
+            deactivateCellEdit(td);
+        };
+        input.addEventListener('blur', blurHandler);
+
+        // Keyboard handlers
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && input.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                input.blur();
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                input.value = td._originalValue || '';
+                input.blur();
+            }
+        });
+    }
+}
+
+function deactivateCellEdit(td) {
+    td.classList.remove('editing');
+    const input = td.querySelector('.cell-edit input, .cell-edit textarea, .cell-edit select');
+    const viewSpan = td.querySelector('.cell-view');
+
+    if (input && viewSpan) {
+        // Write value back to state
+        const tr = td.closest('tr');
+        const index = parseInt(tr.dataset.index);
+        const fieldName = input.dataset.field;
+
+        // Determine which data array to write to
+        const table = td.closest('table');
+        if (table.classList.contains('fields-table') && index < fieldDefinitions.length && fieldName) {
+            fieldDefinitions[index][fieldName] = input.tagName === 'INPUT' && input.type === 'checkbox' ? input.checked : input.value.trim();
+
+            // Auto-generate key from label for new fields
+            if (fieldName === 'label') {
+                const keyTd = tr.querySelector('td.col-key');
+                const keyInput = keyTd ? keyTd.querySelector('.cell-edit input[data-field="key"]') : null;
+                if (keyInput && !keyInput.readOnly) {
+                    keyInput.value = labelToCamelCase(input.value);
+                    fieldDefinitions[index].key = keyInput.value;
+                    const keyView = keyTd.querySelector('.cell-view code');
+                    if (keyView) keyView.textContent = keyInput.value;
+                }
+            }
+        } else if (table.classList.contains('tags-table') && index < tagDefinitions.length && fieldName) {
+            tagDefinitions[index][fieldName] = input.value.trim();
+
+            // Auto-generate id from label
+            if (fieldName === 'label') {
+                const idTd = tr.querySelector('td.col-id');
+                if (idTd) {
+                    tagDefinitions[index].id = labelToSnakeCase(input.value);
+                    const idView = idTd.querySelector('.cell-view code');
+                    if (idView) idView.textContent = tagDefinitions[index].id;
+                }
+            }
+        }
+
+        // Update view text
+        if (input.tagName === 'SELECT') {
+            viewSpan.textContent = input.value;
+        } else if (viewSpan.querySelector('code')) {
+            viewSpan.querySelector('code').textContent = input.value;
+        } else {
+            viewSpan.textContent = input.value || '(empty)';
+            if (viewSpan.classList.contains('cell-view-truncate')) {
+                viewSpan.title = input.value;
+            }
+        }
+
+        updateFieldsSaveBar();
+        updateTagsSaveBar();
+    }
+}
+
+function showInlineDeleteConfirm(index, type) {
+    const definitions = type === 'field' ? fieldDefinitions : tagDefinitions;
+    const item = definitions[index];
+    if (!item) return;
+
+    // Find the row
+    const tableClass = type === 'field' ? '.fields-table' : '.tags-table';
+    const table = document.querySelector(tableClass);
+    if (!table) return;
+    const tr = table.querySelector(`tr[data-index="${index}"]`);
+    if (!tr) return;
+
+    tr.classList.add('confirm-delete');
+
+    // Replace actions cell content with confirm/cancel
+    const actionsTd = tr.querySelector('td.col-actions');
+    if (!actionsTd) return;
+    actionsTd.textContent = '';
+
+    const confirmDiv = document.createElement('div');
+    confirmDiv.className = 'row-delete-confirm';
+
+    const label = document.createElement('span');
+    label.className = 'confirm-label';
+    label.textContent = 'Delete?';
+    confirmDiv.appendChild(label);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-secondary btn-small';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (type === 'field') renderFieldList();
+        else renderTagList();
+    });
+    confirmDiv.appendChild(cancelBtn);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-danger btn-small';
+    confirmBtn.textContent = 'Confirm';
+    confirmBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        definitions.splice(index, 1);
+        if (type === 'field') renderFieldList();
+        else renderTagList();
+    });
+    confirmDiv.appendChild(confirmBtn);
+
+    actionsTd.appendChild(confirmDiv);
 }
 
 function toggleEditMode() {
@@ -1057,36 +1156,15 @@ function toggleEditMode() {
     editToggleBtn.querySelector('span').textContent = editMode ? 'Editing' : 'Locked';
     addFieldBtn.style.display = editMode ? 'inline-flex' : 'none';
 
-    const table = document.getElementById('fieldsTable');
-    if (table) {
-        table.classList.toggle('edit-mode', editMode);
-    }
-
-    if (!editMode) {
-        renderFieldList();
-    }
+    renderFieldList();
 }
 
 function readFieldsFromDOM() {
-    const rows = document.querySelectorAll('#fieldListBody tr');
-    rows.forEach((row, index) => {
-        if (index >= fieldDefinitions.length) return;
-        const field = fieldDefinitions[index];
-
-        const enabledInput = row.querySelector('input[data-field="enabled"]');
-        const labelInput = row.querySelector('input[data-field="label"]');
-        const keyInput = row.querySelector('input[data-field="key"]');
-        const typeSelect = row.querySelector('select[data-field="type"]');
-        const hintTextarea = row.querySelector('textarea[data-field="schemaHint"]');
-        const instructionTextarea = row.querySelector('textarea[data-field="instruction"]');
-
-        if (enabledInput) field.enabled = enabledInput.checked;
-        if (labelInput) field.label = labelInput.value.trim();
-        if (keyInput) field.key = keyInput.value.trim();
-        if (typeSelect) field.type = typeSelect.value;
-        if (hintTextarea) field.schemaHint = hintTextarea.value.trim();
-        if (instructionTextarea) field.instruction = instructionTextarea.value.trim();
-    });
+    // Flush any currently-editing cell back to state
+    const table = document.getElementById('fieldsTable');
+    if (table) {
+        table.querySelectorAll('td.editing').forEach(td => deactivateCellEdit(td));
+    }
 }
 
 function addNewFieldRow() {
@@ -1104,11 +1182,11 @@ function addNewFieldRow() {
     });
     renderFieldList();
 
-    // Focus the label input of the new row
+    // Activate click-to-edit on the label cell of the new row
     const lastRow = document.querySelector('#fieldListBody tr:last-child');
     if (lastRow) {
-        const labelInput = lastRow.querySelector('input[data-field="label"]');
-        if (labelInput) labelInput.focus();
+        const labelTd = lastRow.querySelector('td.col-label');
+        if (labelTd) activateCellEdit(labelTd);
     }
 }
 
@@ -1150,28 +1228,6 @@ function moveField(index, direction) {
     renderFieldList();
 }
 
-function showDeleteFieldConfirmation(index) {
-    const field = fieldDefinitions[index];
-    if (field.builtIn) return;
-
-    deleteFieldIndex = index;
-    deleteFieldName.textContent = field.label;
-    deleteFieldModal.classList.add('active');
-}
-
-function closeDeleteFieldModal() {
-    deleteFieldModal.classList.remove('active');
-    deleteFieldIndex = null;
-}
-
-function confirmDeleteField() {
-    if (deleteFieldIndex === null) return;
-    if (fieldDefinitions[deleteFieldIndex].builtIn) return;
-
-    fieldDefinitions.splice(deleteFieldIndex, 1);
-    closeDeleteFieldModal();
-    renderFieldList();
-}
 
 async function saveFieldDefinitions() {
     readFieldsFromDOM();
@@ -1342,6 +1398,23 @@ async function loadTagDefinitions() {
     }
 }
 
+function toggleTagEditMode() {
+    if (tagEditMode && hasUnsavedTagChanges()) {
+        if (!confirm('You have unsaved tag changes. Discard and exit edit mode?')) {
+            return;
+        }
+        tagDefinitions = JSON.parse(JSON.stringify(originalTagDefinitions));
+    }
+
+    tagEditMode = !tagEditMode;
+
+    tagEditToggleBtn.classList.toggle('active', tagEditMode);
+    tagEditToggleBtn.querySelector('span').textContent = tagEditMode ? 'Editing' : 'Locked';
+    addTagDropdown.style.display = tagEditMode ? 'inline-block' : 'none';
+
+    renderTagList();
+}
+
 function renderTagList() {
     tagListEl.textContent = '';
 
@@ -1359,137 +1432,390 @@ function renderTagList() {
         return;
     }
 
-    const cards = document.createElement('div');
-    cards.className = 'tag-cards';
+    const table = document.createElement('table');
+    table.className = 'tags-table' + (tagEditMode ? ' edit-mode' : '');
+    table.id = 'tagsTable';
+
+    // Build thead
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    const headers = [
+        { text: 'On', cls: 'col-enabled' },
+        { text: 'Label', cls: 'col-label' },
+        { text: 'ID', cls: 'col-id' },
+        { text: 'Instruction', cls: 'col-instruction' },
+        { text: 'PDF', cls: 'col-output' },
+        { text: 'CSV', cls: 'col-output' },
+        { text: 'File', cls: 'col-output' },
+        { text: 'Actions', cls: 'col-actions' }
+    ];
+    headers.forEach(h => {
+        const th = document.createElement('th');
+        th.className = h.cls;
+        th.textContent = h.text;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Build tbody
+    const tbody = document.createElement('tbody');
+    tbody.id = 'tagListBody';
 
     tagDefinitions.forEach((tag, index) => {
-        const card = document.createElement('div');
-        card.className = 'tag-card' + (tag.enabled === false ? ' disabled' : '');
+        // Main row
+        const tr = document.createElement('tr');
+        if (tag.enabled === false) tr.classList.add('disabled');
+        tr.dataset.index = index;
 
-        // Header
-        const header = document.createElement('div');
-        header.className = 'tag-card-header';
+        // Enabled column — toggle dot
+        const tdEnabled = document.createElement('td');
+        tdEnabled.className = 'col-enabled';
+        const toggleIcon = document.createElement('span');
+        toggleIcon.className = 'toggle-icon ' + (tag.enabled !== false ? 'enabled' : 'disabled');
+        toggleIcon.textContent = tag.enabled !== false ? '\u25CF' : '\u25CB';
+        if (tagEditMode) {
+            toggleIcon.addEventListener('click', () => {
+                tagDefinitions[index].enabled = tagDefinitions[index].enabled === false ? true : false;
+                renderTagList();
+            });
+        }
+        tdEnabled.appendChild(toggleIcon);
+        tr.appendChild(tdEnabled);
 
-        const labelSpan = document.createElement('span');
-        labelSpan.className = 'tag-card-label';
-        labelSpan.textContent = tag.label || '(untitled)';
-        header.appendChild(labelSpan);
+        // Label column — click-to-edit
+        const tdLabel = document.createElement('td');
+        tdLabel.className = 'col-label cell-editable';
+        const labelView = document.createElement('span');
+        labelView.className = 'cell-view';
+        labelView.textContent = tag.label || '(untitled)';
+        tdLabel.appendChild(labelView);
+        const labelEdit = document.createElement('span');
+        labelEdit.className = 'cell-edit';
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.dataset.field = 'label';
+        labelInput.value = tag.label || '';
+        labelEdit.appendChild(labelInput);
+        tdLabel.appendChild(labelEdit);
+        tr.appendChild(tdLabel);
 
-        const idSpan = document.createElement('span');
-        idSpan.className = 'tag-card-id';
-        idSpan.textContent = tag.id;
-        header.appendChild(idSpan);
+        // ID column — read-only, auto-generated
+        const tdId = document.createElement('td');
+        tdId.className = 'col-id';
+        const idView = document.createElement('span');
+        idView.className = 'cell-view';
+        const idCode = document.createElement('code');
+        idCode.textContent = tag.id || '';
+        idView.appendChild(idCode);
+        tdId.appendChild(idView);
+        tr.appendChild(tdId);
 
-        const actions = document.createElement('div');
-        actions.className = 'tag-card-actions';
+        // Instruction column — click-to-edit textarea
+        const tdInstr = document.createElement('td');
+        tdInstr.className = 'col-instruction cell-editable';
+        const instrView = document.createElement('span');
+        instrView.className = 'cell-view cell-view-truncate';
+        instrView.title = tag.instruction || '';
+        instrView.textContent = tag.instruction || '(empty)';
+        tdInstr.appendChild(instrView);
+        const instrEdit = document.createElement('span');
+        instrEdit.className = 'cell-edit';
+        const instrTextarea = document.createElement('textarea');
+        instrTextarea.dataset.field = 'instruction';
+        instrTextarea.rows = 3;
+        instrTextarea.value = tag.instruction || '';
+        instrEdit.appendChild(instrTextarea);
+        tdInstr.appendChild(instrEdit);
+        tr.appendChild(tdInstr);
 
-        const toggle = document.createElement('button');
-        toggle.className = 'btn-icon tag-toggle-btn';
-        toggle.dataset.index = index;
-        toggle.title = tag.enabled !== false ? 'Disable' : 'Enable';
-        toggle.textContent = tag.enabled !== false ? '\u25CF' : '\u25CB';
-        actions.appendChild(toggle);
+        // PDF output checkbox
+        const tdPdf = document.createElement('td');
+        tdPdf.className = 'col-output';
+        const pdfCb = document.createElement('input');
+        pdfCb.type = 'checkbox';
+        pdfCb.className = 'output-checkbox';
+        pdfCb.checked = !!(tag.output && tag.output.pdf);
+        pdfCb.addEventListener('change', () => {
+            if (!tag.output) tag.output = {};
+            tag.output.pdf = pdfCb.checked;
+            updateTagsSaveBar();
+        });
+        tdPdf.appendChild(pdfCb);
+        tr.appendChild(tdPdf);
 
-        const editBtn = document.createElement('button');
-        editBtn.className = 'btn-icon tag-edit-btn';
-        editBtn.dataset.index = index;
-        editBtn.title = 'Edit';
-        editBtn.textContent = '\u270E';
-        actions.appendChild(editBtn);
+        // CSV output checkbox
+        const tdCsv = document.createElement('td');
+        tdCsv.className = 'col-output';
+        const csvCb = document.createElement('input');
+        csvCb.type = 'checkbox';
+        csvCb.className = 'output-checkbox';
+        csvCb.checked = !!(tag.output && tag.output.csv);
+        csvCb.addEventListener('change', () => {
+            if (!tag.output) tag.output = {};
+            tag.output.csv = csvCb.checked;
+            updateTagsSaveBar();
+        });
+        tdCsv.appendChild(csvCb);
+        tr.appendChild(tdCsv);
 
+        // Filename output checkbox
+        const tdFn = document.createElement('td');
+        tdFn.className = 'col-output';
+        const fnCb = document.createElement('input');
+        fnCb.type = 'checkbox';
+        fnCb.className = 'output-checkbox';
+        fnCb.checked = !!(tag.output && tag.output.filename);
+        fnCb.addEventListener('change', () => {
+            if (!tag.output) tag.output = {};
+            tag.output.filename = fnCb.checked;
+            // Toggle filename options in detail row
+            const detailRow = tbody.querySelector(`tr.tag-detail-row[data-index="${index}"]`);
+            if (detailRow) {
+                const fnOpts = detailRow.querySelector('.filename-options');
+                if (fnOpts) fnOpts.style.display = fnCb.checked ? 'flex' : 'none';
+            }
+            updateTagsSaveBar();
+        });
+        tdFn.appendChild(fnCb);
+        tr.appendChild(tdFn);
+
+        // Actions column
+        const tdActions = document.createElement('td');
+        tdActions.className = 'col-actions';
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'row-actions';
+
+        // Expand/collapse button
+        const expandBtn = document.createElement('button');
+        expandBtn.className = 'btn-icon';
+        expandBtn.title = 'Expand details';
+        expandBtn.textContent = '\u25B6';
+        expandBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const detailRow = tbody.querySelector(`tr.tag-detail-row[data-index="${index}"]`);
+            if (detailRow) {
+                const isCollapsed = detailRow.classList.toggle('collapsed');
+                expandBtn.textContent = isCollapsed ? '\u25B6' : '\u25BC';
+            }
+        });
+        actionsDiv.appendChild(expandBtn);
+
+        // Delete button
         const delBtn = document.createElement('button');
-        delBtn.className = 'btn-icon btn-icon-danger tag-delete-btn';
-        delBtn.dataset.index = index;
-        delBtn.title = 'Delete';
+        delBtn.className = 'btn-icon btn-icon-danger';
+        delBtn.title = 'Delete tag';
         delBtn.textContent = '\u2715';
-        actions.appendChild(delBtn);
-
-        header.appendChild(actions);
-        card.appendChild(header);
-
-        // Body
-        const body = document.createElement('div');
-        body.className = 'tag-card-body';
-
-        if (tag.instruction) {
-            const instrP = document.createElement('p');
-            instrP.className = 'tag-card-instruction';
-            instrP.textContent = tag.instruction;
-            instrP.title = tag.instruction;
-            body.appendChild(instrP);
-        }
-
-        // Output badges
-        const badges = document.createElement('div');
-        badges.className = 'tag-output-badges';
-
-        const output = tag.output || {};
-        if (output.filename) {
-            const badge = document.createElement('span');
-            badge.className = 'output-badge output-badge-filename';
-            badge.textContent = 'Filename';
-            badges.appendChild(badge);
-        }
-        if (output.pdf) {
-            const badge = document.createElement('span');
-            badge.className = 'output-badge output-badge-pdf';
-            badge.textContent = 'PDF';
-            badges.appendChild(badge);
-        }
-        if (output.csv) {
-            const badge = document.createElement('span');
-            badge.className = 'output-badge output-badge-csv';
-            badge.textContent = 'CSV';
-            badges.appendChild(badge);
-        }
-
-        body.appendChild(badges);
-        card.appendChild(body);
-        cards.appendChild(card);
-    });
-
-    tagListEl.appendChild(cards);
-
-    // Attach event listeners to card buttons
-    document.querySelectorAll('.tag-toggle-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        delBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const idx = parseInt(btn.dataset.index);
-            tagDefinitions[idx].enabled = tagDefinitions[idx].enabled === false ? true : false;
-            renderTagList();
+            showInlineDeleteConfirm(index, 'tag');
         });
+        actionsDiv.appendChild(delBtn);
+
+        tdActions.appendChild(actionsDiv);
+        tr.appendChild(tdActions);
+
+        tbody.appendChild(tr);
+
+        // Detail row (collapsed by default)
+        const detailTr = document.createElement('tr');
+        detailTr.className = 'tag-detail-row collapsed';
+        detailTr.dataset.index = index;
+        const detailTd = document.createElement('td');
+        detailTd.colSpan = headers.length;
+        buildTagDetailContent(detailTd, tag, index);
+        detailTr.appendChild(detailTd);
+        tbody.appendChild(detailTr);
     });
 
-    document.querySelectorAll('.tag-edit-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openTagForm(parseInt(btn.dataset.index));
-        });
-    });
+    table.appendChild(tbody);
+    tagListEl.appendChild(table);
 
-    document.querySelectorAll('.tag-delete-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showDeleteTagConfirmation(parseInt(btn.dataset.index));
+    // Attach click-to-edit handlers only in tag edit mode
+    if (tagEditMode) {
+        table.querySelectorAll('td.cell-editable').forEach(td => {
+            td.addEventListener('click', () => activateCellEdit(td));
         });
-    });
+    }
 
     updateTagsSaveBar();
 }
 
-function openPresetChooser() {
-    tagPresetModal.classList.add('active');
+function buildTagDetailContent(container, tag, index) {
+    const content = document.createElement('div');
+    content.className = 'tag-detail-content';
+
+    // Parameters section
+    const paramsH4 = document.createElement('h4');
+    paramsH4.textContent = 'Parameters';
+    content.appendChild(paramsH4);
+
+    const paramsContainer = document.createElement('div');
+    paramsContainer.className = 'tag-params-container';
+    paramsContainer.dataset.tagIndex = index;
+    renderInlineParams(paramsContainer, tag, index);
+    content.appendChild(paramsContainer);
+
+    if (tagEditMode) {
+        const addParamBtn = document.createElement('button');
+        addParamBtn.className = 'btn btn-secondary btn-small';
+        addParamBtn.textContent = '+ Add Parameter';
+        addParamBtn.style.marginTop = '0.5rem';
+        addParamBtn.addEventListener('click', () => {
+            if (!tag.parameters) tag.parameters = [];
+            tag.parameters.push({ name: '', defaultValue: '' });
+            renderInlineParams(paramsContainer, tag, index);
+            updateTagsSaveBar();
+        });
+        content.appendChild(addParamBtn);
+    }
+
+    // Filename options section
+    const fnH4 = document.createElement('h4');
+    fnH4.textContent = 'Filename Options';
+    fnH4.style.marginTop = '1rem';
+    content.appendChild(fnH4);
+
+    const fnOpts = document.createElement('div');
+    fnOpts.className = 'filename-options';
+    fnOpts.style.display = (tag.output && tag.output.filename) ? 'flex' : 'none';
+
+    const fmtGroup = document.createElement('div');
+    fmtGroup.className = 'form-group';
+    const fmtLabel = document.createElement('label');
+    fmtLabel.textContent = 'Format';
+    fmtGroup.appendChild(fmtLabel);
+    const fmtInput = document.createElement('input');
+    fmtInput.type = 'text';
+    fmtInput.placeholder = 'e.g., " - PRIVATE"';
+    fmtInput.value = (tag.output && tag.output.filenameFormat) || '';
+    fmtInput.disabled = !tagEditMode;
+    fmtInput.addEventListener('input', () => {
+        if (!tag.output) tag.output = {};
+        tag.output.filenameFormat = fmtInput.value;
+        updateTagsSaveBar();
+    });
+    fmtGroup.appendChild(fmtInput);
+    fnOpts.appendChild(fmtGroup);
+
+    const phGroup = document.createElement('div');
+    phGroup.className = 'form-group';
+    const phLabel = document.createElement('label');
+    phLabel.textContent = 'Placeholder';
+    phGroup.appendChild(phLabel);
+    const phInput = document.createElement('input');
+    phInput.type = 'text';
+    phInput.placeholder = 'e.g., privateTag';
+    phInput.value = (tag.output && tag.output.filenamePlaceholder) || '';
+    phInput.disabled = !tagEditMode;
+    phInput.addEventListener('input', () => {
+        if (!tag.output) tag.output = {};
+        tag.output.filenamePlaceholder = phInput.value;
+        updateTagsSaveBar();
+    });
+    phGroup.appendChild(phInput);
+    fnOpts.appendChild(phGroup);
+
+    content.appendChild(fnOpts);
+    container.appendChild(content);
 }
 
-function closePresetChooser() {
-    tagPresetModal.classList.remove('active');
+function renderInlineParams(container, tag, tagIndex) {
+    container.textContent = '';
+    const params = tag.parameters || [];
+
+    if (params.length === 0 && !tagEditMode) {
+        const hint = document.createElement('p');
+        hint.className = 'section-description';
+        hint.style.margin = '0';
+        hint.textContent = 'No parameters defined.';
+        container.appendChild(hint);
+        return;
+    }
+
+    if (params.length === 0) {
+        const hint = document.createElement('p');
+        hint.className = 'section-description';
+        hint.style.margin = '0';
+        hint.textContent = 'No parameters. Use {{paramName}} in your instruction, then add parameters here.';
+        container.appendChild(hint);
+        return;
+    }
+
+    const miniTable = document.createElement('table');
+    miniTable.className = 'params-mini-table';
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['Name', 'Default Value', ''].forEach(text => {
+        const th = document.createElement('th');
+        th.textContent = text;
+        headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    miniTable.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    params.forEach((param, pIndex) => {
+        const row = document.createElement('tr');
+
+        const nameTd = document.createElement('td');
+        if (tagEditMode) {
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.placeholder = 'param name';
+            nameInput.value = param.name || '';
+            nameInput.addEventListener('input', () => {
+                tag.parameters[pIndex].name = nameInput.value;
+                updateTagsSaveBar();
+            });
+            nameTd.appendChild(nameInput);
+        } else {
+            nameTd.textContent = param.name || '';
+        }
+        row.appendChild(nameTd);
+
+        const valTd = document.createElement('td');
+        if (tagEditMode) {
+            const valInput = document.createElement('input');
+            valInput.type = 'text';
+            valInput.placeholder = 'default value';
+            valInput.value = param.defaultValue || '';
+            valInput.addEventListener('input', () => {
+                tag.parameters[pIndex].defaultValue = valInput.value;
+                updateTagsSaveBar();
+            });
+            valTd.appendChild(valInput);
+        } else {
+            valTd.textContent = param.defaultValue || '';
+        }
+        row.appendChild(valTd);
+
+        const actionTd = document.createElement('td');
+        if (tagEditMode) {
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'btn-icon btn-icon-danger';
+            removeBtn.title = 'Remove';
+            removeBtn.textContent = '\u2715';
+            removeBtn.addEventListener('click', () => {
+                tag.parameters.splice(pIndex, 1);
+                renderInlineParams(container, tag, tagIndex);
+                updateTagsSaveBar();
+            });
+            actionTd.appendChild(removeBtn);
+        }
+        row.appendChild(actionTd);
+
+        tbody.appendChild(row);
+    });
+
+    miniTable.appendChild(tbody);
+    container.appendChild(miniTable);
 }
 
-function createTagFromPreset(presetKey) {
+function addTagFromPreset(presetKey) {
     const preset = TAG_PRESETS[presetKey];
     if (!preset) return;
-
-    closePresetChooser();
 
     const newTag = {
         id: preset.label ? labelToSnakeCase(preset.label) : '',
@@ -1501,176 +1827,16 @@ function createTagFromPreset(presetKey) {
     };
 
     tagDefinitions.push(newTag);
-    openTagForm(tagDefinitions.length - 1);
-}
+    renderTagList();
 
-function openTagForm(index) {
-    editingTagIndex = index;
-    const tag = tagDefinitions[index];
-
-    tagModalTitle.textContent = tag.label ? 'Edit Tag Rule' : 'Create Tag Rule';
-    tagLabelInput.value = tag.label || '';
-    tagIdInput.value = tag.id || '';
-    tagInstructionInput.value = tag.instruction || '';
-    tagEnabledInput.checked = tag.enabled !== false;
-    tagOutputPdfInput.checked = !!(tag.output && tag.output.pdf);
-    tagOutputCsvInput.checked = !!(tag.output && tag.output.csv);
-    tagOutputFilenameInput.checked = !!(tag.output && tag.output.filename);
-
-    const fnOpts = tag.output || {};
-    tagFilenameFormatInput.value = fnOpts.filenameFormat || '';
-    tagFilenamePlaceholderInput.value = fnOpts.filenamePlaceholder || '';
-    tagFilenameOptions.style.display = tagOutputFilenameInput.checked ? 'block' : 'none';
-
-    currentTagParams = (tag.parameters || []).map(p => ({ ...p }));
-    renderTagParams();
-
-    tagEditModal.classList.add('active');
-}
-
-function closeTagForm() {
-    tagEditModal.classList.remove('active');
-    editingTagIndex = null;
-    currentTagParams = [];
-}
-
-function renderTagParams() {
-    tagParamsList.textContent = '';
-
-    if (currentTagParams.length === 0) {
-        const hint = document.createElement('p');
-        hint.className = 'section-description';
-        hint.textContent = 'No parameters defined. Use {{paramName}} in your instruction to reference parameters.';
-        tagParamsList.appendChild(hint);
-        return;
-    }
-
-    currentTagParams.forEach((param, index) => {
-        const row = document.createElement('div');
-        row.className = 'param-row';
-
-        const nameInput = document.createElement('input');
-        nameInput.type = 'text';
-        nameInput.placeholder = 'Parameter name';
-        nameInput.value = param.name || '';
-        nameInput.dataset.paramIndex = index;
-        nameInput.dataset.paramField = 'name';
-        nameInput.addEventListener('input', () => {
-            currentTagParams[index].name = nameInput.value;
-        });
-        row.appendChild(nameInput);
-
-        const defaultInput = document.createElement('input');
-        defaultInput.type = 'text';
-        defaultInput.placeholder = 'Default value';
-        defaultInput.value = param.defaultValue || '';
-        defaultInput.dataset.paramIndex = index;
-        defaultInput.dataset.paramField = 'defaultValue';
-        defaultInput.addEventListener('input', () => {
-            currentTagParams[index].defaultValue = defaultInput.value;
-        });
-        row.appendChild(defaultInput);
-
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'btn-icon btn-icon-danger';
-        removeBtn.title = 'Remove parameter';
-        removeBtn.textContent = '\u2715';
-        removeBtn.addEventListener('click', () => {
-            currentTagParams.splice(index, 1);
-            renderTagParams();
-        });
-        row.appendChild(removeBtn);
-
-        tagParamsList.appendChild(row);
-    });
-}
-
-function addTagParameter() {
-    currentTagParams.push({ name: '', defaultValue: '' });
-    renderTagParams();
-    // Focus the last name input
-    const inputs = tagParamsList.querySelectorAll('input[data-param-field="name"]');
-    if (inputs.length > 0) inputs[inputs.length - 1].focus();
-}
-
-function saveTagForm() {
-    if (editingTagIndex === null) return;
-
-    const label = tagLabelInput.value.trim();
-    const id = tagIdInput.value.trim();
-    const instruction = tagInstructionInput.value.trim();
-
-    if (!label) {
-        showAlert('Tag label is required', 'error');
-        return;
-    }
-    if (!id) {
-        showAlert('Tag ID is required', 'error');
-        return;
-    }
-    if (!/^[a-z][a-z0-9_]*$/.test(id)) {
-        showAlert('Tag ID must start with a lowercase letter and contain only lowercase letters, numbers, and underscores', 'error');
-        return;
-    }
-    if (!instruction) {
-        showAlert('Tag instruction is required', 'error');
-        return;
-    }
-
-    // Check duplicate IDs
-    const dupIndex = tagDefinitions.findIndex((t, i) => i !== editingTagIndex && t.id === id);
-    if (dupIndex !== -1) {
-        showAlert(`Duplicate tag ID "${id}" (already used by "${tagDefinitions[dupIndex].label}")`, 'error');
-        return;
-    }
-
-    // Validate parameters
-    for (let i = 0; i < currentTagParams.length; i++) {
-        if (!currentTagParams[i].name.trim()) {
-            showAlert(`Parameter ${i + 1}: name is required`, 'error');
-            return;
+    // Activate edit on the label cell of the new tag if custom
+    if (presetKey === 'custom') {
+        const lastMainRow = tagListEl.querySelector('#tagListBody tr[data-index]:not(.tag-detail-row):last-of-type');
+        if (lastMainRow) {
+            const labelTd = lastMainRow.querySelector('td.col-label');
+            if (labelTd) activateCellEdit(labelTd);
         }
     }
-
-    tagDefinitions[editingTagIndex] = {
-        id,
-        label,
-        instruction,
-        enabled: tagEnabledInput.checked,
-        parameters: currentTagParams.map(p => ({
-            name: p.name.trim(),
-            label: p.label || p.name.trim(),
-            defaultValue: p.defaultValue || ''
-        })),
-        output: {
-            pdf: tagOutputPdfInput.checked,
-            csv: tagOutputCsvInput.checked,
-            filename: tagOutputFilenameInput.checked,
-            filenameFormat: tagOutputFilenameInput.checked ? tagFilenameFormatInput.value.trim() : undefined,
-            filenamePlaceholder: tagOutputFilenameInput.checked ? tagFilenamePlaceholderInput.value.trim() : undefined
-        }
-    };
-
-    closeTagForm();
-    renderTagList();
-}
-
-function showDeleteTagConfirmation(index) {
-    deleteTagIndex = index;
-    deleteTagNameEl.textContent = tagDefinitions[index].label || tagDefinitions[index].id;
-    deleteTagModal.classList.add('active');
-}
-
-function closeDeleteTagModalFn() {
-    deleteTagModal.classList.remove('active');
-    deleteTagIndex = null;
-}
-
-function confirmDeleteTag() {
-    if (deleteTagIndex === null) return;
-    tagDefinitions.splice(deleteTagIndex, 1);
-    closeDeleteTagModalFn();
-    renderTagList();
 }
 
 function hasUnsavedTagChanges() {
@@ -1685,6 +1851,30 @@ async function saveTagDefinitions() {
     if (tagDefinitions.length === 0 && originalTagDefinitions.length === 0) {
         showAlert('No tag changes to save', 'info');
         return;
+    }
+
+    // Validate
+    for (let i = 0; i < tagDefinitions.length; i++) {
+        const tag = tagDefinitions[i];
+        const rowNum = i + 1;
+        if (!tag.label) {
+            showAlert(`Tag row ${rowNum}: label is required`, 'error');
+            return;
+        }
+        if (!tag.id) {
+            showAlert(`Tag row ${rowNum}: ID is required`, 'error');
+            return;
+        }
+        if (!tag.instruction) {
+            showAlert(`Tag row ${rowNum}: instruction is required`, 'error');
+            return;
+        }
+        // Check duplicate IDs
+        const dupIndex = tagDefinitions.findIndex((t, j) => j !== i && t.id === tag.id);
+        if (dupIndex !== -1) {
+            showAlert(`Tag row ${rowNum}: duplicate ID "${tag.id}" (also in row ${dupIndex + 1})`, 'error');
+            return;
+        }
     }
 
     try {
@@ -1719,6 +1909,12 @@ async function saveTagDefinitions() {
 
         if (response.ok) {
             originalTagDefinitions = JSON.parse(JSON.stringify(tagDefinitions));
+            if (tagEditMode) {
+                tagEditMode = false;
+                tagEditToggleBtn.classList.remove('active');
+                tagEditToggleBtn.querySelector('span').textContent = 'Locked';
+                addTagDropdown.style.display = 'none';
+            }
             renderTagList();
             showAlert(result.message || 'Tag definitions saved', 'success');
         } else {
@@ -1734,6 +1930,12 @@ async function saveTagDefinitions() {
 
 function discardTagChanges() {
     tagDefinitions = JSON.parse(JSON.stringify(originalTagDefinitions));
+    if (tagEditMode) {
+        tagEditMode = false;
+        tagEditToggleBtn.classList.remove('active');
+        tagEditToggleBtn.querySelector('span').textContent = 'Locked';
+        addTagDropdown.style.display = 'none';
+    }
     renderTagList();
 }
 
@@ -2017,59 +2219,30 @@ function setupEventListeners() {
     saveFieldsBtn.addEventListener('click', saveFieldDefinitions);
     discardFieldsBtn.addEventListener('click', discardFieldChanges);
 
-    // Delete field modal
-    closeDeleteFieldModalBtn.addEventListener('click', closeDeleteFieldModal);
-    cancelDeleteFieldBtn.addEventListener('click', closeDeleteFieldModal);
-    confirmDeleteFieldBtn.addEventListener('click', confirmDeleteField);
-
-    deleteFieldModal.addEventListener('click', (e) => {
-        if (e.target === deleteFieldModal) {
-            closeDeleteFieldModal();
-        }
-    });
-
     // Tag editor buttons
+    tagEditToggleBtn.addEventListener('click', toggleTagEditMode);
     reloadTagsBtn.addEventListener('click', () => {
         tagsLoaded = false;
         loadTagDefinitions();
     });
-    addTagBtn.addEventListener('click', openPresetChooser);
     saveTagsBtn.addEventListener('click', saveTagDefinitions);
     discardTagsBtn.addEventListener('click', discardTagChanges);
 
-    // Tag edit modal
-    closeTagEditModalBtn.addEventListener('click', closeTagForm);
-    cancelTagFormBtn.addEventListener('click', closeTagForm);
-    saveTagFormBtn.addEventListener('click', saveTagForm);
-    addTagParamBtn.addEventListener('click', addTagParameter);
-
-    tagLabelInput.addEventListener('input', () => {
-        tagIdInput.value = labelToSnakeCase(tagLabelInput.value);
+    // Tag add dropdown
+    addTagBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addTagMenu.classList.toggle('open');
     });
-
-    tagOutputFilenameInput.addEventListener('change', () => {
-        tagFilenameOptions.style.display = tagOutputFilenameInput.checked ? 'block' : 'none';
+    document.querySelectorAll('#addTagMenu .dropdown-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addTagMenu.classList.remove('open');
+            addTagFromPreset(item.dataset.preset);
+        });
     });
-
-    tagEditModal.addEventListener('click', (e) => {
-        if (e.target === tagEditModal) closeTagForm();
-    });
-
-    // Tag preset modal
-    closeTagPresetModalBtn.addEventListener('click', closePresetChooser);
-    tagPresetModal.addEventListener('click', (e) => {
-        if (e.target === tagPresetModal) closePresetChooser();
-    });
-    document.querySelectorAll('.preset-card').forEach(card => {
-        card.addEventListener('click', () => createTagFromPreset(card.dataset.preset));
-    });
-
-    // Delete tag modal
-    closeDeleteTagModalBtn.addEventListener('click', closeDeleteTagModalFn);
-    cancelDeleteTagBtn.addEventListener('click', closeDeleteTagModalFn);
-    confirmDeleteTagBtn.addEventListener('click', confirmDeleteTag);
-    deleteTagModal.addEventListener('click', (e) => {
-        if (e.target === deleteTagModal) closeDeleteTagModalFn();
+    // Close dropdown when clicking outside
+    document.addEventListener('click', () => {
+        addTagMenu.classList.remove('open');
     });
 
     // Prompt editor buttons
@@ -2102,15 +2275,9 @@ function setupEventListeners() {
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (deleteTagModal.classList.contains('active')) {
-                closeDeleteTagModalFn();
-            } else if (tagEditModal.classList.contains('active')) {
-                closeTagForm();
-            } else if (tagPresetModal.classList.contains('active')) {
-                closePresetChooser();
-            } else if (deleteFieldModal.classList.contains('active')) {
-                closeDeleteFieldModal();
-            } else if (deleteModal.classList.contains('active')) {
+            // Close dropdown menu if open
+            addTagMenu.classList.remove('open');
+            if (deleteModal.classList.contains('active')) {
                 closeDeleteModal();
             } else if (clientModal.classList.contains('active')) {
                 closeClientForm();
