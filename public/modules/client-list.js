@@ -279,6 +279,17 @@ function renderClientList() {
         });
         actions.appendChild(exportBtn);
 
+        const dryRunBtn = document.createElement('button');
+        dryRunBtn.className = 'btn btn-secondary btn-small dry-run-btn';
+        dryRunBtn.dataset.clientId = client.clientId;
+        dryRunBtn.textContent = 'Dry Run';
+        dryRunBtn.disabled = client.folderStatus.inputPdfCount === 0 || !client.folderStatus.exists || isProcessing;
+        dryRunBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            processClient(client.clientId, { dryRun: true });
+        });
+        actions.appendChild(dryRunBtn);
+
         const processBtn = document.createElement('button');
         processBtn.className = 'btn btn-primary process-btn';
         processBtn.dataset.clientId = client.clientId;
@@ -551,7 +562,7 @@ async function confirmDelete() {
 
 // --- Internal: Processing ---
 
-async function processClient(clientId) {
+async function processClient(clientId, options = {}) {
     if (isProcessing) {
         showAlert('Processing already in progress', 'warning');
         return;
@@ -563,15 +574,19 @@ async function processClient(clientId) {
         return;
     }
 
+    const { dryRun } = options;
+
     isProcessing = true;
     updateProcessAllButton();
     disableAllProcessButtons();
     clearLog();
-    addLogEntry('Starting processing for client: ' + client.name, 'info');
+    addLogEntry((dryRun ? '[DRY RUN] ' : '') + 'Starting processing for client: ' + client.name, 'info');
 
     try {
         const response = await fetch(`/api/clients/${clientId}/process`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dryRun: !!dryRun })
         });
 
         const reader = response.body.getReader();
@@ -694,6 +709,10 @@ function handleProcessingUpdate(data) {
             addLogEntry('Completed: ' + data.filename + ' -> ' + data.outputFilename, 'success');
             break;
 
+        case 'dry-run-completed':
+            addLogEntry('Dry run: ' + data.filename + ' -> ' + data.outputFilename, 'success');
+            break;
+
         case 'failed':
             addLogEntry('Failed: ' + data.filename + ' - ' + data.error, 'error');
             break;
@@ -747,12 +766,12 @@ function handleProcessingUpdate(data) {
 }
 
 function disableAllProcessButtons() {
-    document.querySelectorAll('.process-btn').forEach((btn) => (btn.disabled = true));
+    document.querySelectorAll('.process-btn, .dry-run-btn').forEach((btn) => (btn.disabled = true));
     processAllBtn.disabled = true;
 }
 
 function enableAllProcessButtons() {
-    document.querySelectorAll('.process-btn').forEach((btn) => {
+    document.querySelectorAll('.process-btn, .dry-run-btn').forEach((btn) => {
         const cId = btn.dataset ? btn.dataset.clientId : null;
         const client = cId ? clients.find((c) => c.clientId === cId) : null;
         btn.disabled = !client || client.folderStatus.inputPdfCount === 0 || !client.folderStatus.exists;

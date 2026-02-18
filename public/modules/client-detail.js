@@ -1,12 +1,15 @@
 // Client Detail View module
 // Manages the detail view for a single client: config display, override editing.
 
-import { showAlert } from './ui-utils.js';
+import { showAlert, addLogEntry, clearLog } from './ui-utils.js';
 import { KNOWN_MODELS } from './constants.js';
 import { initResultsViewer, loadClientResults, clearResults } from './results-viewer.js';
 
 // --- State ---
 let clientDetailData = null;
+let fileList = [];
+let selectedFiles = new Set();
+let isFileProcessing = false;
 
 // Per-section edit state
 let detailFieldEditMode = false;
@@ -24,6 +27,7 @@ let detailModelOverride = null;
 let dashboardListView, clientDetailView, backToDashboardBtn, detailClientHeader;
 let detailFieldList, detailTagList, detailFilenameTemplate, detailPromptTemplate;
 let detailModelEl;
+let fileSelectorEl, fileCountEl, refreshFilesBtn, processSelectedBtn, dryRunSelectedBtn;
 
 // Override buttons
 let customizeFieldsBtn, resetFieldsBtn, saveDetailFieldsBtn, discardDetailFieldsBtn, detailFieldsSaveBar;
@@ -112,6 +116,17 @@ export function initClientDetail() {
     saveDetailFilenameBtn.addEventListener('click', saveDetailFilenameOverride);
     discardDetailFilenameBtn.addEventListener('click', cancelDetailFilenameEdit);
 
+    // File selector
+    fileSelectorEl = document.getElementById('fileSelector');
+    fileCountEl = document.getElementById('fileCount');
+    refreshFilesBtn = document.getElementById('refreshFilesBtn');
+    processSelectedBtn = document.getElementById('processSelectedBtn');
+    dryRunSelectedBtn = document.getElementById('dryRunSelectedBtn');
+
+    refreshFilesBtn.addEventListener('click', loadFileList);
+    processSelectedBtn.addEventListener('click', () => processSelectedFiles(false));
+    dryRunSelectedBtn.addEventListener('click', () => processSelectedFiles(true));
+
     initResultsViewer();
 }
 
@@ -139,6 +154,7 @@ export async function openClientDetail(clientId) {
         clientDetailData = await response.json();
         renderClientDetail();
         updateDetailResetButtons();
+        loadFileList();
         loadClientResults(clientId);
     } catch (error) {
         detailClientHeader.textContent = '';
@@ -154,6 +170,8 @@ export function closeClientDetail() {
     dashboardListView.style.display = 'block';
     resetDetailEditState();
     clientDetailData = null;
+    fileList = [];
+    selectedFiles.clear();
     clearResults();
 }
 
@@ -1368,4 +1386,218 @@ async function resetOverride(section) {
     } catch (error) {
         showAlert('Failed to reset: ' + error.message, 'error');
     }
+}
+
+// --- FILE SELECTOR ---
+
+async function loadFileList() {
+    if (!clientDetailData) return;
+    const clientId = clientDetailData.client.clientId;
+
+    fileSelectorEl.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'loading-placeholder';
+    loading.textContent = 'Loading files...';
+    fileSelectorEl.appendChild(loading);
+
+    try {
+        const response = await fetch(`/api/clients/${clientId}/files`);
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to load files');
+        }
+
+        const data = await response.json();
+        fileList = data.files || [];
+        selectedFiles.clear();
+        fileCountEl.textContent = fileList.length > 0 ? `(${fileList.length})` : '';
+        renderFileList();
+    } catch (error) {
+        fileSelectorEl.textContent = '';
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error-placeholder';
+        errDiv.textContent = 'Failed to load files: ' + error.message;
+        fileSelectorEl.appendChild(errDiv);
+    }
+}
+
+function renderFileList() {
+    fileSelectorEl.textContent = '';
+    updateFileActionButtons();
+
+    if (fileList.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-placeholder';
+        empty.textContent = 'No PDF files in input folder.';
+        fileSelectorEl.appendChild(empty);
+        return;
+    }
+
+    // Select all / deselect all row
+    const toggleRow = document.createElement('div');
+    toggleRow.className = 'file-select-toggle';
+    const selectAllBtn = document.createElement('button');
+    selectAllBtn.className = 'btn btn-small btn-secondary';
+    selectAllBtn.textContent = 'Select All';
+    selectAllBtn.addEventListener('click', () => {
+        fileList.forEach((f) => selectedFiles.add(f.filename));
+        renderFileList();
+    });
+    const deselectAllBtn = document.createElement('button');
+    deselectAllBtn.className = 'btn btn-small btn-secondary';
+    deselectAllBtn.textContent = 'Deselect All';
+    deselectAllBtn.addEventListener('click', () => {
+        selectedFiles.clear();
+        renderFileList();
+    });
+    toggleRow.appendChild(selectAllBtn);
+    toggleRow.appendChild(deselectAllBtn);
+    fileSelectorEl.appendChild(toggleRow);
+
+    // File list
+    const list = document.createElement('div');
+    list.className = 'file-list';
+
+    fileList.forEach((file) => {
+        const row = document.createElement('label');
+        row.className = 'file-list-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = selectedFiles.has(file.filename);
+        cb.addEventListener('change', () => {
+            if (cb.checked) {
+                selectedFiles.add(file.filename);
+            } else {
+                selectedFiles.delete(file.filename);
+            }
+            updateFileActionButtons();
+        });
+        row.appendChild(cb);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'file-name';
+        nameSpan.textContent = file.filename;
+        row.appendChild(nameSpan);
+
+        const sizeSpan = document.createElement('span');
+        sizeSpan.className = 'file-size';
+        sizeSpan.textContent = formatFileSize(file.size);
+        row.appendChild(sizeSpan);
+
+        list.appendChild(row);
+    });
+
+    fileSelectorEl.appendChild(list);
+}
+
+function updateFileActionButtons() {
+    const hasSelection = selectedFiles.size > 0;
+    processSelectedBtn.style.display = hasSelection ? 'inline-flex' : 'none';
+    dryRunSelectedBtn.style.display = hasSelection ? 'inline-flex' : 'none';
+
+    if (hasSelection) {
+        processSelectedBtn.textContent = `Process ${selectedFiles.size} File${selectedFiles.size > 1 ? 's' : ''}`;
+        dryRunSelectedBtn.textContent = `Dry Run ${selectedFiles.size}`;
+    }
+}
+
+async function processSelectedFiles(dryRun) {
+    if (!clientDetailData || selectedFiles.size === 0) return;
+    if (isFileProcessing) {
+        showAlert('Processing already in progress', 'warning');
+        return;
+    }
+
+    const clientId = clientDetailData.client.clientId;
+    const files = Array.from(selectedFiles);
+
+    isFileProcessing = true;
+    processSelectedBtn.disabled = true;
+    dryRunSelectedBtn.disabled = true;
+    clearLog();
+    addLogEntry(
+        (dryRun ? '[DRY RUN] ' : '') + `Processing ${files.length} selected file${files.length > 1 ? 's' : ''}...`,
+        'info'
+    );
+
+    try {
+        const response = await fetch(`/api/clients/${clientId}/process`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dryRun, files })
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const text = decoder.decode(value);
+            const lines = text.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        handleFileProcessingUpdate(data);
+                    } catch {
+                        // Ignore parse errors
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        addLogEntry('Error: ' + error.message, 'error');
+        showAlert('Processing failed: ' + error.message, 'error');
+    } finally {
+        isFileProcessing = false;
+        processSelectedBtn.disabled = false;
+        dryRunSelectedBtn.disabled = false;
+        loadFileList();
+        loadClientResults(clientId);
+    }
+}
+
+function handleFileProcessingUpdate(data) {
+    switch (data.status) {
+        case 'connected':
+            addLogEntry('Connected to server...', 'info');
+            break;
+        case 'starting':
+            addLogEntry(`Found ${data.total} file${data.total > 1 ? 's' : ''}. Processing...`, 'info');
+            break;
+        case 'analyzing':
+            addLogEntry('Analyzing: ' + data.filename + '...', 'processing');
+            break;
+        case 'completed':
+            addLogEntry('Completed: ' + data.filename + ' -> ' + data.outputFilename, 'success');
+            break;
+        case 'dry-run-completed':
+            addLogEntry('Dry run: ' + data.filename + ' -> ' + data.outputFilename, 'success');
+            break;
+        case 'failed':
+            addLogEntry('Failed: ' + data.filename + ' - ' + data.error, 'error');
+            break;
+        case 'done':
+            addLogEntry(`Complete: ${data.success} successful, ${data.failed} failed`, 'info');
+            if (data.failed === 0 && data.success > 0) {
+                showAlert(`Processed ${data.success} file${data.success > 1 ? 's' : ''}!`, 'success');
+            } else if (data.failed > 0) {
+                showAlert(`Processed ${data.success}, ${data.failed} failed`, 'warning');
+            }
+            break;
+        case 'error':
+            addLogEntry('Error: ' + data.error, 'error');
+            showAlert('Processing error: ' + data.error, 'error');
+            break;
+    }
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }

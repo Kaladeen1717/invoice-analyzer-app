@@ -94,13 +94,21 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
         totalTokens: usageMetadata.totalTokenCount || 0
     };
 
-    const analysis = parseGeminiResponse(text);
-    const validatedAnalysis = validateAnalysis(analysis, config);
+    try {
+        const analysis = parseGeminiResponse(text);
+        const validatedAnalysis = validateAnalysis(analysis, config);
 
-    return {
-        ...validatedAnalysis,
-        _tokenUsage: tokenUsage
-    };
+        return {
+            ...validatedAnalysis,
+            _tokenUsage: tokenUsage
+        };
+    } catch (parseError) {
+        // Attach raw response to parsing errors for debugging
+        const MAX_RAW_RESPONSE_LENGTH = 5120;
+        parseError._rawResponse = text.length > MAX_RAW_RESPONSE_LENGTH ? text.slice(0, MAX_RAW_RESPONSE_LENGTH) : text;
+        parseError._tokenUsage = tokenUsage;
+        throw parseError;
+    }
 }
 
 /**
@@ -322,10 +330,11 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
  * @param {Object} options - Additional options
  * @param {Function} options.onProgress - Progress callback
  * @param {string} options.apiKey - Optional API key (uses default if not provided)
+ * @param {boolean} options.dryRun - If true, skip file moves and PDF enrichment
  * @returns {Promise<Object>} Processing result
  */
 async function processInvoice(inputPath, config, options = {}) {
-    const { onProgress, apiKey } = options;
+    const { onProgress, apiKey, dryRun } = options;
     const filename = path.basename(inputPath);
 
     try {
@@ -355,6 +364,18 @@ async function processInvoice(inputPath, config, options = {}) {
 
         const outputPath = path.join(outputFolder, uniqueFilename);
 
+        // Dry-run: skip file system changes (PDF enrichment, file moves)
+        if (dryRun) {
+            return {
+                success: true,
+                dryRun: true,
+                originalFilename: filename,
+                outputFilename: uniqueFilename,
+                analysis,
+                tokenUsage
+            };
+        }
+
         if (onProgress) {
             onProgress({ status: 'saving', filename, outputFilename: uniqueFilename });
         }
@@ -383,7 +404,8 @@ async function processInvoice(inputPath, config, options = {}) {
             success: false,
             originalFilename: filename,
             error: error.message,
-            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+            rawResponse: error._rawResponse || null,
+            tokenUsage: error._tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
         };
     }
 }

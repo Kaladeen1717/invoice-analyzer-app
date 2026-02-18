@@ -151,8 +151,16 @@ function renderResults(hasMore) {
         // Status
         const tdStatus = document.createElement('td');
         const badge = document.createElement('span');
-        badge.className = 'status-badge ' + (result.status === 'success' ? 'status-success' : 'status-failed');
-        badge.textContent = result.status === 'success' ? 'Success' : 'Failed';
+        const statusClass =
+            result.status === 'success'
+                ? 'status-success'
+                : result.status === 'dry-run'
+                  ? 'status-dry-run'
+                  : 'status-failed';
+        const statusLabel =
+            result.status === 'success' ? 'Success' : result.status === 'dry-run' ? 'Dry Run' : 'Failed';
+        badge.className = 'status-badge ' + statusClass;
+        badge.textContent = statusLabel;
         tdStatus.appendChild(badge);
         tr.appendChild(tdStatus);
 
@@ -210,7 +218,7 @@ function toggleDetail(tr, result) {
     const content = document.createElement('div');
     content.className = 'results-detail-content';
 
-    if (result.status === 'success') {
+    if (result.status === 'success' || result.status === 'dry-run') {
         renderSuccessDetail(content, result);
     } else {
         renderFailedDetail(content, result);
@@ -295,6 +303,29 @@ function renderFailedDetail(content, result) {
 
     if (result.duration) {
         appendDetailField(content, 'Duration:', (result.duration / 1000).toFixed(1) + 's');
+    }
+
+    // Raw response (expandable)
+    if (result.rawResponse) {
+        const rawToggle = document.createElement('button');
+        rawToggle.className = 'btn btn-small btn-secondary';
+        rawToggle.textContent = 'Show Raw Response';
+        rawToggle.style.marginTop = '0.75rem';
+
+        const rawPre = document.createElement('pre');
+        rawPre.className = 'raw-response';
+        rawPre.style.display = 'none';
+        rawPre.textContent = result.rawResponse;
+
+        rawToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const visible = rawPre.style.display !== 'none';
+            rawPre.style.display = visible ? 'none' : 'block';
+            rawToggle.textContent = visible ? 'Show Raw Response' : 'Hide Raw Response';
+        });
+
+        content.appendChild(rawToggle);
+        content.appendChild(rawPre);
     }
 
     // Retry button
