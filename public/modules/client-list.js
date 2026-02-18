@@ -7,12 +7,14 @@ import { openClientDetail } from './client-detail.js';
 
 // --- State ---
 let clients = [];
+let clientStats = {};
 let isProcessing = false;
 let editingClientId = null;
 let deleteClientId = null;
 
 // --- DOM refs (set in init) ---
 let clientListEl, processAllBtn;
+let dashboardStatsEl, statTotalProcessedEl, statSuccessRateEl, statTotalTokensEl, statLastProcessedEl;
 let clientModal, modalTitle, clientForm, closeModalBtn, cancelFormBtn, deleteClientBtn, saveClientBtn;
 let clientIdInput, clientNameInput, folderPathInput, apiKeyEnvVarInput, clientEnabledInput;
 let deleteModal, deleteClientName, closeDeleteModalBtn, cancelDeleteBtn, confirmDeleteBtn;
@@ -22,6 +24,12 @@ let deleteModal, deleteClientName, closeDeleteModalBtn, cancelDeleteBtn, confirm
 export function initClientList() {
     clientListEl = document.getElementById('clientList');
     processAllBtn = document.getElementById('processAllBtn');
+
+    dashboardStatsEl = document.getElementById('dashboardStats');
+    statTotalProcessedEl = document.getElementById('statTotalProcessed');
+    statSuccessRateEl = document.getElementById('statSuccessRate');
+    statTotalTokensEl = document.getElementById('statTotalTokens');
+    statLastProcessedEl = document.getElementById('statLastProcessed');
 
     clientModal = document.getElementById('clientModal');
     modalTitle = document.getElementById('modalTitle');
@@ -77,10 +85,22 @@ export async function loadClients() {
         loadingDiv.textContent = 'Loading clients...';
         clientListEl.appendChild(loadingDiv);
 
-        const response = await fetch('/api/clients');
-        const data = await response.json();
+        const [clientsResponse, statsResponse] = await Promise.all([
+            fetch('/api/clients'),
+            fetch('/api/stats').catch(() => null)
+        ]);
 
-        if (response.ok) {
+        const data = await clientsResponse.json();
+
+        // Load stats (non-blocking — dashboard works even if stats fail)
+        clientStats = {};
+        if (statsResponse && statsResponse.ok) {
+            const statsData = await statsResponse.json();
+            clientStats = statsData.perClient || {};
+            renderDashboardStats(statsData.aggregate);
+        }
+
+        if (clientsResponse.ok) {
             clients = data.clients || [];
             renderClientList();
             updateProcessAllButton();
@@ -236,6 +256,13 @@ function renderClientList() {
         statsDiv.appendChild(enabledStat);
 
         details.appendChild(statsDiv);
+
+        // Per-client processing stats
+        const perClientStats = clientStats[client.clientId];
+        if (perClientStats) {
+            renderClientProcessingStats(details, perClientStats);
+        }
+
         card.appendChild(details);
 
         // Actions
@@ -270,6 +297,87 @@ function renderClientList() {
 
         clientListEl.appendChild(card);
     });
+}
+
+function renderDashboardStats(aggregate) {
+    if (!aggregate || aggregate.totalProcessed === 0) {
+        dashboardStatsEl.style.display = 'none';
+        return;
+    }
+
+    dashboardStatsEl.style.display = '';
+    statTotalProcessedEl.textContent = formatNumber(aggregate.totalProcessed);
+    statSuccessRateEl.textContent = aggregate.successRate + '%';
+    statTotalTokensEl.textContent = formatTokens(aggregate.totalTokens);
+    statLastProcessedEl.textContent = aggregate.lastProcessed ? formatTimestamp(aggregate.lastProcessed) : '-';
+}
+
+function renderClientProcessingStats(container, stats) {
+    if (!stats || stats.total === 0) return;
+
+    const div = document.createElement('div');
+    div.className = 'client-processing-stats';
+
+    // Processed count
+    const processedStat = document.createElement('span');
+    processedStat.className = 'stat';
+    const processedVal = document.createElement('span');
+    processedVal.className = 'stat-value';
+    processedVal.textContent = String(stats.total);
+    processedStat.appendChild(processedVal);
+    processedStat.appendChild(document.createTextNode(' processed'));
+    div.appendChild(processedStat);
+
+    if (stats.failed > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'stat-separator';
+        sep.textContent = '|';
+        div.appendChild(sep);
+
+        const failedStat = document.createElement('span');
+        failedStat.className = 'stat';
+        const failedVal = document.createElement('span');
+        failedVal.className = 'stat-value failed';
+        failedVal.textContent = String(stats.failed);
+        failedStat.appendChild(failedVal);
+        failedStat.appendChild(document.createTextNode(' failed'));
+        div.appendChild(failedStat);
+    }
+
+    // Success bar
+    const barContainer = document.createElement('div');
+    barContainer.className = 'success-bar-container';
+    barContainer.title = stats.successRate + '% success rate';
+    const barFill = document.createElement('div');
+    barFill.className = 'success-bar-fill';
+    barFill.style.width = stats.successRate + '%';
+    barContainer.appendChild(barFill);
+    div.appendChild(barContainer);
+
+    container.appendChild(div);
+}
+
+function formatNumber(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return String(n);
+}
+
+function formatTokens(total) {
+    if (!total || total === 0) return '0';
+    if (total >= 1000000) return (total / 1000000).toFixed(1) + 'M';
+    if (total >= 1000) return (total / 1000).toFixed(1) + 'K';
+    return String(total);
+}
+
+function formatTimestamp(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts);
+    return (
+        d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+        ' ' +
+        d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+    );
 }
 
 function updateProcessAllButton() {
