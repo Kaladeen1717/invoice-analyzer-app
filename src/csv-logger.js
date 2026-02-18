@@ -22,19 +22,37 @@ const LEGACY_CSV_HEADERS = [
  * @param {Object} config - Configuration object (with optional fieldDefinitions)
  * @returns {string[]} Array of CSV column headers
  */
+// Field keys replaced by the unified tag system
+const TAG_REPLACED_FIELDS = ['documentTypes', 'isPrivate'];
+
 function buildCsvHeaders(config) {
     const fieldDefinitions = config && config.fieldDefinitions;
     if (!fieldDefinitions) {
         return LEGACY_CSV_HEADERS;
     }
 
+    const tagDefinitions = config.tagDefinitions;
+
     const headers = ['Enriched Filename', 'Original Filename'];
-    const enabledFields = fieldDefinitions.filter(f => f.enabled);
+    let enabledFields = fieldDefinitions.filter(f => f.enabled);
+
+    // When tag system is active, exclude tag-replaced fields
+    if (tagDefinitions) {
+        enabledFields = enabledFields.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+    }
+
     for (const field of enabledFields) {
         headers.push(field.label);
     }
     if (config.extraction && config.extraction.includeSummary) {
         headers.push('Summary');
+    }
+    // Add tag columns
+    if (tagDefinitions) {
+        const csvTags = tagDefinitions.filter(t => t.enabled && t.output && t.output.csv);
+        for (const tag of csvTags) {
+            headers.push(tag.label);
+        }
     }
     headers.push('Processed At');
     return headers;
@@ -134,16 +152,31 @@ async function appendInvoiceRow(csvPath, data, config) {
 
     const fieldDefinitions = config && config.fieldDefinitions;
 
+    const tagDefinitions = config && config.tagDefinitions;
+
     let row;
     if (fieldDefinitions) {
         // Dynamic mode: build row from enabled field definitions
         row = [outputFilename || '', originalFilename || ''];
-        const enabledFields = fieldDefinitions.filter(f => f.enabled);
+        let enabledFields = fieldDefinitions.filter(f => f.enabled);
+
+        // When tag system is active, exclude tag-replaced fields
+        if (tagDefinitions) {
+            enabledFields = enabledFields.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+        }
+
         for (const field of enabledFields) {
             row.push(formatFieldForCSV(analysis?.[field.key], field.type));
         }
         if (config.extraction && config.extraction.includeSummary) {
             row.push(analysis?.summary || '');
+        }
+        // Add tag values
+        if (tagDefinitions) {
+            const csvTags = tagDefinitions.filter(t => t.enabled && t.output && t.output.csv);
+            for (const tag of csvTags) {
+                row.push(analysis?.tags?.[tag.id] ? 'Yes' : 'No');
+            }
         }
         row.push(new Date().toISOString());
     } else {
