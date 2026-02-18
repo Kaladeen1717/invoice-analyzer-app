@@ -18,7 +18,7 @@ require('dotenv').config();
 const { loadConfig, ensureDirectories } = require('./src/config');
 const { processAllInvoices, processAllClients, processSingleClient } = require('./src/parallel-processor');
 const { isMultiClientMode, getAllClients } = require('./src/client-manager');
-const { getCsvRowCount } = require('./src/csv-logger');
+// csv-logger imported by parallel-processor internally
 
 // ANSI color codes for terminal output
 const colors = {
@@ -174,11 +174,15 @@ async function runSingleClientMode(config) {
                     break;
 
                 case 'analyzing':
-                    process.stdout.write(`${colors.dim}[${processedCount + 1}/${progress.total}] Analyzing: ${progress.filename}...${colors.reset}`);
+                    process.stdout.write(
+                        `${colors.dim}[${processedCount + 1}/${progress.total}] Analyzing: ${progress.filename}...${colors.reset}`
+                    );
                     break;
 
                 case 'retrying':
-                    process.stdout.write(`\n${colors.yellow}  Retry ${progress.attempt}/${progress.maxAttempts} after ${progress.delay}ms${colors.reset}`);
+                    process.stdout.write(
+                        `\n${colors.yellow}  Retry ${progress.attempt}/${progress.maxAttempts} after ${progress.delay}ms${colors.reset}`
+                    );
                     break;
 
                 case 'completed':
@@ -215,24 +219,26 @@ async function runMultiClientMode(config, clientId = null) {
         console.log('');
 
         let processedCount = 0;
-        let totalFiles = 0;
 
         try {
             const results = await processSingleClient(clientId, config, {
                 onProgress: (progress) => {
                     switch (progress.status) {
                         case 'starting':
-                            totalFiles = progress.total;
                             log(`Found ${progress.total} PDF files to process`, colors.cyan);
                             log(`Processing with ${progress.concurrency} concurrent tasks...\n`, colors.dim);
                             break;
 
                         case 'analyzing':
-                            process.stdout.write(`${colors.dim}[${processedCount + 1}/${progress.total}] Analyzing: ${progress.filename}...${colors.reset}`);
+                            process.stdout.write(
+                                `${colors.dim}[${processedCount + 1}/${progress.total}] Analyzing: ${progress.filename}...${colors.reset}`
+                            );
                             break;
 
                         case 'retrying':
-                            process.stdout.write(`\n${colors.yellow}  Retry ${progress.attempt}/${progress.maxAttempts} after ${progress.delay}ms${colors.reset}`);
+                            process.stdout.write(
+                                `\n${colors.yellow}  Retry ${progress.attempt}/${progress.maxAttempts} after ${progress.delay}ms${colors.reset}`
+                            );
                             break;
 
                         case 'completed':
@@ -300,11 +306,15 @@ async function runMultiClientMode(config, clientId = null) {
                         break;
 
                     case 'analyzing':
-                        process.stdout.write(`${colors.dim}[${progress.completed + 1}/${progress.total}] Analyzing: ${progress.filename}...${colors.reset}`);
+                        process.stdout.write(
+                            `${colors.dim}[${progress.completed + 1}/${progress.total}] Analyzing: ${progress.filename}...${colors.reset}`
+                        );
                         break;
 
                     case 'retrying':
-                        process.stdout.write(`\n${colors.yellow}  Retry ${progress.attempt}/${progress.maxAttempts} after ${progress.delay}ms${colors.reset}`);
+                        process.stdout.write(
+                            `\n${colors.yellow}  Retry ${progress.attempt}/${progress.maxAttempts} after ${progress.delay}ms${colors.reset}`
+                        );
                         break;
 
                     case 'completed':
@@ -318,7 +328,7 @@ async function runMultiClientMode(config, clientId = null) {
                         break;
                 }
             },
-            onClientComplete: ({ clientId, name, total, success, failed, csvRowsAdded, skipped, error }) => {
+            onClientComplete: ({ success, failed, csvRowsAdded, skipped, error }) => {
                 if (skipped) {
                     log(`\n  Skipped: ${error}`, colors.yellow);
                     return;
@@ -357,9 +367,10 @@ async function runMultiClientMode(config, clientId = null) {
                 if (client.skipped) {
                     log(`    ${cId}: ${colors.yellow}skipped${colors.reset} (${client.error})`, '');
                 } else {
-                    const status = client.failed > 0
-                        ? `${colors.green}${client.success}${colors.reset}/${colors.red}${client.failed}${colors.reset}`
-                        : `${colors.green}${client.success}${colors.reset}`;
+                    const status =
+                        client.failed > 0
+                            ? `${colors.green}${client.success}${colors.reset}/${colors.red}${client.failed}${colors.reset}`
+                            : `${colors.green}${client.success}${colors.reset}`;
                     log(`    ${cId}: ${status} (${client.total} files)`, '');
                 }
             }
@@ -391,7 +402,7 @@ function printSummary(results, duration, outputFolder) {
 }
 
 function printFailures(results) {
-    const failures = results.filter(r => !r.success);
+    const failures = results.filter((r) => !r.success);
     if (failures.length > 0) {
         log('\n  Failed files:', colors.yellow);
         for (const f of failures) {
@@ -434,7 +445,6 @@ async function main() {
         }
 
         process.exit(exitCode);
-
     } catch (error) {
         log(`\nError: ${error.message}`, colors.red);
         if (error.message.includes('config.json')) {

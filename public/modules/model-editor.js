@@ -40,9 +40,13 @@ export function initModelEditor() {
     discardModelBtn.addEventListener('click', discardModelChanges);
 }
 
-export function isModelLoaded() { return modelLoaded; }
+export function isModelLoaded() {
+    return modelLoaded;
+}
 
-export function invalidateModel() { modelLoaded = false; }
+export function invalidateModel() {
+    modelLoaded = false;
+}
 
 export async function loadModelSetting() {
     try {

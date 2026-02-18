@@ -15,7 +15,13 @@ const TAG_PRESETS = {
         label: 'Private',
         instruction: 'Set to true if the address "{{address}}" appears anywhere in the document.',
         parameters: [{ name: 'address', defaultValue: '' }],
-        output: { pdf: true, csv: true, filename: true, filenameFormat: ' - PRIVATE', filenamePlaceholder: 'privateTag' }
+        output: {
+            pdf: true,
+            csv: true,
+            filename: true,
+            filenameFormat: ' - PRIVATE',
+            filenamePlaceholder: 'privateTag'
+        }
     },
     'content-keyword': {
         label: 'Contains Keyword',
@@ -25,11 +31,12 @@ const TAG_PRESETS = {
     },
     'document-classification': {
         label: 'Credit Note',
-        instruction: 'Set to true if this document is a credit note (negative invoice, refund, or credit memo) rather than a standard invoice.',
+        instruction:
+            'Set to true if this document is a credit note (negative invoice, refund, or credit memo) rather than a standard invoice.',
         parameters: [],
         output: { pdf: true, csv: true, filename: true, filenameFormat: ' - CREDIT', filenamePlaceholder: 'creditTag' }
     },
-    'custom': {
+    custom: {
         label: '',
         instruction: '',
         parameters: [],
@@ -77,7 +84,7 @@ export function initTagEditor() {
         e.stopPropagation();
         addTagMenu.classList.toggle('open');
     });
-    document.querySelectorAll('#addTagMenu .dropdown-item').forEach(item => {
+    document.querySelectorAll('#addTagMenu .dropdown-item').forEach((item) => {
         item.addEventListener('click', (e) => {
             e.stopPropagation();
             addTagMenu.classList.remove('open');
@@ -90,7 +97,9 @@ export function initTagEditor() {
     });
 }
 
-export function isTagsLoaded() { return tagsLoaded; }
+export function isTagsLoaded() {
+    return tagsLoaded;
+}
 
 export async function loadTagDefinitions() {
     try {
@@ -104,7 +113,7 @@ export async function loadTagDefinitions() {
         const data = await response.json();
 
         if (response.ok) {
-            tagDefinitions = (data.tagDefinitions || []).map(tag => ({
+            tagDefinitions = (data.tagDefinitions || []).map((tag) => ({
                 ...tag,
                 parameters: Object.entries(tag.parameters || {}).map(([name, param]) => ({
                     name,
@@ -132,7 +141,9 @@ export async function loadTagDefinitions() {
 }
 
 /** Mark tags as needing reload (e.g. after config import/restore). */
-export function invalidateTags() { tagsLoaded = false; }
+export function invalidateTags() {
+    tagsLoaded = false;
+}
 
 export function hasUnsavedTagChanges() {
     return JSON.stringify(tagDefinitions) !== JSON.stringify(originalTagDefinitions);
@@ -223,7 +234,7 @@ function renderTagList() {
         { text: 'File', cls: 'col-output' },
         { text: 'Actions', cls: 'col-actions' }
     ];
-    headers.forEach(h => {
+    headers.forEach((h) => {
         const th = document.createElement('th');
         th.className = h.cls;
         th.textContent = h.text;
@@ -405,7 +416,7 @@ function renderTagList() {
 
     // Attach click-to-edit handlers only in tag edit mode
     if (tagEditMode) {
-        table.querySelectorAll('td.cell-editable').forEach(td => {
+        table.querySelectorAll('td.cell-editable').forEach((td) => {
             td.addEventListener('click', () => activateCellEdit(td));
         });
     }
@@ -450,7 +461,7 @@ function buildTagDetailContent(container, tag, index) {
 
     const fnOpts = document.createElement('div');
     fnOpts.className = 'filename-options';
-    fnOpts.style.display = (tag.output && tag.output.filename) ? 'flex' : 'none';
+    fnOpts.style.display = tag.output && tag.output.filename ? 'flex' : 'none';
 
     const fmtGroup = document.createElement('div');
     fmtGroup.className = 'form-group';
@@ -519,7 +530,7 @@ function renderInlineParams(container, tag, tagIndex) {
 
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
-    ['Name', 'Default Value', ''].forEach(text => {
+    ['Name', 'Default Value', ''].forEach((text) => {
         const th = document.createElement('th');
         th.textContent = text;
         headRow.appendChild(th);
@@ -594,7 +605,7 @@ function addTagFromPreset(presetKey) {
         label: preset.label,
         instruction: preset.instruction,
         enabled: true,
-        parameters: (preset.parameters || []).map(p => ({ ...p })),
+        parameters: (preset.parameters || []).map((p) => ({ ...p })),
         output: { ...preset.output }
     };
 
@@ -623,9 +634,18 @@ async function saveTagDefinitions() {
     for (let i = 0; i < tagDefinitions.length; i++) {
         const tag = tagDefinitions[i];
         const rowNum = i + 1;
-        if (!tag.label) { showAlert(`Tag row ${rowNum}: label is required`, 'error'); return; }
-        if (!tag.id) { showAlert(`Tag row ${rowNum}: ID is required`, 'error'); return; }
-        if (!tag.instruction) { showAlert(`Tag row ${rowNum}: instruction is required`, 'error'); return; }
+        if (!tag.label) {
+            showAlert(`Tag row ${rowNum}: label is required`, 'error');
+            return;
+        }
+        if (!tag.id) {
+            showAlert(`Tag row ${rowNum}: ID is required`, 'error');
+            return;
+        }
+        if (!tag.instruction) {
+            showAlert(`Tag row ${rowNum}: instruction is required`, 'error');
+            return;
+        }
         const dupIndex = tagDefinitions.findIndex((t, j) => j !== i && t.id === tag.id);
         if (dupIndex !== -1) {
             showAlert(`Tag row ${rowNum}: duplicate ID "${tag.id}" (also in row ${dupIndex + 1})`, 'error');
@@ -641,7 +661,7 @@ async function saveTagDefinitions() {
         saveTagsBtn.appendChild(spinner);
         saveTagsBtn.appendChild(document.createTextNode(' Saving...'));
 
-        const apiTagDefs = tagDefinitions.map(tag => ({
+        const apiTagDefs = tagDefinitions.map((tag) => ({
             ...tag,
             parameters: (tag.parameters || []).reduce((obj, p) => {
                 if (p.name.trim()) {

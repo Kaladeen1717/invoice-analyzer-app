@@ -35,7 +35,7 @@ export function activateCellEdit(td) {
     if (td.classList.contains('editing')) return;
 
     // Close any other editing cell in the same table
-    table.querySelectorAll('td.editing').forEach(other => {
+    table.querySelectorAll('td.editing').forEach((other) => {
         if (other !== td) deactivateCellEdit(other);
     });
 
@@ -171,7 +171,7 @@ export function flushAllEditing() {
         if (handler.isEditMode()) {
             const table = document.querySelector('.' + cls);
             if (table) {
-                table.querySelectorAll('td.editing').forEach(td => deactivateCellEdit(td));
+                table.querySelectorAll('td.editing').forEach((td) => deactivateCellEdit(td));
             }
         }
     }

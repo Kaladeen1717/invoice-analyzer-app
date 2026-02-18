@@ -1,7 +1,12 @@
 const fs = require('fs').promises;
 const path = require('path');
 
-const { VALID_FIELD_TYPES, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER, DEFAULT_PROCESSED_ENRICHED_SUBFOLDER, DEFAULT_CSV_FILENAME } = require('./constants');
+const {
+    VALID_FIELD_TYPES,
+    DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
+    DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
+    DEFAULT_CSV_FILENAME
+} = require('./constants');
 
 const CONFIG_FILE = 'config.json';
 const REQUIRED_FIELDS = ['processing', 'extraction', 'output'];
@@ -64,7 +69,9 @@ async function loadConfig(options = {}) {
         return config;
     } catch (error) {
         if (error.code === 'ENOENT') {
-            throw new Error(`Configuration file not found: ${configPath}\nPlease copy config.json.example to config.json and update the paths.`);
+            throw new Error(
+                `Configuration file not found: ${configPath}\nPlease copy config.json.example to config.json and update the paths.`
+            );
         }
         throw error;
     }
@@ -147,7 +154,9 @@ function validateTagDefinitions(tagDefinitions) {
             throw new Error(`tagDefinitions[${index}]: must have an "id" string`);
         }
         if (!/^[a-z][a-z0-9_]*$/.test(tag.id)) {
-            throw new Error(`tagDefinitions[${index}]: "id" must be lowercase alphanumeric with underscores (got "${tag.id}")`);
+            throw new Error(
+                `tagDefinitions[${index}]: "id" must be lowercase alphanumeric with underscores (got "${tag.id}")`
+            );
         }
         if (seenIds.has(tag.id)) {
             throw new Error(`tagDefinitions[${index}]: duplicate id "${tag.id}"`);
@@ -553,10 +562,7 @@ async function importConfig(bundle) {
             }
             await fs.mkdir(CLIENTS_DIR, { recursive: true });
             for (const [clientId, config] of Object.entries(bundle.data.clients)) {
-                await fs.writeFile(
-                    path.join(CLIENTS_DIR, `${clientId}.json`),
-                    JSON.stringify(config, null, 2)
-                );
+                await fs.writeFile(path.join(CLIENTS_DIR, `${clientId}.json`), JSON.stringify(config, null, 2));
                 imported.updated.push(`clients/${clientId}.json`);
             }
             break;
@@ -580,10 +586,7 @@ async function importConfig(bundle) {
             if (bundle.data.clients && typeof bundle.data.clients === 'object') {
                 await fs.mkdir(CLIENTS_DIR, { recursive: true });
                 for (const [clientId, config] of Object.entries(bundle.data.clients)) {
-                    await fs.writeFile(
-                        path.join(CLIENTS_DIR, `${clientId}.json`),
-                        JSON.stringify(config, null, 2)
-                    );
+                    await fs.writeFile(path.join(CLIENTS_DIR, `${clientId}.json`), JSON.stringify(config, null, 2));
                     imported.updated.push(`clients/${clientId}.json`);
                 }
             }
@@ -639,10 +642,7 @@ async function createBackup(label) {
             await fs.mkdir(clientsBackupDir);
             for (const file of clientFiles) {
                 if (file.endsWith('.json')) {
-                    await fs.copyFile(
-                        path.join(CLIENTS_DIR, file),
-                        path.join(clientsBackupDir, file)
-                    );
+                    await fs.copyFile(path.join(CLIENTS_DIR, file), path.join(clientsBackupDir, file));
                 }
             }
         }
@@ -723,10 +723,7 @@ async function restoreBackup(backupId) {
         await fs.mkdir(CLIENTS_DIR, { recursive: true });
         for (const file of clientFiles) {
             if (file.endsWith('.json')) {
-                await fs.copyFile(
-                    path.join(backupClientsDir, file),
-                    path.join(CLIENTS_DIR, file)
-                );
+                await fs.copyFile(path.join(backupClientsDir, file), path.join(CLIENTS_DIR, file));
                 restored.push(`clients/${file}`);
             }
         }

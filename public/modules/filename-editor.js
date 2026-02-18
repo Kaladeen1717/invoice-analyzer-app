@@ -59,9 +59,13 @@ export function initFilenameEditor() {
     });
 }
 
-export function isFilenameLoaded() { return filenameLoaded; }
+export function isFilenameLoaded() {
+    return filenameLoaded;
+}
 
-export function invalidateFilename() { filenameLoaded = false; }
+export function invalidateFilename() {
+    filenameLoaded = false;
+}
 
 export async function loadFilenameTemplate() {
     try {
@@ -99,14 +103,14 @@ export function discardFilenameChanges() {
 
 function renderPlaceholderChips(fields, tags) {
     fieldPlaceholderChips.textContent = '';
-    fields.forEach(field => {
+    fields.forEach((field) => {
         if (!field.enabled) return;
         const chip = createPlaceholderChip(field.key, field.label);
         fieldPlaceholderChips.appendChild(chip);
     });
 
     tagPlaceholderChips.textContent = '';
-    tags.forEach(tag => {
+    tags.forEach((tag) => {
         if (!tag.enabled) return;
         if (!tag.output || !tag.output.filename || !tag.output.filenamePlaceholder) return;
         const chip = createPlaceholderChip(tag.output.filenamePlaceholder, tag.label, 'tag-chip');
@@ -118,7 +122,7 @@ function renderPlaceholderChips(fields, tags) {
     tagGroup.style.display = tagPlaceholderChips.children.length > 0 ? 'block' : 'none';
 
     specialPlaceholderChips.textContent = '';
-    SPECIAL_PLACEHOLDERS.forEach(sp => {
+    SPECIAL_PLACEHOLDERS.forEach((sp) => {
         const chip = createPlaceholderChip(sp.key, sp.tooltip, 'special-chip');
         chip.title = sp.tooltip;
         specialPlaceholderChips.appendChild(chip);

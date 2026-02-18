@@ -103,10 +103,18 @@ export async function loadClients() {
 /**
  * Accessors for Escape key handler in app.js.
  */
-export function getClientModal() { return clientModal; }
-export function getDeleteModal() { return deleteModal; }
-export function getCloseClientForm() { return closeClientForm; }
-export function getCloseDeleteModal() { return closeDeleteModal; }
+export function getClientModal() {
+    return clientModal;
+}
+export function getDeleteModal() {
+    return deleteModal;
+}
+export function getCloseClientForm() {
+    return closeClientForm;
+}
+export function getCloseDeleteModal() {
+    return closeDeleteModal;
+}
 
 // --- Internal: Client List Rendering ---
 
@@ -127,7 +135,7 @@ function renderClientList() {
 
     clientListEl.textContent = '';
 
-    clients.forEach(client => {
+    clients.forEach((client) => {
         const card = document.createElement('div');
         card.className = 'client-card ' + (client.enabled ? 'enabled' : 'disabled');
         card.dataset.clientId = client.clientId;
@@ -265,10 +273,8 @@ function renderClientList() {
 }
 
 function updateProcessAllButton() {
-    const enabledClientsWithPdfs = clients.filter(c =>
-        c.enabled &&
-        c.folderStatus.exists &&
-        c.folderStatus.inputPdfCount > 0
+    const enabledClientsWithPdfs = clients.filter(
+        (c) => c.enabled && c.folderStatus.exists && c.folderStatus.inputPdfCount > 0
     );
     processAllBtn.disabled = enabledClientsWithPdfs.length === 0 || isProcessing;
 }
@@ -279,7 +285,7 @@ function openClientForm(clientId = null) {
     editingClientId = clientId;
 
     if (clientId) {
-        const client = clients.find(c => c.clientId === clientId);
+        const client = clients.find((c) => c.clientId === clientId);
         if (!client) {
             showAlert(`Client "${clientId}" not found`, 'error');
             return;
@@ -386,7 +392,7 @@ async function saveClient(e) {
 function showDeleteConfirmation() {
     if (!editingClientId) return;
 
-    const client = clients.find(c => c.clientId === editingClientId);
+    const client = clients.find((c) => c.clientId === editingClientId);
     if (!client) return;
 
     deleteClientId = editingClientId;
@@ -443,7 +449,7 @@ async function processClient(clientId) {
         return;
     }
 
-    const client = clients.find(c => c.clientId === clientId);
+    const client = clients.find((c) => c.clientId === clientId);
     if (!client) {
         showAlert(`Client "${clientId}" not found`, 'error');
         return;
@@ -475,7 +481,7 @@ async function processClient(clientId) {
                     try {
                         const data = JSON.parse(line.slice(6));
                         handleProcessingUpdate(data);
-                    } catch (e) {
+                    } catch {
                         // Ignore parse errors
                     }
                 }
@@ -524,7 +530,7 @@ async function processAllClients() {
                     try {
                         const data = JSON.parse(line.slice(6));
                         handleProcessingUpdate(data);
-                    } catch (e) {
+                    } catch {
                         // Ignore parse errors
                     }
                 }
@@ -548,7 +554,10 @@ function handleProcessingUpdate(data) {
             break;
 
         case 'starting':
-            addLogEntry('Found ' + data.total + ' files. Processing with ' + data.concurrency + ' concurrent tasks...', 'info');
+            addLogEntry(
+                'Found ' + data.total + ' files. Processing with ' + data.concurrency + ' concurrent tasks...',
+                'info'
+            );
             break;
 
         case 'starting-batch':
@@ -556,7 +565,10 @@ function handleProcessingUpdate(data) {
             break;
 
         case 'client-starting':
-            addLogEntry('\n--- Client ' + data.clientNumber + '/' + data.totalClients + ': ' + data.clientName + ' ---', 'info');
+            addLogEntry(
+                '\n--- Client ' + data.clientNumber + '/' + data.totalClients + ': ' + data.clientName + ' ---',
+                'info'
+            );
             break;
 
         case 'analyzing':
@@ -564,7 +576,10 @@ function handleProcessingUpdate(data) {
             break;
 
         case 'retrying':
-            addLogEntry('Retrying ' + data.filename + ' (attempt ' + data.attempt + '/' + data.maxAttempts + ')...', 'warning');
+            addLogEntry(
+                'Retrying ' + data.filename + ' (attempt ' + data.attempt + '/' + data.maxAttempts + ')...',
+                'warning'
+            );
             break;
 
         case 'completed':
@@ -586,11 +601,23 @@ function handleProcessingUpdate(data) {
         case 'done':
             if (data.mode === 'all') {
                 addLogEntry('\n=== Batch complete ===', 'info');
-                addLogEntry('Total: ' + data.totalSuccess + ' successful, ' + data.totalFailed + ' failed across ' + data.totalClients + ' clients', 'info');
+                addLogEntry(
+                    'Total: ' +
+                        data.totalSuccess +
+                        ' successful, ' +
+                        data.totalFailed +
+                        ' failed across ' +
+                        data.totalClients +
+                        ' clients',
+                    'info'
+                );
                 if (data.totalFailed === 0) {
                     showAlert('Successfully processed ' + data.totalSuccess + ' invoices!', 'success');
                 } else {
-                    showAlert('Processed ' + data.totalSuccess + ' invoices, ' + data.totalFailed + ' failed', 'warning');
+                    showAlert(
+                        'Processed ' + data.totalSuccess + ' invoices, ' + data.totalFailed + ' failed',
+                        'warning'
+                    );
                 }
             } else {
                 addLogEntry('\nComplete: ' + data.success + ' successful, ' + data.failed + ' failed', 'info');
@@ -612,17 +639,15 @@ function handleProcessingUpdate(data) {
 }
 
 function disableAllProcessButtons() {
-    document.querySelectorAll('.process-btn').forEach(btn => btn.disabled = true);
+    document.querySelectorAll('.process-btn').forEach((btn) => (btn.disabled = true));
     processAllBtn.disabled = true;
 }
 
 function enableAllProcessButtons() {
-    document.querySelectorAll('.process-btn').forEach(btn => {
+    document.querySelectorAll('.process-btn').forEach((btn) => {
         const cId = btn.dataset ? btn.dataset.clientId : null;
-        const client = cId ? clients.find(c => c.clientId === cId) : null;
-        btn.disabled = !client ||
-            client.folderStatus.inputPdfCount === 0 ||
-            !client.folderStatus.exists;
+        const client = cId ? clients.find((c) => c.clientId === cId) : null;
+        btn.disabled = !client || client.folderStatus.inputPdfCount === 0 || !client.folderStatus.exists;
     });
     updateProcessAllButton();
 }

@@ -3,13 +3,65 @@
 // Module imports
 import { showAlert } from './modules/ui-utils.js';
 import { flushAllEditing } from './modules/table-editor.js';
-import { initFieldEditor, loadFieldDefinitions, isFieldsLoaded, hasUnsavedFieldChanges, discardFieldChanges, readFieldsFromDOM, invalidateFields } from './modules/field-editor.js';
-import { initTagEditor, loadTagDefinitions, isTagsLoaded, hasUnsavedTagChanges, discardTagChanges, getAddTagMenu, invalidateTags } from './modules/tag-editor.js';
-import { initPromptEditor, loadPromptTemplate, isPromptLoaded, invalidatePrompt, hasUnsavedPromptChanges, discardPromptChanges } from './modules/prompt-editor.js';
-import { initModelEditor, loadModelSetting, isModelLoaded, invalidateModel, hasUnsavedModelChanges, discardModelChanges } from './modules/model-editor.js';
-import { initFilenameEditor, loadFilenameTemplate, isFilenameLoaded, invalidateFilename, hasUnsavedFilenameChanges, discardFilenameChanges } from './modules/filename-editor.js';
-import { initExportImport, loadBackups, isBackupsLoaded, getRestoreModal, getImportPreviewModal, getCloseRestoreModal, getCloseImportPreview } from './modules/export-import.js';
-import { initClientList, loadClients, getClientModal, getDeleteModal, getCloseClientForm, getCloseDeleteModal } from './modules/client-list.js';
+import {
+    initFieldEditor,
+    loadFieldDefinitions,
+    isFieldsLoaded,
+    hasUnsavedFieldChanges,
+    discardFieldChanges,
+    readFieldsFromDOM,
+    invalidateFields
+} from './modules/field-editor.js';
+import {
+    initTagEditor,
+    loadTagDefinitions,
+    isTagsLoaded,
+    hasUnsavedTagChanges,
+    discardTagChanges,
+    getAddTagMenu,
+    invalidateTags
+} from './modules/tag-editor.js';
+import {
+    initPromptEditor,
+    loadPromptTemplate,
+    isPromptLoaded,
+    invalidatePrompt,
+    hasUnsavedPromptChanges,
+    discardPromptChanges
+} from './modules/prompt-editor.js';
+import {
+    initModelEditor,
+    loadModelSetting,
+    isModelLoaded,
+    invalidateModel,
+    hasUnsavedModelChanges,
+    discardModelChanges
+} from './modules/model-editor.js';
+import {
+    initFilenameEditor,
+    loadFilenameTemplate,
+    isFilenameLoaded,
+    invalidateFilename,
+    hasUnsavedFilenameChanges,
+    discardFilenameChanges
+} from './modules/filename-editor.js';
+import {
+    initExportImport,
+    loadBackups,
+    isBackupsLoaded,
+    getRestoreModal,
+    getImportPreviewModal,
+    getCloseRestoreModal,
+    getCloseImportPreview
+} from './modules/export-import.js';
+import {
+    initClientList,
+    loadClients,
+    getClientModal,
+    getDeleteModal,
+    getCloseClientForm,
+    getCloseDeleteModal
+} from './modules/client-list.js';
 import { initClientDetail } from './modules/client-detail.js';
 
 // State
@@ -85,12 +137,12 @@ function switchTab(tabName) {
     activeTab = tabName;
 
     // Update tab buttons
-    document.querySelectorAll('.tab').forEach(tab => {
+    document.querySelectorAll('.tab').forEach((tab) => {
         tab.classList.toggle('active', tab.dataset.tab === tabName);
     });
 
     // Update tab content
-    document.querySelectorAll('.tab-content').forEach(content => {
+    document.querySelectorAll('.tab-content').forEach((content) => {
         content.classList.toggle('active', content.id === `tab-${tabName}`);
     });
 
@@ -122,7 +174,7 @@ async function checkServerHealth() {
             statusIndicator.querySelector('.status-dot').style.background = 'var(--warning)';
             showAlert('Please configure your GEMINI_API_KEY in the .env file', 'warning');
         }
-    } catch (error) {
+    } catch {
         statusText.textContent = 'Server offline';
         statusIndicator.querySelector('.status-dot').style.background = 'var(--error)';
         showAlert('Cannot connect to server. Please ensure the server is running.', 'error');
@@ -135,7 +187,7 @@ async function checkServerHealth() {
 
 function setupEventListeners() {
     // Tab navigation
-    document.querySelectorAll('.tab').forEach(tab => {
+    document.querySelectorAll('.tab').forEach((tab) => {
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
