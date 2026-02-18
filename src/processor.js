@@ -55,11 +55,13 @@ async function pdfToBase64(filePath) {
  * @param {Object} config - Configuration object
  * @param {Object} options - Additional options
  * @param {string} options.apiKey - Optional API key (uses default if not provided)
+ * @param {string} options.model - Optional model name (uses config.model or default if not provided)
  * @returns {Promise<Object>} The analysis result with token usage
  */
 async function analyzeInvoice(pdfPath, config, options = {}) {
     const { apiKey } = options;
-    const model = getGenAI(apiKey).getGenerativeModel({ model: 'gemini-3-flash-preview' });
+    const modelName = options.model || config.model || 'gemini-3-flash-preview';
+    const model = getGenAI(apiKey).getGenerativeModel({ model: modelName });
     const pdfBase64 = await pdfToBase64(pdfPath);
 
     const prompt = buildExtractionPrompt(config);
