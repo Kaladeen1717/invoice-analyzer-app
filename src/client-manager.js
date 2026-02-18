@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const { VALID_OVERRIDE_SECTIONS, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER, DEFAULT_PROCESSED_ENRICHED_SUBFOLDER, DEFAULT_CSV_FILENAME } = require('./constants');
 
 let cachedClientsConfig = null;
 let usingLegacyConfig = false;
@@ -200,9 +201,9 @@ async function getClientConfig(clientId, globalConfig) {
     }
 
     // Build folder paths
-    const processedOriginalSubfolder = globalConfig.output?.processedOriginalSubfolder || 'processed-original';
-    const processedEnrichedSubfolder = globalConfig.output?.processedEnrichedSubfolder || 'processed-enriched';
-    const csvFilename = globalConfig.output?.csvFilename || 'invoice-log.csv';
+    const processedOriginalSubfolder = globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER;
+    const processedEnrichedSubfolder = globalConfig.output?.processedEnrichedSubfolder || DEFAULT_PROCESSED_ENRICHED_SUBFOLDER;
+    const csvFilename = globalConfig.output?.csvFilename || DEFAULT_CSV_FILENAME;
 
     const folders = {
         base: client.folderPath,
@@ -483,7 +484,7 @@ async function getClient(clientId) {
  * @param {string} folderPath - The client's folder path
  * @returns {Promise<Object>} Folder status with PDF counts
  */
-async function getClientFolderStatus(folderPath, processedOriginalSubfolder = 'processed-original') {
+async function getClientFolderStatus(folderPath, processedOriginalSubfolder = DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER) {
     const result = {
         exists: false,
         inputPdfCount: 0,
@@ -625,7 +626,7 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
     // Folder status
     const folderStatus = await getClientFolderStatus(
         client.folderPath,
-        globalConfig.output?.processedOriginalSubfolder || 'processed-original'
+        globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER
     );
 
     return {
@@ -682,7 +683,7 @@ async function saveClientOverrides(clientId, section, data) {
             config.model = data;
             break;
         default:
-            throw new Error(`Invalid override section: ${section}`);
+            throw new Error(`Invalid override section: ${section}. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}`);
     }
 
     await fs.writeFile(filePath, JSON.stringify(config, null, 2));
@@ -727,7 +728,7 @@ async function removeClientOverrides(clientId, section) {
             delete config.model;
             break;
         default:
-            throw new Error(`Invalid override section: ${section}`);
+            throw new Error(`Invalid override section: ${section}. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}`);
     }
 
     await fs.writeFile(filePath, JSON.stringify(config, null, 2));

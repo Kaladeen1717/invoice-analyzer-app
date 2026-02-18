@@ -9,6 +9,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { buildExtractionPrompt, parseGeminiResponse, validateAnalysis, formatDocumentTypes, TAG_REPLACED_FIELDS } = require('./prompt-builder');
 const { generateFormattedFilename, getUniqueFilename, formatDateForDisplay } = require('./filename-generator');
+const { DEFAULT_MODEL } = require('./constants');
 
 // Cache for Gemini AI instances per API key
 const genAICache = new Map();
@@ -60,7 +61,7 @@ async function pdfToBase64(filePath) {
  */
 async function analyzeInvoice(pdfPath, config, options = {}) {
     const { apiKey } = options;
-    const modelName = options.model || config.model || 'gemini-3-flash-preview';
+    const modelName = options.model || config.model || DEFAULT_MODEL;
     const model = getGenAI(apiKey).getGenerativeModel({ model: modelName });
     const pdfBase64 = await pdfToBase64(pdfPath);
 
