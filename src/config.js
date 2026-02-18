@@ -134,6 +134,79 @@ function validateDocumentTypes(documentTypes) {
 }
 
 /**
+ * Validate tag definitions array
+ * @param {Array} tagDefinitions - Tag definitions to validate
+ */
+function validateTagDefinitions(tagDefinitions) {
+    if (!Array.isArray(tagDefinitions)) {
+        throw new Error('tagDefinitions must be an array');
+    }
+    const seenIds = new Set();
+    for (const [index, tag] of tagDefinitions.entries()) {
+        if (!tag.id || typeof tag.id !== 'string') {
+            throw new Error(`tagDefinitions[${index}]: must have an "id" string`);
+        }
+        if (!/^[a-z][a-z0-9_]*$/.test(tag.id)) {
+            throw new Error(`tagDefinitions[${index}]: "id" must be lowercase alphanumeric with underscores (got "${tag.id}")`);
+        }
+        if (seenIds.has(tag.id)) {
+            throw new Error(`tagDefinitions[${index}]: duplicate id "${tag.id}"`);
+        }
+        seenIds.add(tag.id);
+        if (!tag.label || typeof tag.label !== 'string') {
+            throw new Error(`tagDefinitions[${index}]: must have a "label" string`);
+        }
+        if (!tag.instruction || typeof tag.instruction !== 'string') {
+            throw new Error(`tagDefinitions[${index}]: must have an "instruction" string`);
+        }
+        if (typeof tag.enabled !== 'boolean') {
+            throw new Error(`tagDefinitions[${index}]: "enabled" must be a boolean`);
+        }
+        // Validate parameters if present
+        if (tag.parameters && typeof tag.parameters === 'object') {
+            for (const [paramKey, param] of Object.entries(tag.parameters)) {
+                if (!param.label || typeof param.label !== 'string') {
+                    throw new Error(`tagDefinitions[${index}].parameters.${paramKey}: must have a "label" string`);
+                }
+                if (!('default' in param)) {
+                    throw new Error(`tagDefinitions[${index}].parameters.${paramKey}: must have a "default" value`);
+                }
+            }
+        }
+        // Validate output config if present
+        if (tag.output && typeof tag.output === 'object') {
+            for (const boolKey of ['filename', 'pdf', 'csv']) {
+                if (boolKey in tag.output && typeof tag.output[boolKey] !== 'boolean') {
+                    throw new Error(`tagDefinitions[${index}].output.${boolKey}: must be a boolean`);
+                }
+            }
+            if (tag.output.filenamePlaceholder && !/^[a-zA-Z][a-zA-Z0-9]*$/.test(tag.output.filenamePlaceholder)) {
+                throw new Error(`tagDefinitions[${index}].output.filenamePlaceholder: must be alphanumeric camelCase`);
+            }
+        }
+    }
+}
+
+/**
+ * Get tag definitions from config, or null for legacy mode
+ * @param {Object} config - The configuration object
+ * @returns {Array|null} Tag definitions array or null
+ */
+function getTagDefinitions(config) {
+    return config.tagDefinitions || null;
+}
+
+/**
+ * Update tagDefinitions in config.json.
+ * Validates before saving.
+ * @param {Array} tagDefinitions - The tag definitions array
+ */
+async function updateTagDefinitions(tagDefinitions) {
+    validateTagDefinitions(tagDefinitions);
+    await saveConfig({ tagDefinitions });
+}
+
+/**
  * Validate the configuration object
  * @param {Object} config - The configuration to validate
  * @param {Object} options - Validation options
@@ -181,6 +254,11 @@ function validateConfig(config, options = {}) {
     // Validate field definitions if present
     if (config.fieldDefinitions) {
         validateFieldDefinitions(config.fieldDefinitions);
+    }
+
+    // Validate tag definitions if present
+    if (config.tagDefinitions) {
+        validateTagDefinitions(config.tagDefinitions);
     }
 
     // Validate extraction.fields (only required in legacy mode without fieldDefinitions)
@@ -614,8 +692,11 @@ module.exports = {
     getDefaultDocumentTypes,
     validateFieldDefinitions,
     getFieldDefinitions,
+    validateTagDefinitions,
+    getTagDefinitions,
     saveConfig,
     updateFieldDefinitions,
+    updateTagDefinitions,
     exportConfig,
     importConfig,
     createBackup,

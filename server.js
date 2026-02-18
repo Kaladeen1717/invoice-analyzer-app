@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Import modules
-const { loadConfig, updateFieldDefinitions, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
+const { loadConfig, updateFieldDefinitions, updateTagDefinitions, exportConfig, importConfig, createBackup, listBackups, restoreBackup } = require('./src/config');
 const { processAllInvoices } = require('./src/parallel-processor');
 const {
     getAllClients,
@@ -251,6 +251,7 @@ app.get('/api/config', async (req, res) => {
         const config = await loadConfig({ requireFolders: false });
         res.json({
             fieldDefinitions: config.fieldDefinitions || null,
+            tagDefinitions: config.tagDefinitions || null,
             extraction: config.extraction,
             output: config.output,
             processing: config.processing,
@@ -274,6 +275,34 @@ app.put('/api/config/fields', async (req, res) => {
         res.json({ success: true, message: 'Field definitions updated' });
     } catch (error) {
         res.status(400).json({ error: 'Failed to update field definitions', details: error.message });
+    }
+});
+
+/**
+ * GET /api/config/tags - Get tag definitions
+ */
+app.get('/api/config/tags', async (req, res) => {
+    try {
+        const config = await loadConfig({ requireFolders: false });
+        res.json({ tagDefinitions: config.tagDefinitions || null });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to load tag definitions', details: error.message });
+    }
+});
+
+/**
+ * PUT /api/config/tags - Update tag definitions
+ */
+app.put('/api/config/tags', async (req, res) => {
+    try {
+        const { tagDefinitions } = req.body;
+        if (!tagDefinitions) {
+            return res.status(400).json({ error: 'tagDefinitions array is required' });
+        }
+        await updateTagDefinitions(tagDefinitions);
+        res.json({ success: true, message: 'Tag definitions updated' });
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to update tag definitions', details: error.message });
     }
 });
 
