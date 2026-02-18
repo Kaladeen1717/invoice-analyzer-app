@@ -6,6 +6,13 @@ let editingClientId = null;
 let deleteClientId = null;
 let activeTab = 'dashboard';
 
+// Field editor state
+let fieldDefinitions = [];
+let originalFieldDefinitions = [];
+let deleteFieldIndex = null;
+let fieldsLoaded = false;
+let editMode = false;
+
 // DOM elements
 const statusIndicator = document.getElementById('statusIndicator');
 const statusText = document.getElementById('statusText');
@@ -43,6 +50,22 @@ const closeDeleteModalBtn = document.getElementById('closeDeleteModalBtn');
 const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
 const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
 
+// Field editor elements
+const fieldListEl = document.getElementById('fieldList');
+const fieldsSaveBar = document.getElementById('fieldsSaveBar');
+const reloadFieldsBtn = document.getElementById('reloadFieldsBtn');
+const addFieldBtn = document.getElementById('addFieldBtn');
+const editToggleBtn = document.getElementById('editToggleBtn');
+const saveFieldsBtn = document.getElementById('saveFieldsBtn');
+const discardFieldsBtn = document.getElementById('discardFieldsBtn');
+
+// Delete field modal elements
+const deleteFieldModal = document.getElementById('deleteFieldModal');
+const deleteFieldName = document.getElementById('deleteFieldName');
+const closeDeleteFieldModalBtn = document.getElementById('closeDeleteFieldModalBtn');
+const cancelDeleteFieldBtn = document.getElementById('cancelDeleteFieldBtn');
+const confirmDeleteFieldBtn = document.getElementById('confirmDeleteFieldBtn');
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -58,6 +81,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 
 function switchTab(tabName) {
+    // Check for unsaved field changes when leaving global-config
+    if (activeTab === 'global-config' && tabName !== 'global-config') {
+        if (editMode) readFieldsFromDOM();
+        if (hasUnsavedFieldChanges()) {
+            if (!confirm('You have unsaved field changes. Discard and switch tabs?')) {
+                return;
+            }
+            discardFieldChanges();
+        }
+    }
+
     activeTab = tabName;
 
     // Update tab buttons
@@ -69,6 +103,11 @@ function switchTab(tabName) {
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.toggle('active', content.id === `tab-${tabName}`);
     });
+
+    // Load fields on first visit to global-config
+    if (tabName === 'global-config' && !fieldsLoaded) {
+        loadFieldDefinitions();
+    }
 }
 
 // ============================================================================
@@ -632,6 +671,537 @@ function escapeHtml(text) {
 }
 
 // ============================================================================
+// FIELD DEFINITIONS EDITOR
+// ============================================================================
+
+async function loadFieldDefinitions() {
+    try {
+        fieldListEl.textContent = '';
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'loading-placeholder';
+        loadingDiv.textContent = 'Loading fields...';
+        fieldListEl.appendChild(loadingDiv);
+
+        const response = await fetch('/api/config');
+        const data = await response.json();
+
+        if (response.ok) {
+            fieldDefinitions = data.fieldDefinitions || [];
+            originalFieldDefinitions = JSON.parse(JSON.stringify(fieldDefinitions));
+            fieldsLoaded = true;
+            renderFieldList();
+        } else {
+            fieldListEl.textContent = '';
+            const errDiv = document.createElement('div');
+            errDiv.className = 'error-placeholder';
+            errDiv.textContent = 'Error: ' + (data.error || 'Unknown error');
+            fieldListEl.appendChild(errDiv);
+        }
+    } catch (error) {
+        fieldListEl.textContent = '';
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error-placeholder';
+        errDiv.textContent = 'Failed to load fields: ' + error.message;
+        fieldListEl.appendChild(errDiv);
+    }
+}
+
+function renderFieldList() {
+    fieldListEl.textContent = '';
+
+    if (fieldDefinitions.length === 0) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'empty-placeholder';
+        const p1 = document.createElement('p');
+        p1.textContent = 'No extraction fields defined.';
+        const p2 = document.createElement('p');
+        p2.textContent = 'Click "+ Add Custom Field" to create one.';
+        placeholder.appendChild(p1);
+        placeholder.appendChild(p2);
+        fieldListEl.appendChild(placeholder);
+        updateFieldsSaveBar();
+        return;
+    }
+
+    const typeOptions = ['text', 'number', 'boolean', 'date', 'array'];
+    const table = document.createElement('table');
+    table.className = 'fields-table' + (editMode ? ' edit-mode' : '');
+    table.id = 'fieldsTable';
+
+    // Build thead
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    const headers = [
+        { text: 'On', cls: 'col-enabled' },
+        { text: 'Label', cls: 'col-label' },
+        { text: 'Key', cls: 'col-key' },
+        { text: 'Type', cls: 'col-type' },
+        { text: 'Schema Hint', cls: 'col-hint' },
+        { text: 'Instruction', cls: 'col-instruction' },
+        { text: 'Source', cls: 'col-source' },
+        { text: 'Actions', cls: 'col-actions' }
+    ];
+    headers.forEach(h => {
+        const th = document.createElement('th');
+        th.className = h.cls;
+        th.textContent = h.text;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Build tbody
+    const tbody = document.createElement('tbody');
+    tbody.id = 'fieldListBody';
+
+    fieldDefinitions.forEach((field, index) => {
+        const tr = document.createElement('tr');
+        if (!field.enabled) tr.className = 'disabled';
+        tr.dataset.index = index;
+
+        // Enabled column
+        const tdEnabled = document.createElement('td');
+        tdEnabled.className = 'col-enabled';
+        const enabledView = document.createElement('span');
+        enabledView.className = 'cell-view';
+        const toggleIcon = document.createElement('span');
+        toggleIcon.className = 'toggle-icon ' + (field.enabled ? 'enabled' : 'disabled');
+        toggleIcon.innerHTML = field.enabled ? '&#9679;' : '&#9675;';
+        enabledView.appendChild(toggleIcon);
+        tdEnabled.appendChild(enabledView);
+        const enabledEdit = document.createElement('span');
+        enabledEdit.className = 'cell-edit';
+        const enabledCheckbox = document.createElement('input');
+        enabledCheckbox.type = 'checkbox';
+        enabledCheckbox.dataset.field = 'enabled';
+        enabledCheckbox.checked = field.enabled;
+        enabledEdit.appendChild(enabledCheckbox);
+        tdEnabled.appendChild(enabledEdit);
+        tr.appendChild(tdEnabled);
+
+        // Label column
+        const tdLabel = document.createElement('td');
+        tdLabel.className = 'col-label';
+        const labelView = document.createElement('span');
+        labelView.className = 'cell-view';
+        labelView.textContent = field.label;
+        tdLabel.appendChild(labelView);
+        const labelEdit = document.createElement('span');
+        labelEdit.className = 'cell-edit';
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.dataset.field = 'label';
+        labelInput.value = field.label;
+        labelEdit.appendChild(labelInput);
+        tdLabel.appendChild(labelEdit);
+        tr.appendChild(tdLabel);
+
+        // Key column
+        const tdKey = document.createElement('td');
+        tdKey.className = 'col-key';
+        const keyView = document.createElement('span');
+        keyView.className = 'cell-view';
+        const keyCode = document.createElement('code');
+        keyCode.textContent = field.key;
+        keyView.appendChild(keyCode);
+        tdKey.appendChild(keyView);
+        const keyEdit = document.createElement('span');
+        keyEdit.className = 'cell-edit';
+        const keyInput = document.createElement('input');
+        keyInput.type = 'text';
+        keyInput.dataset.field = 'key';
+        keyInput.value = field.key;
+        const isKeyReadonly = field.builtIn || field.key !== '';
+        keyInput.readOnly = isKeyReadonly;
+        keyEdit.appendChild(keyInput);
+        tdKey.appendChild(keyEdit);
+        tr.appendChild(tdKey);
+
+        // Type column
+        const tdType = document.createElement('td');
+        tdType.className = 'col-type';
+        const typeView = document.createElement('span');
+        typeView.className = 'cell-view';
+        typeView.textContent = field.type;
+        tdType.appendChild(typeView);
+        const typeEdit = document.createElement('span');
+        typeEdit.className = 'cell-edit';
+        const typeSelect = document.createElement('select');
+        typeSelect.dataset.field = 'type';
+        typeOptions.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            opt.selected = t === field.type;
+            typeSelect.appendChild(opt);
+        });
+        typeEdit.appendChild(typeSelect);
+        tdType.appendChild(typeEdit);
+        tr.appendChild(tdType);
+
+        // Schema Hint column
+        const tdHint = document.createElement('td');
+        tdHint.className = 'col-hint';
+        const hintView = document.createElement('span');
+        hintView.className = 'cell-view cell-view-truncate';
+        hintView.title = field.schemaHint;
+        hintView.textContent = field.schemaHint;
+        tdHint.appendChild(hintView);
+        const hintEdit = document.createElement('span');
+        hintEdit.className = 'cell-edit';
+        const hintTextarea = document.createElement('textarea');
+        hintTextarea.dataset.field = 'schemaHint';
+        hintTextarea.rows = 2;
+        hintTextarea.value = field.schemaHint;
+        hintEdit.appendChild(hintTextarea);
+        tdHint.appendChild(hintEdit);
+        tr.appendChild(tdHint);
+
+        // Instruction column
+        const tdInstruction = document.createElement('td');
+        tdInstruction.className = 'col-instruction';
+        const instrView = document.createElement('span');
+        instrView.className = 'cell-view cell-view-truncate';
+        instrView.title = field.instruction;
+        instrView.textContent = field.instruction;
+        tdInstruction.appendChild(instrView);
+        const instrEdit = document.createElement('span');
+        instrEdit.className = 'cell-edit';
+        const instrTextarea = document.createElement('textarea');
+        instrTextarea.dataset.field = 'instruction';
+        instrTextarea.rows = 2;
+        instrTextarea.value = field.instruction;
+        instrEdit.appendChild(instrTextarea);
+        tdInstruction.appendChild(instrEdit);
+        tr.appendChild(tdInstruction);
+
+        // Source column
+        const tdSource = document.createElement('td');
+        tdSource.className = 'col-source';
+        const badge = document.createElement('span');
+        badge.className = field.builtIn ? 'field-badge-builtin' : 'field-badge-custom';
+        badge.textContent = field.builtIn ? 'Built-in' : 'Custom';
+        tdSource.appendChild(badge);
+        tr.appendChild(tdSource);
+
+        // Actions column
+        const tdActions = document.createElement('td');
+        tdActions.className = 'col-actions';
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'row-actions';
+
+        const moveUpBtn = document.createElement('button');
+        moveUpBtn.className = 'btn-icon field-move-up-btn';
+        moveUpBtn.dataset.index = index;
+        moveUpBtn.title = 'Move up';
+        moveUpBtn.innerHTML = '&#9650;';
+        moveUpBtn.disabled = index === 0;
+        actionsDiv.appendChild(moveUpBtn);
+
+        const moveDownBtn = document.createElement('button');
+        moveDownBtn.className = 'btn-icon field-move-down-btn';
+        moveDownBtn.dataset.index = index;
+        moveDownBtn.title = 'Move down';
+        moveDownBtn.innerHTML = '&#9660;';
+        moveDownBtn.disabled = index === fieldDefinitions.length - 1;
+        actionsDiv.appendChild(moveDownBtn);
+
+        if (!field.builtIn) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-icon btn-icon-danger field-delete-btn';
+            deleteBtn.dataset.index = index;
+            deleteBtn.title = 'Delete field';
+            deleteBtn.innerHTML = '&#10005;';
+            actionsDiv.appendChild(deleteBtn);
+        }
+
+        tdActions.appendChild(actionsDiv);
+        tr.appendChild(tdActions);
+
+        tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    fieldListEl.appendChild(table);
+
+    attachFieldRowListeners();
+    updateFieldsSaveBar();
+}
+
+function attachFieldRowListeners() {
+    document.querySelectorAll('.field-move-up-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            readFieldsFromDOM();
+            moveField(parseInt(btn.dataset.index), -1);
+        });
+    });
+
+    document.querySelectorAll('.field-move-down-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            readFieldsFromDOM();
+            moveField(parseInt(btn.dataset.index), 1);
+        });
+    });
+
+    document.querySelectorAll('.field-delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            readFieldsFromDOM();
+            showDeleteFieldConfirmation(parseInt(btn.dataset.index));
+        });
+    });
+
+    // Auto-generate key from label for new rows (key input not readonly)
+    document.querySelectorAll('#fieldListBody tr').forEach(row => {
+        const keyInput = row.querySelector('input[data-field="key"]');
+        const labelInput = row.querySelector('input[data-field="label"]');
+        if (keyInput && labelInput && !keyInput.readOnly) {
+            labelInput.addEventListener('input', () => {
+                keyInput.value = labelToCamelCase(labelInput.value);
+            });
+        }
+    });
+
+    // Listen for input changes to update save bar
+    document.querySelectorAll('#fieldListBody input, #fieldListBody select, #fieldListBody textarea').forEach(el => {
+        el.addEventListener('change', () => {
+            readFieldsFromDOM();
+            updateFieldsSaveBar();
+        });
+    });
+}
+
+function toggleEditMode() {
+    if (editMode && hasUnsavedFieldChanges()) {
+        if (!confirm('You have unsaved changes. Discard and exit edit mode?')) {
+            return;
+        }
+        fieldDefinitions = JSON.parse(JSON.stringify(originalFieldDefinitions));
+    }
+
+    editMode = !editMode;
+
+    editToggleBtn.classList.toggle('active', editMode);
+    editToggleBtn.querySelector('span').textContent = editMode ? 'Editing' : 'Locked';
+    addFieldBtn.style.display = editMode ? 'inline-flex' : 'none';
+
+    const table = document.getElementById('fieldsTable');
+    if (table) {
+        table.classList.toggle('edit-mode', editMode);
+    }
+
+    if (!editMode) {
+        renderFieldList();
+    }
+}
+
+function readFieldsFromDOM() {
+    const rows = document.querySelectorAll('#fieldListBody tr');
+    rows.forEach((row, index) => {
+        if (index >= fieldDefinitions.length) return;
+        const field = fieldDefinitions[index];
+
+        const enabledInput = row.querySelector('input[data-field="enabled"]');
+        const labelInput = row.querySelector('input[data-field="label"]');
+        const keyInput = row.querySelector('input[data-field="key"]');
+        const typeSelect = row.querySelector('select[data-field="type"]');
+        const hintTextarea = row.querySelector('textarea[data-field="schemaHint"]');
+        const instructionTextarea = row.querySelector('textarea[data-field="instruction"]');
+
+        if (enabledInput) field.enabled = enabledInput.checked;
+        if (labelInput) field.label = labelInput.value.trim();
+        if (keyInput) field.key = keyInput.value.trim();
+        if (typeSelect) field.type = typeSelect.value;
+        if (hintTextarea) field.schemaHint = hintTextarea.value.trim();
+        if (instructionTextarea) field.instruction = instructionTextarea.value.trim();
+    });
+}
+
+function addNewFieldRow() {
+    if (!editMode) {
+        toggleEditMode();
+    }
+    readFieldsFromDOM();
+    fieldDefinitions.push({
+        key: '',
+        label: '',
+        type: 'text',
+        schemaHint: '',
+        instruction: '',
+        enabled: true
+    });
+    renderFieldList();
+
+    // Focus the label input of the new row
+    const lastRow = document.querySelector('#fieldListBody tr:last-child');
+    if (lastRow) {
+        const labelInput = lastRow.querySelector('input[data-field="label"]');
+        if (labelInput) labelInput.focus();
+    }
+}
+
+function hasUnsavedFieldChanges() {
+    return JSON.stringify(fieldDefinitions) !== JSON.stringify(originalFieldDefinitions);
+}
+
+function updateFieldsSaveBar() {
+    if (hasUnsavedFieldChanges()) {
+        fieldsSaveBar.style.display = 'flex';
+    } else {
+        fieldsSaveBar.style.display = 'none';
+    }
+}
+
+function labelToCamelCase(label) {
+    return label
+        .trim()
+        .split(/\s+/)
+        .map((word, i) => {
+            const lower = word.toLowerCase();
+            return i === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join('');
+}
+
+function toggleField(index) {
+    fieldDefinitions[index].enabled = !fieldDefinitions[index].enabled;
+    renderFieldList();
+}
+
+function moveField(index, direction) {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= fieldDefinitions.length) return;
+
+    const temp = fieldDefinitions[index];
+    fieldDefinitions[index] = fieldDefinitions[newIndex];
+    fieldDefinitions[newIndex] = temp;
+    renderFieldList();
+}
+
+function showDeleteFieldConfirmation(index) {
+    const field = fieldDefinitions[index];
+    if (field.builtIn) return;
+
+    deleteFieldIndex = index;
+    deleteFieldName.textContent = field.label;
+    deleteFieldModal.classList.add('active');
+}
+
+function closeDeleteFieldModal() {
+    deleteFieldModal.classList.remove('active');
+    deleteFieldIndex = null;
+}
+
+function confirmDeleteField() {
+    if (deleteFieldIndex === null) return;
+    if (fieldDefinitions[deleteFieldIndex].builtIn) return;
+
+    fieldDefinitions.splice(deleteFieldIndex, 1);
+    closeDeleteFieldModal();
+    renderFieldList();
+}
+
+async function saveFieldDefinitions() {
+    readFieldsFromDOM();
+
+    if (fieldDefinitions.length === 0) {
+        showAlert('Cannot save an empty field list', 'error');
+        return;
+    }
+
+    // Validate all fields
+    const validTypes = ['text', 'number', 'boolean', 'date', 'array'];
+    for (let i = 0; i < fieldDefinitions.length; i++) {
+        const field = fieldDefinitions[i];
+        const rowNum = i + 1;
+
+        if (!field.label) {
+            showAlert(`Row ${rowNum}: label is required`, 'error');
+            return;
+        }
+        if (!field.key) {
+            showAlert(`Row ${rowNum}: key is required`, 'error');
+            return;
+        }
+        if (!/^[a-z][a-zA-Z0-9]*$/.test(field.key)) {
+            showAlert(`Row ${rowNum}: key must start with a lowercase letter and contain only alphanumeric characters`, 'error');
+            return;
+        }
+        if (!validTypes.includes(field.type)) {
+            showAlert(`Row ${rowNum}: invalid field type`, 'error');
+            return;
+        }
+        if (!field.schemaHint) {
+            showAlert(`Row ${rowNum}: schema hint is required`, 'error');
+            return;
+        }
+        if (!field.instruction) {
+            showAlert(`Row ${rowNum}: instruction is required`, 'error');
+            return;
+        }
+
+        // Check duplicate keys
+        const duplicateIndex = fieldDefinitions.findIndex((f, j) => j !== i && f.key === field.key);
+        if (duplicateIndex !== -1) {
+            showAlert(`Row ${rowNum}: duplicate key "${field.key}" (also in row ${duplicateIndex + 1})`, 'error');
+            return;
+        }
+    }
+
+    try {
+        saveFieldsBtn.disabled = true;
+        saveFieldsBtn.textContent = '';
+        const spinner = document.createElement('span');
+        spinner.className = 'spinner';
+        saveFieldsBtn.appendChild(spinner);
+        saveFieldsBtn.appendChild(document.createTextNode(' Saving...'));
+
+        const response = await fetch('/api/config/fields', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fieldDefinitions })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            originalFieldDefinitions = JSON.parse(JSON.stringify(fieldDefinitions));
+            if (editMode) {
+                editMode = false;
+                editToggleBtn.classList.remove('active');
+                editToggleBtn.querySelector('span').textContent = 'Locked';
+                addFieldBtn.style.display = 'none';
+            }
+            renderFieldList();
+            showAlert(result.message || 'Field definitions saved', 'success');
+        } else {
+            showAlert(result.error || result.details || 'Failed to save fields', 'error');
+        }
+    } catch (error) {
+        showAlert(`Failed to save fields: ${error.message}`, 'error');
+    } finally {
+        saveFieldsBtn.disabled = false;
+        saveFieldsBtn.textContent = '';
+        const span = document.createElement('span');
+        span.textContent = 'Save Changes';
+        saveFieldsBtn.appendChild(span);
+    }
+}
+
+function discardFieldChanges() {
+    fieldDefinitions = JSON.parse(JSON.stringify(originalFieldDefinitions));
+    if (editMode) {
+        editMode = false;
+        editToggleBtn.classList.remove('active');
+        editToggleBtn.querySelector('span').textContent = 'Locked';
+        addFieldBtn.style.display = 'none';
+    }
+    renderFieldList();
+}
+
+// ============================================================================
 // EVENT LISTENERS
 // ============================================================================
 
@@ -682,10 +1252,33 @@ function setupEventListeners() {
         }
     });
 
+    // Field editor buttons
+    editToggleBtn.addEventListener('click', toggleEditMode);
+    reloadFieldsBtn.addEventListener('click', () => {
+        fieldsLoaded = false;
+        loadFieldDefinitions();
+    });
+    addFieldBtn.addEventListener('click', addNewFieldRow);
+    saveFieldsBtn.addEventListener('click', saveFieldDefinitions);
+    discardFieldsBtn.addEventListener('click', discardFieldChanges);
+
+    // Delete field modal
+    closeDeleteFieldModalBtn.addEventListener('click', closeDeleteFieldModal);
+    cancelDeleteFieldBtn.addEventListener('click', closeDeleteFieldModal);
+    confirmDeleteFieldBtn.addEventListener('click', confirmDeleteField);
+
+    deleteFieldModal.addEventListener('click', (e) => {
+        if (e.target === deleteFieldModal) {
+            closeDeleteFieldModal();
+        }
+    });
+
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (deleteModal.classList.contains('active')) {
+            if (deleteFieldModal.classList.contains('active')) {
+                closeDeleteFieldModal();
+            } else if (deleteModal.classList.contains('active')) {
                 closeDeleteModal();
             } else if (clientModal.classList.contains('active')) {
                 closeClientForm();

@@ -72,9 +72,34 @@
 
       <!-- Tab: Global Config -->
       <div class="tab-content" id="tab-global-config">
-        <div class="empty-placeholder">
-          <p>Global configuration editor coming in the next update.</p>
-          <p>This will include extraction fields, tag rules, prompt templates, and filename settings.</p>
+        <section class="fields-editor-section">
+          <div class="section-header">
+            <h2>Extraction Fields</h2>
+            <div class="section-actions">
+              <button class="btn btn-small edit-toggle-btn" id="editToggleBtn">
+                <span>Locked</span>
+              </button>
+              <button class="btn btn-secondary btn-small" id="reloadFieldsBtn">
+                <span>Reload</span>
+              </button>
+              <button class="btn btn-primary btn-small" id="addFieldBtn" style="display: none;">
+                <span>+ Add Custom Field</span>
+              </button>
+            </div>
+          </div>
+          <p class="section-description">Configure the fields that Gemini extracts from invoices. Reorder, toggle, or add custom fields to match your workflow.</p>
+          <div class="fields-table-wrapper" id="fieldList">
+            <div class="loading-placeholder">Loading fields...</div>
+          </div>
+        </section>
+
+        <!-- Sticky save bar -->
+        <div class="fields-save-bar" id="fieldsSaveBar" style="display: none;">
+          <span>You have unsaved changes</span>
+          <div class="fields-save-bar-actions">
+            <button class="btn btn-secondary btn-small" id="discardFieldsBtn">Discard</button>
+            <button class="btn btn-primary btn-small" id="saveFieldsBtn">Save Changes</button>
+          </div>
         </div>
       </div>
     </main>
@@ -151,6 +176,24 @@
       <div class="form-actions">
         <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
         <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Field Confirmation Modal -->
+  <div class="modal-overlay" id="deleteFieldModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h3>Delete Field</h3>
+        <button class="modal-close" id="closeDeleteFieldModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete "<strong id="deleteFieldName"></strong>"?</p>
+        <p class="text-warning">This field will be removed from all future extractions after saving.</p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" id="cancelDeleteFieldBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteFieldBtn">Delete</button>
       </div>
     </div>
   </div>
