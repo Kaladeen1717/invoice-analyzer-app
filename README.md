@@ -2,7 +2,7 @@
 
 A local application that analyzes invoice PDFs using Google's Gemini Vision API. Supports multi-client management with both a web-based Admin UI and CLI for batch processing.
 
-**Model:** `gemini-3-flash-preview`
+**Default model:** `gemini-3-flash-preview` (configurable per-client via the Admin UI)
 
 ## Features
 
@@ -14,11 +14,14 @@ A local application that analyzes invoice PDFs using Google's Gemini Vision API.
 - Admin Web UI for client management and processing
 - CLI for batch processing and automation
 - CSV logging of processed invoices
+- Per-client config overrides (fields, tags, prompt, output, model)
+- Processing history with retry support for failed invoices
+- Config export/import with timestamped backups
 
 ## Prerequisites
 
-- Node.js (v18 or higher)
-- Google AI Studio API Key
+- Node.js v18 or higher (tested on 18 and 20)
+- Google AI Studio API Key ([get one here](https://aistudio.google.com/apikey))
 
 ## Setup
 
@@ -56,10 +59,12 @@ A local application that analyzes invoice PDFs using Google's Gemini Vision API.
 
 The web interface at `http://localhost:3000` provides:
 
-- **Client List** - View all configured clients with status indicators
-- **Create/Edit Clients** - Add new clients or modify existing ones
-- **Process Invoices** - Run processing with real-time progress streaming
-- **Processing Log** - View live output during processing
+- **Dashboard** - View all configured clients with status and PDF counts
+- **Client Management** - Create, edit, delete clients with per-client overrides
+- **Process Invoices** - Run processing with real-time SSE progress streaming
+- **Processing History** - View results, filter by status, retry failed invoices
+- **Global Config** - Edit field definitions, tags, prompt templates, filename patterns, model
+- **Export/Import** - Backup and restore configurations
 
 ### CLI Batch Processing
 
@@ -135,7 +140,18 @@ Acme Corp - 2024.01.15 - INV-2024-001 - USD - 1250.00.pdf
 - All processing happens locally on your machine
 - Your API key is stored only in your local `.env` file
 - No data is sent anywhere except to Google's Gemini API for analysis
-- Never commit your `.env` file to version control
+- Client configs (`clients/*.json`) are gitignored — they may contain personal data
+- Never commit your `.env` or `config.json` files to version control
+
+### CI Security
+
+The repository runs automated security scanning on every push and PR:
+
+- **CodeQL** — deep code analysis for vulnerabilities (injection, XSS, path traversal)
+- **Semgrep** — OWASP Top 10, JavaScript-specific, and secrets rulesets
+- **TruffleHog** — secret scanning across full git history
+- **Dependabot** — dependency vulnerability monitoring with auto-fix PRs
+- **Secret scanning + push protection** — blocks pushes containing detected secrets
 
 ## License
 

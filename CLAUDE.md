@@ -14,8 +14,10 @@ Local application that analyzes invoice PDFs using Google's Gemini Vision API. S
 
 - `@google/generative-ai` — Gemini Vision API client
 - `express` — Web server and REST API
+- `express-rate-limit` — Rate limiting for processing endpoints
 - `pdf-lib` — PDF manipulation (embedding analysis)
 - `p-limit` — Concurrency control for parallel processing
+- `sanitize-filename` — Path traversal prevention (CodeQL-recognized sanitizer)
 - `dotenv` — Environment variable loading
 - `eslint` + `prettier` — Code quality and formatting
 - `jest` — Unit testing
@@ -60,7 +62,7 @@ public/
     client-detail.js    — Client detail: view config, customize/reset overrides
     results-viewer.js   — Processing history viewer with filtering, retry, pagination
 
-clients/                — Per-client JSON config files (e.g., duffbeauty.json)
+clients/                — Per-client JSON config files (gitignored, not committed)
 tests/                  — Unit tests (Jest)
 scripts/                — Utility scripts (migrate-clients.js)
 ```
@@ -115,7 +117,7 @@ app.js (orchestrator)
 
 Constants are split across two files that must be kept in sync:
 
-- **Backend**: `src/constants.js` (CommonJS) — `VALID_FIELD_TYPES`, `VALID_OVERRIDE_SECTIONS`, `DEFAULT_MODEL`, default folder/CSV names
+- **Backend**: `src/constants.js` (CommonJS) — `VALID_FIELD_TYPES`, `VALID_OVERRIDE_SECTIONS`, `DEFAULT_MODEL`, default folder/CSV names, `safeJoin` path sanitizer
 - **Frontend**: `public/modules/constants.js` (ES Modules) — `KNOWN_MODELS`, `VALID_FIELD_TYPES`, `VALID_OVERRIDE_SECTIONS`
 
 When adding a new field type or override section, update both files.
@@ -140,11 +142,41 @@ Or use the `/run-checks` skill to run all checks and get a summary.
 
 ### CI Pipeline
 
-On every PR to `main`, GitHub Actions runs:
+Triggers on both PRs to `main` and pushes to `main`. GitHub Actions runs:
 
 1. **lint-and-test** (Node 18 + 20): `npm ci` → `npm run lint` → `npm run format:check` → `npm test`
-2. **security**: `npm audit` → `npx knip` → TruffleHog (secret scanning) → Semgrep (static analysis)
-3. **codeql**: GitHub CodeQL security analysis
+2. **security**: `npm audit --omit=dev` → `npx knip` → TruffleHog (full history, `fetch-depth: 0`) → Semgrep (`p/owasp-top-ten`, `p/javascript`, `p/secrets`)
+3. **codeql**: GitHub CodeQL security analysis — results appear in the repo's Security tab
+
+### Security Scanning
+
+The repo is **public** with GitHub Advanced Security features enabled for free:
+
+- **CodeQL** — deep taint-tracking analysis. Alerts appear in Security tab → Code scanning. Can be queried via `gh api repos/{owner}/{repo}/code-scanning/alerts`.
+- **TruffleHog** — secret scanning across full git history (catches deleted secrets). Uses `--only-verified` and `continue-on-error: true`.
+- **Semgrep** — static analysis with explicit rulesets (OWASP, JavaScript, secrets). Uses `continue-on-error: true`.
+- **Dependabot** — automatic dependency vulnerability alerts and fix PRs. Check via Security tab → Dependabot.
+- **Secret scanning + push protection** — GitHub-native, blocks pushes containing detected secrets.
+
+#### Responding to security alerts
+
+- **CodeQL path injection (`js/path-injection`)**: Use `sanitize-filename` on user input before building file paths. CodeQL recognizes this package as a sanitizer. Custom helpers like `safeJoin` (in `constants.js`) provide defense-in-depth but are NOT recognized by CodeQL across module boundaries.
+- **CodeQL rate limiting (`js/missing-rate-limiting`)**: Apply `processingLimiter` middleware (defined in `server.js`) to new routes that do file I/O.
+- **False positives**: Dismiss via GitHub API with a reason: `gh api repos/{owner}/{repo}/code-scanning/alerts/{n} -X PATCH -f state=dismissed -f "dismissed_reason=false positive" -f "dismissed_comment=..."`.
+- **npm audit**: CI runs `--omit=dev` to avoid false positives from dev-only dependencies (e.g., ajv in eslint). Fix production vulnerabilities with `npm audit fix`.
+
+#### Path sanitization pattern
+
+All functions that build file paths from user input (clientId, backupId, label) use two layers:
+
+```js
+const sanitize = require('sanitize-filename'); // Layer 1: CodeQL-recognized sanitizer
+const { safeJoin } = require('./constants'); // Layer 2: path.resolve + startsWith check
+
+const filePath = safeJoin(baseDir, `${sanitize(userInput)}.json`);
+```
+
+When adding new endpoints or functions that take user input and build file paths, always apply both layers.
 
 ## Linear Integration
 
@@ -158,10 +190,11 @@ On every PR to `main`, GitHub Actions runs:
 ### Adding a new API endpoint
 
 1. Add route in `server.js` in the appropriate section (client management, global config, processing)
-2. Follow the try-catch pattern with consistent error responses:
+2. Add `processingLimiter` middleware if the route does file I/O or heavy processing
+3. Follow the try-catch pattern with consistent error responses:
 
 ```js
-app.get('/api/example/:id', async (req, res) => {
+app.get('/api/example/:id', processingLimiter, async (req, res) => {
     try {
         const result = await someOperation(req.params.id);
         res.json(result);
@@ -224,7 +257,9 @@ npm run test:coverage # Generate coverage report
 - Frontend: ES Modules `import` / `export` (native, no bundler)
 - Frontend DOM: use `createElement`/`textContent`/`appendChild` — avoid `innerHTML`
 - Express route handlers in `server.js`, business logic in `src/` modules
-- Client configs in `clients/*.json` — do not modify without explicit request
+- Client configs in `clients/*.json` — gitignored, never commit (contain personal data)
 - Secrets in `.env`, app settings in `config.json` — never commit either
 - Error handling: try-catch with meaningful messages in processing pipeline
+- Path safety: always use `sanitize(userInput)` + `safeJoin(baseDir, segment)` when building paths from user input
+- Rate limiting: apply `processingLimiter` middleware to routes that do file I/O or heavy processing
 - Run `npm run lint` and `npm run format` to check code quality
