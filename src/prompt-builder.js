@@ -4,6 +4,29 @@
 
 const { getDefaultDocumentTypes } = require('./config');
 
+// Field keys that are replaced by the unified tag system
+const TAG_REPLACED_FIELDS = ['documentTypes', 'isPrivate'];
+
+/**
+ * Resolve parameter templates in a tag instruction
+ * Replaces {{paramName}} with the parameter value
+ * @param {Object} tag - The tag definition
+ * @param {Object} [paramOverrides] - Optional parameter value overrides
+ * @returns {string} Resolved instruction string
+ */
+function resolveTagInstruction(tag, paramOverrides) {
+    let instruction = tag.instruction;
+    if (!tag.parameters) return instruction;
+
+    for (const [paramKey, paramDef] of Object.entries(tag.parameters)) {
+        const value = (paramOverrides && paramOverrides[paramKey] !== undefined)
+            ? paramOverrides[paramKey]
+            : paramDef.default;
+        instruction = instruction.replace(new RegExp(`\\{\\{${paramKey}\\}\\}`, 'g'), value);
+    }
+    return instruction;
+}
+
 /**
  * Build the invoice analysis prompt from configuration
  * @param {Object} config - The configuration object (with optional documentTypes array)
@@ -16,8 +39,9 @@ function buildExtractionPrompt(config) {
     const documentTypes = config.documentTypes || getDefaultDocumentTypes();
     const documentTypeIds = documentTypes.map(dt => dt.id);
 
-    // Check for data-driven field definitions
+    // Check for data-driven field definitions and tag definitions
     const fieldDefinitions = config.fieldDefinitions;
+    const tagDefinitions = config.tagDefinitions;
 
     // Build the JSON structure dynamically
     const jsonStructure = {};
@@ -25,19 +49,24 @@ function buildExtractionPrompt(config) {
 
     if (fieldDefinitions) {
         // Data-driven mode
-        const enabledFields = fieldDefinitions.filter(f => f.enabled);
+        let enabledFields = fieldDefinitions.filter(f => f.enabled);
+
+        // When tag system is active, skip fields that are now handled as tags
+        if (tagDefinitions) {
+            enabledFields = enabledFields.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+        }
 
         for (const field of enabledFields) {
             jsonStructure[field.key] = field.schemaHint;
 
-            // Special handling for fields that need dynamic content
-            if (field.key === 'documentTypes') {
+            // Special handling for fields that need dynamic content (legacy compat when no tagDefinitions)
+            if (!tagDefinitions && field.key === 'documentTypes') {
                 instructions.push(`- For documentTypes, analyze the document and return an array of applicable types from: ${documentTypeIds.join(', ')}`);
                 for (const dt of documentTypes) {
                     instructions.push(`  * ${dt.id}: ${dt.description || dt.label}`);
                 }
                 instructions.push('  Multiple types can apply (e.g., a receipt that is also a commercial invoice)');
-            } else if (field.key === 'isPrivate' && privateAddressMarker) {
+            } else if (!tagDefinitions && field.key === 'isPrivate' && privateAddressMarker) {
                 instructions.push(`- For isPrivate, set to true if the address "${privateAddressMarker}" appears anywhere in the document, otherwise false`);
             } else {
                 instructions.push(`- For ${field.key}, ${field.instruction}`);
@@ -107,13 +136,34 @@ function buildExtractionPrompt(config) {
         instructions.push('- For summary, provide a concise description of what this invoice is for (2-3 sentences max)');
     }
 
+    // Build tags section from tagDefinitions
+    const tagInstructions = [];
+    if (tagDefinitions) {
+        const enabledTags = tagDefinitions.filter(t => t.enabled);
+        if (enabledTags.length > 0) {
+            const tagsSchema = {};
+            for (const tag of enabledTags) {
+                tagsSchema[tag.id] = 'boolean';
+                const resolved = resolveTagInstruction(tag);
+                tagInstructions.push(`- For tags.${tag.id} (${tag.label}): ${resolved}`);
+            }
+            jsonStructure.tags = tagsSchema;
+        }
+    }
+
     const jsonExample = JSON.stringify(jsonStructure, null, 2);
+
+    let rulesText = instructions.join('\n');
+    if (tagInstructions.length > 0) {
+        rulesText += '\n\nFor each tag below, set to true if the condition applies, false otherwise:\n';
+        rulesText += tagInstructions.join('\n');
+    }
 
     const prompt = `Analyze this invoice PDF and extract the following information in JSON format:
 ${jsonExample}
 
 Important extraction rules:
-${instructions.join('\n')}
+${rulesText}
 
 If any field cannot be determined, use "Unknown" for text fields, "0" for amounts, false for booleans, or [] for arrays.
 Always return valid JSON that can be parsed directly.`;
@@ -160,10 +210,17 @@ function validateAnalysis(analysis, config) {
     const validTypeIds = documentTypes.map(dt => dt.id);
 
     const fieldDefinitions = config.fieldDefinitions;
+    const tagDefinitions = config.tagDefinitions;
 
     if (fieldDefinitions) {
         // Data-driven: type-aware defaults from field definitions
-        const enabledFields = fieldDefinitions.filter(f => f.enabled);
+        let enabledFields = fieldDefinitions.filter(f => f.enabled);
+
+        // When tag system is active, skip tag-replaced fields
+        if (tagDefinitions) {
+            enabledFields = enabledFields.filter(f => !TAG_REPLACED_FIELDS.includes(f.key));
+        }
+
         for (const field of enabledFields) {
             if (validated[field.key] === undefined || validated[field.key] === null) {
                 switch (field.type) {
@@ -198,14 +255,28 @@ function validateAnalysis(analysis, config) {
         validated.paymentDate = validated.invoiceDate;
     }
 
-    // Ensure documentTypes is always an array and normalize
-    if (validated.documentTypes !== undefined) {
-        if (!Array.isArray(validated.documentTypes)) {
-            validated.documentTypes = validated.documentTypes ? [validated.documentTypes] : [];
+    // Validate tags when tag system is active
+    if (tagDefinitions) {
+        const enabledTags = tagDefinitions.filter(t => t.enabled);
+        if (!validated.tags || typeof validated.tags !== 'object') {
+            validated.tags = {};
         }
-        validated.documentTypes = validated.documentTypes
-            .map(t => String(t).toLowerCase().replace(/\s+/g, '_'))
-            .filter(t => validTypeIds.includes(t));
+        // Ensure all enabled tags have boolean values, default missing to false
+        for (const tag of enabledTags) {
+            if (typeof validated.tags[tag.id] !== 'boolean') {
+                validated.tags[tag.id] = false;
+            }
+        }
+    } else {
+        // Legacy: ensure documentTypes is always an array and normalize
+        if (validated.documentTypes !== undefined) {
+            if (!Array.isArray(validated.documentTypes)) {
+                validated.documentTypes = validated.documentTypes ? [validated.documentTypes] : [];
+            }
+            validated.documentTypes = validated.documentTypes
+                .map(t => String(t).toLowerCase().replace(/\s+/g, '_'))
+                .filter(t => validTypeIds.includes(t));
+        }
     }
 
     return validated;
@@ -230,9 +301,22 @@ function formatDocumentTypes(types, documentTypes = null) {
     return types.map(t => labels[t] || t).join(', ');
 }
 
+/**
+ * Get the list of active tag IDs from analysis.tags
+ * @param {Object} tags - The tags object from analysis
+ * @returns {string[]} Array of tag IDs that are true
+ */
+function getActiveTags(tags) {
+    if (!tags || typeof tags !== 'object') return [];
+    return Object.entries(tags).filter(([_, v]) => v === true).map(([k]) => k);
+}
+
 module.exports = {
     buildExtractionPrompt,
     parseGeminiResponse,
     validateAnalysis,
-    formatDocumentTypes
+    formatDocumentTypes,
+    resolveTagInstruction,
+    getActiveTags,
+    TAG_REPLACED_FIELDS
 };
