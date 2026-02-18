@@ -235,6 +235,34 @@ async function getClientConfig(clientId, globalConfig) {
     // Document types: client can override, otherwise use global
     const documentTypes = client.documentTypes || globalConfig.documentTypes;
 
+    // Field definitions: client can override, otherwise use global
+    const fieldDefinitions = client.fieldDefinitions || globalConfig.fieldDefinitions;
+
+    // Tag definitions: start with global, merge client tagOverrides (parameter values and enabled state)
+    let tagDefinitions = globalConfig.tagDefinitions || null;
+    if (tagDefinitions && client.tagOverrides) {
+        tagDefinitions = tagDefinitions.map(tag => {
+            const override = client.tagOverrides[tag.id];
+            if (!override) return tag;
+
+            const merged = { ...tag };
+            // Allow client to override enabled state
+            if (typeof override.enabled === 'boolean') {
+                merged.enabled = override.enabled;
+            }
+            // Merge parameter values
+            if (override.parameters && tag.parameters) {
+                merged.parameters = { ...tag.parameters };
+                for (const [paramKey, paramValue] of Object.entries(override.parameters)) {
+                    if (merged.parameters[paramKey]) {
+                        merged.parameters[paramKey] = { ...merged.parameters[paramKey], default: paramValue };
+                    }
+                }
+            }
+            return merged;
+        });
+    }
+
     return {
         clientId,
         name: client.name,
@@ -244,7 +272,9 @@ async function getClientConfig(clientId, globalConfig) {
         processing: globalConfig.processing,
         extraction,
         output,
-        documentTypes
+        documentTypes,
+        fieldDefinitions,
+        tagDefinitions
     };
 }
 
