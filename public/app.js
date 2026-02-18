@@ -32,6 +32,9 @@ let filenameTemplate = '';
 let originalFilenameTemplate = '';
 let filenameLoaded = false;
 
+// Client detail view state
+let clientDetailData = null;
+
 // DOM elements
 const statusIndicator = document.getElementById('statusIndicator');
 const statusText = document.getElementById('statusText');
@@ -103,6 +106,16 @@ const promptPreviewLength = document.getElementById('promptPreviewLength');
 const promptSaveBar = document.getElementById('promptSaveBar');
 const savePromptBtn = document.getElementById('savePromptBtn');
 const discardPromptBtn = document.getElementById('discardPromptBtn');
+
+// Client detail view elements
+const dashboardListView = document.getElementById('dashboardListView');
+const clientDetailView = document.getElementById('clientDetailView');
+const backToDashboardBtn = document.getElementById('backToDashboardBtn');
+const detailClientHeader = document.getElementById('detailClientHeader');
+const detailFieldList = document.getElementById('detailFieldList');
+const detailTagList = document.getElementById('detailTagList');
+const detailFilenameTemplate = document.getElementById('detailFilenameTemplate');
+const detailPromptTemplate = document.getElementById('detailPromptTemplate');
 
 // Filename editor elements
 const filenameTemplateInput = document.getElementById('filenameTemplateInput');
@@ -294,6 +307,14 @@ function renderClientList() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             processClient(btn.dataset.clientId);
+        });
+    });
+
+    // Add click handler on client cards to open detail view
+    document.querySelectorAll('.client-card').forEach(card => {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => {
+            openClientDetail(card.dataset.clientId);
         });
     });
 }
@@ -2347,11 +2368,461 @@ function discardFilenameChanges() {
 // EVENT LISTENERS
 // ============================================================================
 
+// ============================================================================
+// CLIENT DETAIL VIEW
+// ============================================================================
+
+async function openClientDetail(clientId) {
+    dashboardListView.style.display = 'none';
+    clientDetailView.style.display = 'block';
+
+    // Show loading state
+    detailClientHeader.textContent = '';
+    [detailFieldList, detailTagList, detailFilenameTemplate, detailPromptTemplate].forEach(el => {
+        el.textContent = '';
+        const placeholder = document.createElement('div');
+        placeholder.className = 'loading-placeholder';
+        placeholder.textContent = 'Loading...';
+        el.appendChild(placeholder);
+    });
+
+    try {
+        const response = await fetch(`/api/clients/${clientId}/config`);
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to load client config');
+        }
+        clientDetailData = await response.json();
+        renderClientDetail();
+    } catch (error) {
+        detailClientHeader.textContent = '';
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error-placeholder';
+        errDiv.textContent = 'Failed to load client: ' + error.message;
+        detailClientHeader.appendChild(errDiv);
+    }
+}
+
+function closeClientDetail() {
+    clientDetailView.style.display = 'none';
+    dashboardListView.style.display = 'block';
+    clientDetailData = null;
+}
+
+function createSourceBadge(source) {
+    const badge = document.createElement('span');
+    badge.className = source === 'override' ? 'source-badge source-badge-override' : 'source-badge source-badge-global';
+    badge.textContent = source === 'override' ? 'Custom' : 'Global Default';
+    return badge;
+}
+
+function renderClientDetail() {
+    const data = clientDetailData;
+    if (!data) return;
+
+    const c = data.client;
+    detailClientHeader.textContent = '';
+
+    // Name row
+    const h2 = document.createElement('h2');
+    h2.className = 'detail-client-name';
+    const statusDot = document.createElement('span');
+    statusDot.className = 'status-icon';
+    statusDot.style.color = c.enabled ? 'var(--success)' : 'var(--text-secondary)';
+    statusDot.innerHTML = c.enabled ? '&#9679;' : '&#9675;';
+    h2.appendChild(statusDot);
+    h2.appendChild(document.createTextNode(' ' + c.name));
+    detailClientHeader.appendChild(h2);
+
+    const idDiv = document.createElement('div');
+    idDiv.className = 'detail-client-id';
+    idDiv.textContent = c.clientId;
+    detailClientHeader.appendChild(idDiv);
+
+    const meta = document.createElement('div');
+    meta.className = 'detail-client-meta';
+
+    const metaItems = [
+        { label: 'Status', value: c.enabled ? 'Enabled' : 'Disabled' },
+        { label: 'Pending', value: String(c.folderStatus.inputPdfCount) },
+        { label: 'Processed', value: String(c.folderStatus.processedCount) }
+    ];
+
+    metaItems.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'detail-meta-item';
+        const lbl = document.createElement('span');
+        lbl.className = 'detail-meta-label';
+        lbl.textContent = item.label;
+        const val = document.createElement('span');
+        val.className = 'detail-meta-value';
+        val.textContent = item.value;
+        div.appendChild(lbl);
+        div.appendChild(val);
+        meta.appendChild(div);
+    });
+
+    // Folder meta item
+    const folderDiv = document.createElement('div');
+    folderDiv.className = 'detail-meta-item';
+    const folderLbl = document.createElement('span');
+    folderLbl.className = 'detail-meta-label';
+    folderLbl.textContent = 'Folder';
+    const folderVal = document.createElement('span');
+    folderVal.className = 'detail-meta-value mono';
+    folderVal.textContent = c.folderPath;
+    folderDiv.appendChild(folderLbl);
+    folderDiv.appendChild(folderVal);
+    if (!c.folderStatus.exists) {
+        const warn = document.createElement('span');
+        warn.className = 'folder-warning';
+        warn.textContent = 'Folder not found';
+        folderDiv.appendChild(warn);
+    }
+    meta.appendChild(folderDiv);
+
+    detailClientHeader.appendChild(meta);
+
+    renderDetailFieldList(data.fieldDefinitions);
+    renderDetailTagList(data.tagDefinitions);
+    renderDetailFilenameTemplate(data.filenameTemplate);
+    renderDetailPromptTemplate(data.promptTemplate);
+}
+
+function renderDetailFieldList(fields) {
+    detailFieldList.textContent = '';
+
+    if (!fields || fields.length === 0) {
+        const p = document.createElement('div');
+        p.className = 'empty-placeholder';
+        p.textContent = 'No extraction fields defined.';
+        detailFieldList.appendChild(p);
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'fields-table';
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    [
+        { text: 'On', cls: 'col-enabled' },
+        { text: 'Label', cls: 'col-label' },
+        { text: 'Key', cls: 'col-key' },
+        { text: 'Type', cls: 'col-type' },
+        { text: 'Schema Hint', cls: 'col-hint' },
+        { text: 'Instruction', cls: 'col-instruction' },
+        { text: 'Source', cls: 'col-source' }
+    ].forEach(h => {
+        const th = document.createElement('th');
+        th.className = h.cls;
+        th.textContent = h.text;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    fields.forEach(field => {
+        const tr = document.createElement('tr');
+        if (!field.enabled) tr.className = 'disabled';
+
+        // On
+        const tdEnabled = document.createElement('td');
+        tdEnabled.className = 'col-enabled';
+        const toggle = document.createElement('span');
+        toggle.className = 'toggle-icon ' + (field.enabled ? 'enabled' : 'disabled');
+        toggle.textContent = field.enabled ? '\u25CF' : '\u25CB';
+        tdEnabled.appendChild(toggle);
+        tr.appendChild(tdEnabled);
+
+        // Label
+        const tdLabel = document.createElement('td');
+        tdLabel.className = 'col-label';
+        tdLabel.textContent = field.label || '(empty)';
+        tr.appendChild(tdLabel);
+
+        // Key
+        const tdKey = document.createElement('td');
+        tdKey.className = 'col-key';
+        const keyCode = document.createElement('code');
+        keyCode.textContent = field.key;
+        tdKey.appendChild(keyCode);
+        tr.appendChild(tdKey);
+
+        // Type
+        const tdType = document.createElement('td');
+        tdType.className = 'col-type';
+        tdType.textContent = field.type;
+        tr.appendChild(tdType);
+
+        // Schema Hint
+        const tdHint = document.createElement('td');
+        tdHint.className = 'col-hint';
+        const hintSpan = document.createElement('span');
+        hintSpan.className = 'cell-view-truncate';
+        hintSpan.title = field.schemaHint || '';
+        hintSpan.textContent = field.schemaHint || '(empty)';
+        tdHint.appendChild(hintSpan);
+        tr.appendChild(tdHint);
+
+        // Instruction
+        const tdInstr = document.createElement('td');
+        tdInstr.className = 'col-instruction';
+        const instrSpan = document.createElement('span');
+        instrSpan.className = 'cell-view-truncate';
+        instrSpan.title = field.instruction || '';
+        instrSpan.textContent = field.instruction || '(empty)';
+        tdInstr.appendChild(instrSpan);
+        tr.appendChild(tdInstr);
+
+        // Source
+        const tdSource = document.createElement('td');
+        tdSource.className = 'col-source';
+        tdSource.appendChild(createSourceBadge(field._source));
+        tr.appendChild(tdSource);
+
+        tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    detailFieldList.appendChild(table);
+}
+
+function renderDetailTagList(tags) {
+    detailTagList.textContent = '';
+
+    if (!tags || tags.length === 0) {
+        const p = document.createElement('div');
+        p.className = 'empty-placeholder';
+        p.textContent = 'No tag rules defined.';
+        detailTagList.appendChild(p);
+        return;
+    }
+
+    const colCount = 8; // On, Label, ID, Instruction, PDF, CSV, File, Source
+
+    const table = document.createElement('table');
+    table.className = 'tags-table';
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    [
+        { text: 'On', cls: 'col-enabled' },
+        { text: 'Label', cls: 'col-label' },
+        { text: 'ID', cls: 'col-id' },
+        { text: 'Instruction', cls: 'col-instruction' },
+        { text: 'PDF', cls: 'col-output' },
+        { text: 'CSV', cls: 'col-output' },
+        { text: 'File', cls: 'col-output' },
+        { text: 'Source', cls: 'col-source' }
+    ].forEach(h => {
+        const th = document.createElement('th');
+        th.className = h.cls;
+        th.textContent = h.text;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    tags.forEach(tag => {
+        const tr = document.createElement('tr');
+        if (tag.enabled === false) tr.classList.add('disabled');
+
+        // On
+        const tdEnabled = document.createElement('td');
+        tdEnabled.className = 'col-enabled';
+        const toggle = document.createElement('span');
+        toggle.className = 'toggle-icon ' + (tag.enabled !== false ? 'enabled' : 'disabled');
+        toggle.textContent = tag.enabled !== false ? '\u25CF' : '\u25CB';
+        tdEnabled.appendChild(toggle);
+        tr.appendChild(tdEnabled);
+
+        // Label
+        const tdLabel = document.createElement('td');
+        tdLabel.className = 'col-label';
+        tdLabel.textContent = tag.label || '(untitled)';
+        tr.appendChild(tdLabel);
+
+        // ID
+        const tdId = document.createElement('td');
+        tdId.className = 'col-id';
+        const idCode = document.createElement('code');
+        idCode.textContent = tag.id || '';
+        tdId.appendChild(idCode);
+        tr.appendChild(tdId);
+
+        // Instruction
+        const tdInstr = document.createElement('td');
+        tdInstr.className = 'col-instruction';
+        const instrSpan = document.createElement('span');
+        instrSpan.className = 'cell-view-truncate';
+        instrSpan.title = tag.instruction || '';
+        instrSpan.textContent = tag.instruction || '(empty)';
+        tdInstr.appendChild(instrSpan);
+        tr.appendChild(tdInstr);
+
+        // Output checkboxes (read-only)
+        ['pdf', 'csv', 'filename'].forEach(key => {
+            const td = document.createElement('td');
+            td.className = 'col-output';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'output-checkbox';
+            cb.checked = !!(tag.output && tag.output[key]);
+            cb.disabled = true;
+            td.appendChild(cb);
+            tr.appendChild(td);
+        });
+
+        // Source
+        const tdSource = document.createElement('td');
+        tdSource.className = 'col-source';
+        tdSource.appendChild(createSourceBadge(tag._source));
+        tr.appendChild(tdSource);
+
+        tbody.appendChild(tr);
+
+        // Parameters detail row (show when tag has parameters)
+        const paramSources = tag._parameterSources || {};
+        const params = tag.parameters || {};
+        const paramEntries = Object.entries(params);
+        if (paramEntries.length > 0) {
+            const detailTr = document.createElement('tr');
+            detailTr.className = 'tag-detail-row';
+            const detailTd = document.createElement('td');
+            detailTd.colSpan = colCount;
+            const content = document.createElement('div');
+            content.className = 'tag-detail-content';
+
+            const h4 = document.createElement('h4');
+            h4.textContent = 'Parameters';
+            content.appendChild(h4);
+
+            const miniTable = document.createElement('table');
+            miniTable.className = 'params-mini-table';
+            const miniThead = document.createElement('thead');
+            const miniHr = document.createElement('tr');
+            ['Name', 'Value', 'Source'].forEach(text => {
+                const th = document.createElement('th');
+                th.textContent = text;
+                miniHr.appendChild(th);
+            });
+            miniThead.appendChild(miniHr);
+            miniTable.appendChild(miniThead);
+
+            const miniTbody = document.createElement('tbody');
+            paramEntries.forEach(([paramKey, paramDef]) => {
+                const row = document.createElement('tr');
+
+                const nameTd = document.createElement('td');
+                nameTd.textContent = paramDef.label || paramKey;
+                row.appendChild(nameTd);
+
+                const valTd = document.createElement('td');
+                valTd.textContent = paramDef.default || '(not set)';
+                if (!paramDef.default) valTd.style.color = 'var(--text-secondary)';
+                row.appendChild(valTd);
+
+                const srcTd = document.createElement('td');
+                srcTd.appendChild(createSourceBadge(paramSources[paramKey] || 'global'));
+                row.appendChild(srcTd);
+
+                miniTbody.appendChild(row);
+            });
+            miniTable.appendChild(miniTbody);
+            content.appendChild(miniTable);
+
+            detailTd.appendChild(content);
+            detailTr.appendChild(detailTd);
+            tbody.appendChild(detailTr);
+        }
+    });
+
+    table.appendChild(tbody);
+    detailTagList.appendChild(table);
+}
+
+function renderDetailFilenameTemplate(fnTemplate) {
+    detailFilenameTemplate.textContent = '';
+
+    if (!fnTemplate) {
+        const p = document.createElement('div');
+        p.className = 'empty-placeholder';
+        p.textContent = 'No filename template configured.';
+        detailFilenameTemplate.appendChild(p);
+        return;
+    }
+
+    const badgeRow = document.createElement('div');
+    badgeRow.style.marginBottom = '0.75rem';
+    badgeRow.appendChild(createSourceBadge(fnTemplate._source));
+    detailFilenameTemplate.appendChild(badgeRow);
+
+    const valueDiv = document.createElement('div');
+    valueDiv.className = 'detail-filename-value';
+    valueDiv.textContent = fnTemplate.template;
+    detailFilenameTemplate.appendChild(valueDiv);
+}
+
+function renderDetailPromptTemplate(prompt) {
+    detailPromptTemplate.textContent = '';
+
+    if (!prompt) {
+        const p = document.createElement('div');
+        p.className = 'empty-placeholder';
+        p.textContent = 'No prompt template configured.';
+        detailPromptTemplate.appendChild(p);
+        return;
+    }
+
+    const badgeRow = document.createElement('div');
+    badgeRow.style.marginBottom = '1rem';
+    badgeRow.appendChild(createSourceBadge(prompt._source));
+    detailPromptTemplate.appendChild(badgeRow);
+
+    const sections = [
+        { label: 'Preamble', value: prompt.preamble },
+        { label: 'General Rules', value: prompt.generalRules },
+        { label: 'Suffix', value: prompt.suffix }
+    ];
+
+    sections.forEach(s => {
+        const section = document.createElement('div');
+        section.className = 'detail-prompt-section';
+
+        const label = document.createElement('div');
+        label.className = 'detail-prompt-label';
+        label.textContent = s.label;
+        section.appendChild(label);
+
+        const value = document.createElement('div');
+        value.className = 'detail-prompt-value';
+        if (s.value) {
+            value.textContent = s.value;
+        } else {
+            value.classList.add('detail-prompt-empty');
+            value.textContent = '(not set)';
+        }
+        section.appendChild(value);
+
+        detailPromptTemplate.appendChild(section);
+    });
+}
+
+// ============================================================================
+// EVENT LISTENERS
+// ============================================================================
+
 function setupEventListeners() {
     // Tab navigation
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
+
+    // Back to dashboard
+    backToDashboardBtn.addEventListener('click', closeClientDetail);
 
     // Refresh clients
     refreshClientsBtn.addEventListener('click', loadClients);
