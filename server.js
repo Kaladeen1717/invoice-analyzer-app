@@ -14,6 +14,7 @@ const {
     updateClient,
     deleteClient,
     getClientConfig,
+    getAnnotatedClientConfig,
     getClientFolderStatus,
     isMultiClientMode,
     clearClientsCache,
@@ -241,6 +242,26 @@ app.get('/api/clients/:id/status', async (req, res) => {
         }
         res.status(500).json({
             error: 'Failed to get client status',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/clients/:id/config - Get annotated effective config for client
+ */
+app.get('/api/clients/:id/config', async (req, res) => {
+    try {
+        const clientId = req.params.id;
+        const globalConfig = await loadConfig({ requireFolders: false });
+        const annotated = await getAnnotatedClientConfig(clientId, globalConfig);
+        res.json(annotated);
+    } catch (error) {
+        if (error.message.includes('not found')) {
+            return res.status(404).json({ error: error.message });
+        }
+        res.status(500).json({
+            error: 'Failed to get client config',
             details: error.message
         });
     }

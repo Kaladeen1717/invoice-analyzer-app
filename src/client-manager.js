@@ -492,11 +492,97 @@ function isUsingLegacyConfig() {
     return usingLegacyConfig;
 }
 
+/**
+ * Get annotated effective config for a client, marking each setting's source
+ * @param {string} clientId - Client identifier
+ * @param {Object} globalConfig - The global configuration object
+ * @returns {Promise<Object>} Annotated config with _source markers
+ */
+async function getAnnotatedClientConfig(clientId, globalConfig) {
+    const clientsConfig = await loadClientsConfig();
+    if (!clientsConfig) throw new Error('No client configuration found');
+
+    const client = clientsConfig.clients[clientId];
+    if (!client) throw new Error(`Client "${clientId}" not found`);
+
+    // Field definitions: client overrides entirely or inherits global
+    const hasFieldOverride = !!client.fieldDefinitions;
+    const effectiveFields = (hasFieldOverride ? client.fieldDefinitions : globalConfig.fieldDefinitions || [])
+        .map(f => ({ ...f, _source: hasFieldOverride ? 'override' : 'global' }));
+
+    // Tag definitions: start with global, merge client tagOverrides
+    const globalTags = globalConfig.tagDefinitions || [];
+    const effectiveTags = globalTags.map(tag => {
+        const override = client.tagOverrides?.[tag.id];
+        if (!override) {
+            return { ...tag, _source: 'global', _parameterSources: {} };
+        }
+
+        const merged = { ...tag, _source: 'global', _parameterSources: {} };
+
+        if (typeof override.enabled === 'boolean') {
+            merged.enabled = override.enabled;
+            merged._source = 'override';
+        }
+
+        if (override.parameters && tag.parameters) {
+            merged.parameters = {};
+            for (const [paramKey, paramDef] of Object.entries(tag.parameters)) {
+                merged.parameters[paramKey] = { ...paramDef };
+                if (override.parameters[paramKey] !== undefined) {
+                    merged.parameters[paramKey].default = override.parameters[paramKey];
+                    merged._parameterSources[paramKey] = 'override';
+                }
+            }
+        }
+
+        return merged;
+    });
+
+    // Prompt template
+    const hasPromptOverride = !!client.promptTemplate;
+    const effectivePrompt = {
+        ...(hasPromptOverride ? client.promptTemplate : globalConfig.promptTemplate || {}),
+        _source: hasPromptOverride ? 'override' : 'global'
+    };
+
+    // Filename template
+    const hasFilenameOverride = !!(client.output && client.output.filenameTemplate);
+    const effectiveFilename = {
+        template: hasFilenameOverride
+            ? client.output.filenameTemplate
+            : (globalConfig.output?.filenameTemplate || ''),
+        _source: hasFilenameOverride ? 'override' : 'global'
+    };
+
+    // Folder status
+    const folderStatus = await getClientFolderStatus(
+        client.folderPath,
+        globalConfig.output?.processedOriginalSubfolder || 'processed-original'
+    );
+
+    return {
+        client: {
+            name: client.name,
+            clientId,
+            enabled: client.enabled,
+            folderPath: client.folderPath,
+            apiKeyEnvVar: client.apiKeyEnvVar || null,
+            folderStatus
+        },
+        fieldDefinitions: effectiveFields,
+        tagDefinitions: effectiveTags,
+        promptTemplate: effectivePrompt,
+        filenameTemplate: effectiveFilename
+    };
+}
+
 module.exports = {
     loadClientsConfig,
     getEnabledClients,
     getAllClients,
     getClientConfig,
+    getAnnotatedClientConfig,
     getClient,
     createClient,
     updateClient,

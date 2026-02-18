@@ -35,39 +35,108 @@
 
       <!-- Tab: Dashboard -->
       <div class="tab-content active" id="tab-dashboard">
-        <!-- Client Management Section -->
-        <section class="client-management-section">
-          <div class="section-header">
-            <h2>Clients</h2>
-            <div class="section-actions">
-              <button class="btn btn-secondary" id="refreshClientsBtn">
-                <span>Refresh</span>
-              </button>
-              <button class="btn btn-primary" id="newClientBtn">
-                <span>+ New Client</span>
-              </button>
-              <button class="btn btn-accent" id="processAllBtn" disabled>
-                <span>Process All</span>
-              </button>
+        <!-- Dashboard List View -->
+        <div id="dashboardListView">
+          <!-- Client Management Section -->
+          <section class="client-management-section">
+            <div class="section-header">
+              <h2>Clients</h2>
+              <div class="section-actions">
+                <button class="btn btn-secondary" id="refreshClientsBtn">
+                  <span>Refresh</span>
+                </button>
+                <button class="btn btn-primary" id="newClientBtn">
+                  <span>+ New Client</span>
+                </button>
+                <button class="btn btn-accent" id="processAllBtn" disabled>
+                  <span>Process All</span>
+                </button>
+              </div>
             </div>
+
+            <!-- Client list -->
+            <div class="client-list" id="clientList">
+              <div class="loading-placeholder">Loading clients...</div>
+            </div>
+          </section>
+
+          <!-- Processing Log Section -->
+          <section class="processing-log-section" id="processingLogSection">
+            <div class="section-header">
+              <h3>Processing Log</h3>
+              <button class="btn btn-small btn-secondary" id="clearLogBtn">Clear</button>
+            </div>
+            <div class="processing-log" id="processingLog">
+              <div class="log-placeholder">Processing output will appear here...</div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Client Detail View (hidden by default) -->
+        <div id="clientDetailView" style="display: none;">
+          <div class="detail-back-row">
+            <button class="btn btn-secondary btn-small" id="backToDashboardBtn">
+              <span>&larr; Back to Dashboard</span>
+            </button>
           </div>
 
-          <!-- Client list -->
-          <div class="client-list" id="clientList">
-            <div class="loading-placeholder">Loading clients...</div>
-          </div>
-        </section>
+          <!-- Client Header -->
+          <section class="detail-client-header" id="detailClientHeader">
+            <div class="loading-placeholder">Loading client...</div>
+          </section>
 
-        <!-- Processing Log Section -->
-        <section class="processing-log-section" id="processingLogSection">
-          <div class="section-header">
-            <h3>Processing Log</h3>
-            <button class="btn btn-small btn-secondary" id="clearLogBtn">Clear</button>
-          </div>
-          <div class="processing-log" id="processingLog">
-            <div class="log-placeholder">Processing output will appear here...</div>
-          </div>
-        </section>
+          <!-- Effective Fields -->
+          <section class="detail-section">
+            <div class="section-header">
+              <h2>Extraction Fields</h2>
+              <div class="section-actions">
+                <button class="btn btn-small btn-secondary" disabled title="Available in a future update">Customize</button>
+              </div>
+            </div>
+            <div id="detailFieldList">
+              <div class="loading-placeholder">Loading fields...</div>
+            </div>
+          </section>
+
+          <!-- Effective Tags -->
+          <section class="detail-section">
+            <div class="section-header">
+              <h2>Tag Rules</h2>
+              <div class="section-actions">
+                <button class="btn btn-small btn-secondary" disabled title="Available in a future update">Customize</button>
+              </div>
+            </div>
+            <div id="detailTagList">
+              <div class="loading-placeholder">Loading tags...</div>
+            </div>
+          </section>
+
+          <!-- Effective Filename Template -->
+          <section class="detail-section">
+            <div class="section-header">
+              <h2>Filename Template</h2>
+              <div class="section-actions">
+                <button class="btn btn-small btn-secondary" disabled title="Available in a future update">Customize</button>
+              </div>
+            </div>
+            <div id="detailFilenameTemplate">
+              <div class="loading-placeholder">Loading template...</div>
+            </div>
+          </section>
+
+          <!-- Effective Prompt Template -->
+          <section class="detail-section">
+            <div class="section-header">
+              <h2>Prompt Template</h2>
+              <div class="section-actions">
+                <button class="btn btn-small btn-secondary" disabled title="Available in a future update">Customize</button>
+              </div>
+            </div>
+            <div id="detailPromptTemplate">
+              <div class="loading-placeholder">Loading prompt...</div>
+            </div>
+          </section>
+        </div>
       </div>
 
       <!-- Tab: Global Config -->
