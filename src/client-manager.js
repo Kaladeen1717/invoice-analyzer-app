@@ -4,7 +4,8 @@ const {
     VALID_OVERRIDE_SECTIONS,
     DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
     DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
-    DEFAULT_CSV_FILENAME
+    DEFAULT_CSV_FILENAME,
+    validatePathSegment
 } = require('./constants');
 
 let cachedClientsConfig = null;
@@ -425,6 +426,7 @@ async function createClient(clientId, config) {
  * @returns {Promise<void>}
  */
 async function updateClient(clientId, config) {
+    validatePathSegment(clientId, 'clientId');
     const clientsDir = path.join(process.cwd(), 'clients');
     const filePath = path.join(clientsDir, `${clientId}.json`);
 
@@ -454,6 +456,7 @@ async function updateClient(clientId, config) {
  * @returns {Promise<void>}
  */
 async function deleteClient(clientId) {
+    validatePathSegment(clientId, 'clientId');
     const clientsDir = path.join(process.cwd(), 'clients');
     const filePath = path.join(clientsDir, `${clientId}.json`);
 
@@ -666,6 +669,7 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
  * @returns {Promise<void>}
  */
 async function saveClientOverrides(clientId, section, data) {
+    validatePathSegment(clientId, 'clientId');
     const clientsDir = path.join(process.cwd(), 'clients');
     const filePath = path.join(clientsDir, `${clientId}.json`);
 
@@ -711,6 +715,7 @@ async function saveClientOverrides(clientId, section, data) {
  * @returns {Promise<void>}
  */
 async function removeClientOverrides(clientId, section) {
+    validatePathSegment(clientId, 'clientId');
     const clientsDir = path.join(process.cwd(), 'clients');
     const filePath = path.join(clientsDir, `${clientId}.json`);
 
