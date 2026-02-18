@@ -898,13 +898,13 @@ h1 {
 }
 
 .fields-table .col-hint {
-  min-width: 150px;
-  max-width: 220px;
+  min-width: 200px;
+  max-width: 300px;
 }
 
 .fields-table .col-instruction {
-  min-width: 150px;
-  max-width: 220px;
+  min-width: 200px;
+  max-width: 300px;
 }
 
 .fields-table .col-source {
@@ -934,13 +934,15 @@ h1 {
   display: block;
 }
 
-/* View mode text truncation */
+/* View mode text truncation (multi-line clamp) */
 .fields-table .cell-view-truncate {
-  display: block;
-  max-width: 200px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 280px;
+  white-space: normal;
+  line-height: 1.4;
 }
 
 .fields-table .cell-view code {
@@ -981,7 +983,7 @@ h1 {
 
 .fields-table .cell-edit textarea {
   resize: vertical;
-  min-height: 48px;
+  min-height: 72px;
 }
 
 .fields-table .cell-edit select option {

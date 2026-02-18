@@ -851,7 +851,7 @@ function renderFieldList() {
         hintEdit.className = 'cell-edit';
         const hintTextarea = document.createElement('textarea');
         hintTextarea.dataset.field = 'schemaHint';
-        hintTextarea.rows = 2;
+        hintTextarea.rows = 3;
         hintTextarea.value = field.schemaHint;
         hintEdit.appendChild(hintTextarea);
         tdHint.appendChild(hintEdit);
@@ -869,7 +869,7 @@ function renderFieldList() {
         instrEdit.className = 'cell-edit';
         const instrTextarea = document.createElement('textarea');
         instrTextarea.dataset.field = 'instruction';
-        instrTextarea.rows = 2;
+        instrTextarea.rows = 3;
         instrTextarea.value = field.instruction;
         instrEdit.appendChild(instrTextarea);
         tdInstruction.appendChild(instrEdit);
