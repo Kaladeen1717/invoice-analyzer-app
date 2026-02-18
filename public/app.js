@@ -30,6 +30,11 @@ let promptRawMode = false;
 let promptLoaded = false;
 let promptPreviewDebounceTimer = null;
 
+// Filename template editor state
+let filenameTemplate = '';
+let originalFilenameTemplate = '';
+let filenameLoaded = false;
+
 // DOM elements
 const statusIndicator = document.getElementById('statusIndicator');
 const statusText = document.getElementById('statusText');
@@ -135,6 +140,17 @@ const promptSaveBar = document.getElementById('promptSaveBar');
 const savePromptBtn = document.getElementById('savePromptBtn');
 const discardPromptBtn = document.getElementById('discardPromptBtn');
 
+// Filename editor elements
+const filenameTemplateInput = document.getElementById('filenameTemplateInput');
+const fieldPlaceholderChips = document.getElementById('fieldPlaceholderChips');
+const tagPlaceholderChips = document.getElementById('tagPlaceholderChips');
+const specialPlaceholderChips = document.getElementById('specialPlaceholderChips');
+const filenamePreviewEl = document.getElementById('filenamePreview');
+const filenameSaveBar = document.getElementById('filenameSaveBar');
+const saveFilenameBtn = document.getElementById('saveFilenameBtn');
+const discardFilenameBtn = document.getElementById('discardFilenameBtn');
+const reloadFilenameBtn = document.getElementById('reloadFilenameBtn');
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -156,13 +172,15 @@ function switchTab(tabName) {
         const unsavedFields = hasUnsavedFieldChanges();
         const unsavedTags = hasUnsavedTagChanges();
         const unsavedPrompt = hasUnsavedPromptChanges();
-        if (unsavedFields || unsavedTags || unsavedPrompt) {
+        const unsavedFilename = hasUnsavedFilenameChanges();
+        if (unsavedFields || unsavedTags || unsavedPrompt || unsavedFilename) {
             if (!confirm('You have unsaved changes. Discard and switch tabs?')) {
                 return;
             }
             if (unsavedFields) discardFieldChanges();
             if (unsavedTags) discardTagChanges();
             if (unsavedPrompt) discardPromptChanges();
+            if (unsavedFilename) discardFilenameChanges();
         }
     }
 
@@ -183,6 +201,7 @@ function switchTab(tabName) {
         if (!fieldsLoaded) loadFieldDefinitions();
         if (!tagsLoaded) loadTagDefinitions();
         if (!promptLoaded) loadPromptTemplate();
+        if (!filenameLoaded) loadFilenameTemplate();
     }
 }
 
@@ -1957,6 +1976,172 @@ function discardPromptChanges() {
 }
 
 // ============================================================================
+// FILENAME TEMPLATE EDITOR
+// ============================================================================
+
+const FILENAME_SAMPLE_DATA = {
+    supplierName: 'Acme Corp',
+    paymentDate: '20250115',
+    paymentDateFormatted: '15.01.2025',
+    invoiceDate: '20250110',
+    invoiceDateFormatted: '10.01.2025',
+    invoiceDateIfDifferent: ' - 10.01.2025',
+    invoiceNumber: 'INV-2025-001',
+    currency: 'EUR',
+    totalAmount: '1,500.50'
+};
+
+const SPECIAL_PLACEHOLDERS = [
+    { key: 'paymentDateFormatted', tooltip: 'Payment date as DD.MM.YYYY' },
+    { key: 'invoiceDateFormatted', tooltip: 'Invoice date as DD.MM.YYYY' },
+    { key: 'invoiceDateIfDifferent', tooltip: 'Invoice date only if different from payment date, prefixed with " - "' }
+];
+
+async function loadFilenameTemplate() {
+    try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+
+        if (response.ok) {
+            filenameTemplate = (data.output && data.output.filenameTemplate) || '';
+            originalFilenameTemplate = filenameTemplate;
+            filenameLoaded = true;
+
+            filenameTemplateInput.value = filenameTemplate;
+            renderPlaceholderChips(data.fieldDefinitions || [], data.tagDefinitions || []);
+            updateFilenamePreview();
+            updateFilenameSaveBar();
+        }
+    } catch (error) {
+        showAlert('Failed to load filename template: ' + error.message, 'error');
+    }
+}
+
+function renderPlaceholderChips(fields, tags) {
+    fieldPlaceholderChips.textContent = '';
+    fields.forEach(field => {
+        if (!field.enabled) return;
+        const chip = createPlaceholderChip(field.key, field.label);
+        fieldPlaceholderChips.appendChild(chip);
+    });
+
+    tagPlaceholderChips.textContent = '';
+    tags.forEach(tag => {
+        if (!tag.enabled) return;
+        if (!tag.output || !tag.output.filename || !tag.output.filenamePlaceholder) return;
+        const chip = createPlaceholderChip(tag.output.filenamePlaceholder, tag.label, 'tag-chip');
+        tagPlaceholderChips.appendChild(chip);
+        // Add tag sample data for preview
+        FILENAME_SAMPLE_DATA[tag.output.filenamePlaceholder] = tag.output.filenameFormat || '';
+    });
+
+    const tagGroup = document.getElementById('tagPlaceholders');
+    tagGroup.style.display = tagPlaceholderChips.children.length > 0 ? 'block' : 'none';
+
+    specialPlaceholderChips.textContent = '';
+    SPECIAL_PLACEHOLDERS.forEach(sp => {
+        const chip = createPlaceholderChip(sp.key, sp.tooltip, 'special-chip');
+        chip.title = sp.tooltip;
+        specialPlaceholderChips.appendChild(chip);
+    });
+}
+
+function createPlaceholderChip(key, tooltipText, extraClass) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'placeholder-chip' + (extraClass ? ' ' + extraClass : '');
+    chip.textContent = '{' + key + '}';
+    chip.title = tooltipText;
+    chip.addEventListener('click', () => insertPlaceholder(key));
+    return chip;
+}
+
+function insertPlaceholder(key) {
+    const input = filenameTemplateInput;
+    const placeholder = '{' + key + '}';
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const value = input.value;
+
+    input.value = value.substring(0, start) + placeholder + value.substring(end);
+    const newPos = start + placeholder.length;
+    input.setSelectionRange(newPos, newPos);
+    input.focus();
+
+    filenameTemplate = input.value;
+    updateFilenamePreview();
+    updateFilenameSaveBar();
+}
+
+function updateFilenamePreview() {
+    const template = filenameTemplateInput.value;
+    if (!template) {
+        filenamePreviewEl.textContent = '(empty template)';
+        return;
+    }
+
+    const preview = template.replace(/\{(\w+)\}/g, (match, key) => {
+        if (key in FILENAME_SAMPLE_DATA) {
+            return FILENAME_SAMPLE_DATA[key];
+        }
+        return match;
+    });
+
+    filenamePreviewEl.textContent = preview;
+}
+
+function hasUnsavedFilenameChanges() {
+    if (!filenameTemplateInput) return false;
+    return filenameTemplateInput.value !== originalFilenameTemplate;
+}
+
+function updateFilenameSaveBar() {
+    filenameSaveBar.style.display = hasUnsavedFilenameChanges() ? 'flex' : 'none';
+}
+
+async function saveFilenameTemplate() {
+    const template = filenameTemplateInput.value.trim();
+    if (!template) {
+        showAlert('Filename template cannot be empty', 'error');
+        return;
+    }
+
+    try {
+        saveFilenameBtn.disabled = true;
+        saveFilenameBtn.textContent = 'Saving...';
+
+        const response = await fetch('/api/config/output', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filenameTemplate: template })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            filenameTemplate = template;
+            originalFilenameTemplate = template;
+            updateFilenameSaveBar();
+            showAlert(result.message || 'Filename template saved', 'success');
+        } else {
+            showAlert(result.error || 'Failed to save filename template', 'error');
+        }
+    } catch (error) {
+        showAlert('Failed to save filename template: ' + error.message, 'error');
+    } finally {
+        saveFilenameBtn.disabled = false;
+        saveFilenameBtn.textContent = 'Save Changes';
+    }
+}
+
+function discardFilenameChanges() {
+    filenameTemplateInput.value = originalFilenameTemplate;
+    filenameTemplate = originalFilenameTemplate;
+    updateFilenamePreview();
+    updateFilenameSaveBar();
+}
+
+// ============================================================================
 // EVENT LISTENERS
 // ============================================================================
 
@@ -2097,6 +2282,21 @@ function setupEventListeners() {
     promptRawTextInput.addEventListener('input', () => {
         updatePromptPreview();
         updatePromptSaveBar();
+    });
+
+    // Filename editor buttons
+    reloadFilenameBtn.addEventListener('click', () => {
+        filenameLoaded = false;
+        loadFilenameTemplate();
+    });
+    saveFilenameBtn.addEventListener('click', saveFilenameTemplate);
+    discardFilenameBtn.addEventListener('click', discardFilenameChanges);
+
+    // Filename template live preview on input
+    filenameTemplateInput.addEventListener('input', () => {
+        filenameTemplate = filenameTemplateInput.value;
+        updateFilenamePreview();
+        updateFilenameSaveBar();
     });
 
     // Keyboard shortcuts
