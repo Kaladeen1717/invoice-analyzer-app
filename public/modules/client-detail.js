@@ -2,7 +2,7 @@
 // Manages the detail view for a single client: config display, override editing.
 
 import { showAlert, addLogEntry, clearLog } from './ui-utils.js';
-import { KNOWN_MODELS } from './constants.js';
+import { KNOWN_MODELS, VALID_FIELD_TYPES } from './constants.js';
 import { initResultsViewer, loadClientResults, clearResults } from './results-viewer.js';
 
 // --- State ---
@@ -13,7 +13,8 @@ let isFileProcessing = false;
 
 // Per-section edit state
 let detailFieldEditMode = false;
-let detailFieldOverrides = null;
+let detailFieldDefinitions = null;
+let globalFieldDefaults = null;
 let detailTagEditMode = false;
 let detailTagOverrides = null;
 let detailPromptEditMode = false;
@@ -28,6 +29,10 @@ let dashboardListView, clientDetailView, backToDashboardBtn, detailClientHeader;
 let detailFieldList, detailTagList, detailFilenameTemplate, detailPromptTemplate;
 let detailModelEl;
 let fileSelectorEl, fileCountEl, refreshFilesBtn, processSelectedBtn, dryRunSelectedBtn;
+
+// Context menu and add-field button
+let contextMenuEl = null;
+let addDetailFieldBtn = null;
 
 // Override buttons
 let customizeFieldsBtn, resetFieldsBtn, saveDetailFieldsBtn, discardDetailFieldsBtn, detailFieldsSaveBar;
@@ -54,6 +59,20 @@ export function initClientDetail() {
     saveDetailFieldsBtn = document.getElementById('saveDetailFieldsBtn');
     discardDetailFieldsBtn = document.getElementById('discardDetailFieldsBtn');
     detailFieldsSaveBar = document.getElementById('detailFieldsSaveBar');
+    addDetailFieldBtn = document.getElementById('addDetailFieldBtn');
+
+    // Create context menu element
+    contextMenuEl = document.createElement('div');
+    contextMenuEl.className = 'detail-context-menu';
+    document.body.appendChild(contextMenuEl);
+
+    // Dismiss context menu on click or Escape
+    document.addEventListener('click', () => {
+        contextMenuEl.classList.remove('visible');
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') contextMenuEl.classList.remove('visible');
+    });
 
     customizeTagsBtn = document.getElementById('customizeTagsBtn');
     resetTagsBtn = document.getElementById('resetTagsBtn');
@@ -89,6 +108,7 @@ export function initClientDetail() {
     resetFieldsBtn.addEventListener('click', () => resetOverride('fields'));
     saveDetailFieldsBtn.addEventListener('click', saveDetailFieldOverrides);
     discardDetailFieldsBtn.addEventListener('click', cancelDetailFieldEdit);
+    addDetailFieldBtn.addEventListener('click', addDetailCustomField);
 
     customizeTagsBtn.addEventListener('click', () => (detailTagEditMode ? cancelDetailTagEdit() : customizeTags()));
     resetTagsBtn.addEventListener('click', () => resetOverride('tags'));
@@ -667,7 +687,9 @@ function renderDetailPromptTemplate(prompt) {
 
 function resetDetailEditState() {
     detailFieldEditMode = false;
-    detailFieldOverrides = null;
+    detailFieldDefinitions = null;
+    globalFieldDefaults = null;
+    if (addDetailFieldBtn) addDetailFieldBtn.style.display = 'none';
     detailTagEditMode = false;
     detailTagOverrides = null;
     detailPromptEditMode = false;
@@ -702,38 +724,60 @@ function updateDetailResetButtons() {
 function customizeFields() {
     if (!clientDetailData) return;
     detailFieldEditMode = true;
-    detailFieldOverrides = {};
+
+    // Deep copy all fields, stripping annotation props
+    detailFieldDefinitions = clientDetailData.fieldDefinitions.map((f) => {
+        const copy = { ...f };
+        delete copy._source;
+        delete copy._globalDefaults;
+        return copy;
+    });
+
+    // Build globalFieldDefaults map from _globalDefaults (or from current values on first customize)
+    globalFieldDefaults = new Map();
     clientDetailData.fieldDefinitions.forEach((f) => {
-        if (f._source === 'override') {
-            detailFieldOverrides[f.key] = { enabled: f.enabled, instruction: f.instruction };
+        if (f._globalDefaults) {
+            globalFieldDefaults.set(f.key, f._globalDefaults);
+        } else if (f._source === 'global' || !f._globalDefaults) {
+            // First time customize or global field — store current values as defaults
+            globalFieldDefaults.set(f.key, {
+                label: f.label,
+                type: f.type,
+                schemaHint: f.schemaHint,
+                instruction: f.instruction,
+                enabled: f.enabled
+            });
         }
     });
+
     customizeFieldsBtn.textContent = 'Editing';
     customizeFieldsBtn.classList.add('active');
     customizeFieldsBtn.classList.remove('btn-primary');
     customizeFieldsBtn.classList.add('btn-secondary');
+    addDetailFieldBtn.style.display = 'inline-flex';
     renderDetailFieldListEditable();
 }
 
 function cancelDetailFieldEdit() {
     detailFieldEditMode = false;
-    detailFieldOverrides = null;
+    detailFieldDefinitions = null;
+    globalFieldDefaults = null;
     detailFieldsSaveBar.style.display = 'none';
     customizeFieldsBtn.textContent = 'Customize';
     customizeFieldsBtn.classList.remove('active');
     customizeFieldsBtn.classList.add('btn-primary');
     customizeFieldsBtn.classList.remove('btn-secondary');
+    addDetailFieldBtn.style.display = 'none';
     renderDetailFieldList(clientDetailData.fieldDefinitions);
 }
 
 function renderDetailFieldListEditable() {
     detailFieldList.textContent = '';
-    const fields = clientDetailData.fieldDefinitions;
 
-    if (!fields || fields.length === 0) {
+    if (!detailFieldDefinitions || detailFieldDefinitions.length === 0) {
         const p = document.createElement('div');
         p.className = 'empty-placeholder';
-        p.textContent = 'No extraction fields defined.';
+        p.textContent = 'No extraction fields defined. Click "+ Add Custom Field" to create one.';
         detailFieldList.appendChild(p);
         return;
     }
@@ -748,8 +792,10 @@ function renderDetailFieldListEditable() {
         { text: 'Label', cls: 'col-label' },
         { text: 'Key', cls: 'col-key' },
         { text: 'Type', cls: 'col-type' },
+        { text: 'Schema Hint', cls: 'col-hint' },
         { text: 'Instruction', cls: 'col-instruction' },
-        { text: 'Source', cls: 'col-source' }
+        { text: 'Source', cls: 'col-source' },
+        { text: 'Actions', cls: 'col-actions' }
     ].forEach((h) => {
         const th = document.createElement('th');
         th.className = h.cls;
@@ -760,103 +806,189 @@ function renderDetailFieldListEditable() {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    fields.forEach((field) => {
-        const override = detailFieldOverrides[field.key];
-        const effectiveEnabled = override ? override.enabled : field.enabled;
-        const effectiveInstruction = override ? override.instruction : field.instruction;
-        const isOverridden = !!override;
-
+    detailFieldDefinitions.forEach((field, index) => {
         const tr = document.createElement('tr');
-        if (!effectiveEnabled) tr.className = 'disabled';
+        if (!field.enabled) tr.className = 'disabled';
+        tr.dataset.index = index;
+
+        const hasGlobalDefault = globalFieldDefaults && globalFieldDefaults.has(field.key);
 
         // On — clickable toggle
         const tdEnabled = document.createElement('td');
         tdEnabled.className = 'col-enabled';
+        if (isCellDifferentFromDefault(index, 'enabled')) tdEnabled.classList.add('cell-modified');
         const toggle = document.createElement('span');
-        toggle.className = 'toggle-icon ' + (effectiveEnabled ? 'enabled' : 'disabled');
-        toggle.textContent = effectiveEnabled ? '\u25CF' : '\u25CB';
+        toggle.className = 'toggle-icon ' + (field.enabled ? 'enabled' : 'disabled');
+        toggle.textContent = field.enabled ? '\u25CF' : '\u25CB';
         toggle.style.cursor = 'pointer';
         toggle.addEventListener('click', () => {
-            if (!detailFieldOverrides[field.key]) {
-                detailFieldOverrides[field.key] = { enabled: field.enabled, instruction: field.instruction };
-            }
-            detailFieldOverrides[field.key].enabled = !detailFieldOverrides[field.key].enabled;
+            detailFieldDefinitions[index].enabled = !detailFieldDefinitions[index].enabled;
             renderDetailFieldListEditable();
             detailFieldsSaveBar.style.display = 'flex';
         });
         tdEnabled.appendChild(toggle);
+        attachContextMenuIfModified(tdEnabled, index, 'enabled');
         tr.appendChild(tdEnabled);
 
-        // Label
+        // Label — click-to-edit
         const tdLabel = document.createElement('td');
-        tdLabel.className = 'col-label';
-        tdLabel.textContent = field.label || '(empty)';
+        tdLabel.className = 'col-label cell-editable';
+        if (isCellDifferentFromDefault(index, 'label')) tdLabel.classList.add('cell-modified');
+        const labelView = document.createElement('span');
+        labelView.className = 'cell-view';
+        labelView.textContent = field.label || '(empty)';
+        tdLabel.appendChild(labelView);
+        const labelEdit = document.createElement('span');
+        labelEdit.className = 'cell-edit';
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.value = field.label || '';
+        labelEdit.appendChild(labelInput);
+        tdLabel.appendChild(labelEdit);
+        setupDetailCellEdit(tdLabel);
+        attachContextMenuIfModified(tdLabel, index, 'label');
         tr.appendChild(tdLabel);
 
-        // Key
+        // Key — click-to-edit only for client-added fields (no global default)
         const tdKey = document.createElement('td');
-        tdKey.className = 'col-key';
+        const isKeyEditable = !hasGlobalDefault && !field.key;
+        tdKey.className = 'col-key' + (isKeyEditable ? ' cell-editable' : '');
+        const keyView = document.createElement('span');
+        keyView.className = 'cell-view';
         const keyCode = document.createElement('code');
-        keyCode.textContent = field.key;
-        tdKey.appendChild(keyCode);
+        keyCode.textContent = field.key || '(auto)';
+        keyView.appendChild(keyCode);
+        tdKey.appendChild(keyView);
+        if (isKeyEditable) {
+            const keyEdit = document.createElement('span');
+            keyEdit.className = 'cell-edit';
+            const keyInput = document.createElement('input');
+            keyInput.type = 'text';
+            keyInput.value = field.key || '';
+            keyEdit.appendChild(keyInput);
+            tdKey.appendChild(keyEdit);
+            setupDetailCellEdit(tdKey);
+        }
         tr.appendChild(tdKey);
 
-        // Type
+        // Type — click-to-edit
         const tdType = document.createElement('td');
-        tdType.className = 'col-type';
-        tdType.textContent = field.type;
+        tdType.className = 'col-type cell-editable';
+        if (isCellDifferentFromDefault(index, 'type')) tdType.classList.add('cell-modified');
+        const typeView = document.createElement('span');
+        typeView.className = 'cell-view';
+        typeView.textContent = field.type || 'text';
+        tdType.appendChild(typeView);
+        const typeEdit = document.createElement('span');
+        typeEdit.className = 'cell-edit';
+        const typeSelect = document.createElement('select');
+        VALID_FIELD_TYPES.forEach((t) => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            opt.selected = t === field.type;
+            typeSelect.appendChild(opt);
+        });
+        typeEdit.appendChild(typeSelect);
+        tdType.appendChild(typeEdit);
+        setupDetailCellEdit(tdType);
+        attachContextMenuIfModified(tdType, index, 'type');
         tr.appendChild(tdType);
+
+        // Schema Hint — click-to-edit
+        const tdHint = document.createElement('td');
+        tdHint.className = 'col-hint cell-editable';
+        if (isCellDifferentFromDefault(index, 'schemaHint')) tdHint.classList.add('cell-modified');
+        const hintView = document.createElement('span');
+        hintView.className = 'cell-view cell-view-truncate';
+        hintView.title = field.schemaHint || '';
+        hintView.textContent = field.schemaHint || '(empty)';
+        tdHint.appendChild(hintView);
+        const hintEdit = document.createElement('span');
+        hintEdit.className = 'cell-edit';
+        const hintTextarea = document.createElement('textarea');
+        hintTextarea.rows = 3;
+        hintTextarea.value = field.schemaHint || '';
+        hintEdit.appendChild(hintTextarea);
+        tdHint.appendChild(hintEdit);
+        setupDetailCellEdit(tdHint);
+        attachContextMenuIfModified(tdHint, index, 'schemaHint');
+        tr.appendChild(tdHint);
 
         // Instruction — click-to-edit
         const tdInstr = document.createElement('td');
         tdInstr.className = 'col-instruction cell-editable';
+        if (isCellDifferentFromDefault(index, 'instruction')) tdInstr.classList.add('cell-modified');
         const instrView = document.createElement('span');
         instrView.className = 'cell-view cell-view-truncate';
-        instrView.title = effectiveInstruction || '';
-        instrView.textContent = effectiveInstruction || '(empty)';
+        instrView.title = field.instruction || '';
+        instrView.textContent = field.instruction || '(empty)';
         tdInstr.appendChild(instrView);
-        const instrEditSpan = document.createElement('span');
-        instrEditSpan.className = 'cell-edit';
+        const instrEdit = document.createElement('span');
+        instrEdit.className = 'cell-edit';
         const instrTextarea = document.createElement('textarea');
         instrTextarea.rows = 3;
-        instrTextarea.value = effectiveInstruction || '';
-        instrEditSpan.appendChild(instrTextarea);
-        tdInstr.appendChild(instrEditSpan);
-
-        tdInstr.addEventListener('click', () => {
-            if (tdInstr.classList.contains('editing')) return;
-            tdInstr.classList.add('editing');
-            instrTextarea.focus();
-            const blurHandler = () => {
-                instrTextarea.removeEventListener('blur', blurHandler);
-                tdInstr.classList.remove('editing');
-                const newVal = instrTextarea.value.trim();
-                if (newVal !== (field.instruction || '')) {
-                    if (!detailFieldOverrides[field.key]) {
-                        detailFieldOverrides[field.key] = { enabled: field.enabled, instruction: field.instruction };
-                    }
-                    detailFieldOverrides[field.key].instruction = newVal;
-                    instrView.textContent = newVal || '(empty)';
-                    instrView.title = newVal;
-                    detailFieldsSaveBar.style.display = 'flex';
-                }
-            };
-            instrTextarea.addEventListener('blur', blurHandler);
-            instrTextarea.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    instrTextarea.value = effectiveInstruction || '';
-                    instrTextarea.blur();
-                }
-            });
-        });
+        instrTextarea.value = field.instruction || '';
+        instrEdit.appendChild(instrTextarea);
+        tdInstr.appendChild(instrEdit);
+        setupDetailCellEdit(tdInstr);
+        attachContextMenuIfModified(tdInstr, index, 'instruction');
         tr.appendChild(tdInstr);
 
         // Source
         const tdSource = document.createElement('td');
         tdSource.className = 'col-source';
-        tdSource.appendChild(createSourceBadge(isOverridden ? 'override' : field._source));
+        const sourceBadge = document.createElement('span');
+        sourceBadge.className = hasGlobalDefault
+            ? 'source-badge source-badge-global'
+            : 'source-badge source-badge-override';
+        sourceBadge.textContent = hasGlobalDefault ? 'Global' : 'Custom';
+        tdSource.appendChild(sourceBadge);
         tr.appendChild(tdSource);
+
+        // Actions
+        const tdActions = document.createElement('td');
+        tdActions.className = 'col-actions';
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'row-actions';
+
+        const moveUpBtn = document.createElement('button');
+        moveUpBtn.className = 'btn-icon';
+        moveUpBtn.title = 'Move up';
+        moveUpBtn.textContent = '\u25B2';
+        moveUpBtn.disabled = index === 0;
+        moveUpBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveDetailField(index, -1);
+        });
+        actionsDiv.appendChild(moveUpBtn);
+
+        const moveDownBtn = document.createElement('button');
+        moveDownBtn.className = 'btn-icon';
+        moveDownBtn.title = 'Move down';
+        moveDownBtn.textContent = '\u25BC';
+        moveDownBtn.disabled = index === detailFieldDefinitions.length - 1;
+        moveDownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveDetailField(index, 1);
+        });
+        actionsDiv.appendChild(moveDownBtn);
+
+        // Delete only for client-added fields (no global default)
+        if (!hasGlobalDefault) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-icon btn-icon-danger';
+            deleteBtn.title = 'Delete field';
+            deleteBtn.textContent = '\u2715';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteDetailField(index);
+            });
+            actionsDiv.appendChild(deleteBtn);
+        }
+
+        tdActions.appendChild(actionsDiv);
+        tr.appendChild(tdActions);
 
         tbody.appendChild(tr);
     });
@@ -865,9 +997,258 @@ function renderDetailFieldListEditable() {
     detailFieldList.appendChild(table);
 }
 
+// --- Detail field editing helpers ---
+
+function setupDetailCellEdit(td) {
+    td.addEventListener('click', () => {
+        if (td.classList.contains('editing')) return;
+
+        // Close any other editing cell in the table
+        const table = td.closest('table');
+        if (table) {
+            table.querySelectorAll('td.editing').forEach((other) => {
+                if (other !== td) flushDetailCellEdit(other);
+            });
+        }
+
+        const input = td.querySelector('.cell-edit input, .cell-edit textarea, .cell-edit select');
+        if (input) td._originalValue = input.value;
+
+        td.classList.add('editing');
+
+        if (input) {
+            input.focus();
+
+            const blurHandler = () => {
+                input.removeEventListener('blur', blurHandler);
+                flushDetailCellEdit(td);
+            };
+            input.addEventListener('blur', blurHandler);
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && input.tagName !== 'TEXTAREA') {
+                    e.preventDefault();
+                    input.blur();
+                }
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    input.value = td._originalValue || '';
+                    input.blur();
+                }
+            });
+        }
+    });
+}
+
+function flushDetailCellEdit(td) {
+    td.classList.remove('editing');
+    const input = td.querySelector('.cell-edit input, .cell-edit textarea, .cell-edit select');
+    const viewSpan = td.querySelector('.cell-view');
+
+    if (input && viewSpan) {
+        const tr = td.closest('tr');
+        const index = parseInt(tr.dataset.index);
+        const newVal = input.tagName === 'SELECT' ? input.value : input.value.trim();
+
+        // Determine which property to update
+        if (td.classList.contains('col-label')) {
+            detailFieldDefinitions[index].label = newVal;
+            // Auto-generate key for new fields
+            if (!globalFieldDefaults || !globalFieldDefaults.has(detailFieldDefinitions[index].key)) {
+                if (!detailFieldDefinitions[index].key) {
+                    detailFieldDefinitions[index].key = labelToCamelCase(newVal);
+                }
+            }
+        } else if (td.classList.contains('col-key')) {
+            detailFieldDefinitions[index].key = newVal;
+        } else if (td.classList.contains('col-type')) {
+            detailFieldDefinitions[index].type = newVal;
+        } else if (td.classList.contains('col-hint')) {
+            detailFieldDefinitions[index].schemaHint = newVal;
+        } else if (td.classList.contains('col-instruction')) {
+            detailFieldDefinitions[index].instruction = newVal;
+        }
+
+        // Update view text
+        if (viewSpan.querySelector('code')) {
+            viewSpan.querySelector('code').textContent = newVal || '(auto)';
+        } else if (input.tagName === 'SELECT') {
+            viewSpan.textContent = newVal;
+        } else {
+            viewSpan.textContent = newVal || '(empty)';
+            if (viewSpan.classList.contains('cell-view-truncate')) {
+                viewSpan.title = newVal;
+            }
+        }
+
+        // Update diff class
+        const propName = td.classList.contains('col-label')
+            ? 'label'
+            : td.classList.contains('col-type')
+              ? 'type'
+              : td.classList.contains('col-hint')
+                ? 'schemaHint'
+                : td.classList.contains('col-instruction')
+                  ? 'instruction'
+                  : null;
+
+        if (propName) {
+            if (isCellDifferentFromDefault(index, propName)) {
+                td.classList.add('cell-modified');
+            } else {
+                td.classList.remove('cell-modified');
+            }
+        }
+
+        detailFieldsSaveBar.style.display = 'flex';
+    }
+}
+
+function labelToCamelCase(label) {
+    return label
+        .trim()
+        .split(/\s+/)
+        .map((word, i) => {
+            const lower = word.toLowerCase();
+            return i === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join('');
+}
+
+function isCellDifferentFromDefault(fieldIndex, propName) {
+    if (!globalFieldDefaults || !detailFieldDefinitions) return false;
+    const field = detailFieldDefinitions[fieldIndex];
+    if (!field) return false;
+    const defaults = globalFieldDefaults.get(field.key);
+    if (!defaults) return false; // client-added field, no default to compare
+    return field[propName] !== defaults[propName];
+}
+
+function attachContextMenuIfModified(td, fieldIndex, propName) {
+    td.addEventListener('contextmenu', (e) => {
+        if (!isCellDifferentFromDefault(fieldIndex, propName)) return;
+        e.preventDefault();
+        showFieldContextMenu(e, fieldIndex, propName);
+    });
+}
+
+function showFieldContextMenu(e, fieldIndex, propName) {
+    contextMenuEl.textContent = '';
+
+    const item = document.createElement('button');
+    item.className = 'detail-context-menu-item';
+    item.textContent = 'Reset to global default';
+    item.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const field = detailFieldDefinitions[fieldIndex];
+        const defaults = globalFieldDefaults.get(field.key);
+        if (defaults && defaults[propName] !== undefined) {
+            field[propName] = defaults[propName];
+            renderDetailFieldListEditable();
+            detailFieldsSaveBar.style.display = 'flex';
+        }
+        contextMenuEl.classList.remove('visible');
+    });
+    contextMenuEl.appendChild(item);
+
+    contextMenuEl.style.left = e.clientX + 'px';
+    contextMenuEl.style.top = e.clientY + 'px';
+    contextMenuEl.classList.add('visible');
+}
+
+function addDetailCustomField() {
+    if (!detailFieldDefinitions) return;
+    detailFieldDefinitions.push({
+        key: '',
+        label: '',
+        type: 'text',
+        schemaHint: '',
+        instruction: '',
+        enabled: true
+    });
+    renderDetailFieldListEditable();
+    detailFieldsSaveBar.style.display = 'flex';
+
+    // Focus the label cell of the new row
+    const lastRow = detailFieldList.querySelector('tbody tr:last-child');
+    if (lastRow) {
+        const labelTd = lastRow.querySelector('td.col-label');
+        if (labelTd) {
+            labelTd.click();
+        }
+    }
+}
+
+function moveDetailField(index, direction) {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= detailFieldDefinitions.length) return;
+    const temp = detailFieldDefinitions[index];
+    detailFieldDefinitions[index] = detailFieldDefinitions[newIndex];
+    detailFieldDefinitions[newIndex] = temp;
+    renderDetailFieldListEditable();
+    detailFieldsSaveBar.style.display = 'flex';
+}
+
+function deleteDetailField(index) {
+    detailFieldDefinitions.splice(index, 1);
+    renderDetailFieldListEditable();
+    detailFieldsSaveBar.style.display = 'flex';
+}
+
 async function saveDetailFieldOverrides() {
-    if (!clientDetailData || !detailFieldOverrides) return;
+    if (!clientDetailData || !detailFieldDefinitions) return;
     const clientId = clientDetailData.client.clientId;
+
+    // Flush any editing cells
+    const table = detailFieldList.querySelector('table');
+    if (table) {
+        table.querySelectorAll('td.editing').forEach((td) => flushDetailCellEdit(td));
+    }
+
+    // Validate all fields
+    if (detailFieldDefinitions.length === 0) {
+        showAlert('At least one field definition is required', 'error');
+        return;
+    }
+
+    for (let i = 0; i < detailFieldDefinitions.length; i++) {
+        const field = detailFieldDefinitions[i];
+        const rowNum = i + 1;
+
+        if (!field.label) {
+            showAlert(`Row ${rowNum}: label is required`, 'error');
+            return;
+        }
+        if (!field.key) {
+            showAlert(`Row ${rowNum}: key is required`, 'error');
+            return;
+        }
+        if (!/^[a-z][a-zA-Z0-9]*$/.test(field.key)) {
+            showAlert(
+                `Row ${rowNum}: key must start with a lowercase letter and contain only alphanumeric characters`,
+                'error'
+            );
+            return;
+        }
+        if (!VALID_FIELD_TYPES.includes(field.type)) {
+            showAlert(`Row ${rowNum}: invalid field type`, 'error');
+            return;
+        }
+        if (!field.schemaHint) {
+            showAlert(`Row ${rowNum}: schema hint is required`, 'error');
+            return;
+        }
+        if (!field.instruction) {
+            showAlert(`Row ${rowNum}: instruction is required`, 'error');
+            return;
+        }
+
+        const duplicateIndex = detailFieldDefinitions.findIndex((f, j) => j !== i && f.key === field.key);
+        if (duplicateIndex !== -1) {
+            showAlert(`Row ${rowNum}: duplicate key "${field.key}" (also in row ${duplicateIndex + 1})`, 'error');
+            return;
+        }
+    }
 
     try {
         saveDetailFieldsBtn.disabled = true;
@@ -876,7 +1257,7 @@ async function saveDetailFieldOverrides() {
         const response = await fetch(`/api/clients/${clientId}/overrides`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ section: 'fields', data: detailFieldOverrides })
+            body: JSON.stringify({ section: 'fields', data: detailFieldDefinitions })
         });
 
         const result = await response.json();
@@ -886,9 +1267,9 @@ async function saveDetailFieldOverrides() {
         cancelDetailFieldEdit();
         renderDetailFieldList(clientDetailData.fieldDefinitions);
         updateDetailResetButtons();
-        showAlert('Field overrides saved', 'success');
+        showAlert('Field definitions saved', 'success');
     } catch (error) {
-        showAlert('Failed to save field overrides: ' + error.message, 'error');
+        showAlert('Failed to save field definitions: ' + error.message, 'error');
     } finally {
         saveDetailFieldsBtn.disabled = false;
         saveDetailFieldsBtn.textContent = 'Save Overrides';

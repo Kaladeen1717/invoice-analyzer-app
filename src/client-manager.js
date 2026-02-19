@@ -246,9 +246,11 @@ async function getClientConfig(clientId, globalConfig) {
     // Document types: client can override, otherwise use global
     const documentTypes = client.documentTypes || globalConfig.documentTypes;
 
-    // Field definitions: apply per-field overrides if present, otherwise use global
+    // Field definitions: full replacement first, then legacy sparse merge, then global
     let fieldDefinitions = globalConfig.fieldDefinitions || [];
-    if (client.fieldOverrides) {
+    if (client.fieldDefinitions) {
+        fieldDefinitions = client.fieldDefinitions;
+    } else if (client.fieldOverrides) {
         fieldDefinitions = fieldDefinitions.map((field) => {
             const override = client.fieldOverrides[field.key];
             if (!override) return field;
@@ -260,9 +262,6 @@ async function getClientConfig(clientId, globalConfig) {
                 fieldDefinitions.push({ ...def, key });
             }
         }
-    } else if (client.fieldDefinitions) {
-        // Legacy: full field definitions override
-        fieldDefinitions = client.fieldDefinitions;
     }
 
     // Tag definitions: start with global, merge client tagOverrides (parameter values and enabled state)
@@ -558,10 +557,26 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
     const client = clientsConfig.clients[clientId];
     if (!client) throw new Error(`Client "${clientId}" not found`);
 
-    // Field definitions: per-field granular overrides or full override
+    // Field definitions: full replacement first, then legacy sparse merge, then global
     const globalFields = globalConfig.fieldDefinitions || [];
     let effectiveFields;
-    if (client.fieldOverrides) {
+    if (client.fieldDefinitions) {
+        // Full replacement — annotate each field with _globalDefaults for visual diff
+        const globalFieldMap = new Map(globalFields.map((f) => [f.key, f]));
+        effectiveFields = client.fieldDefinitions.map((f) => {
+            const globalField = globalFieldMap.get(f.key);
+            const globalDefaults = globalField
+                ? {
+                      label: globalField.label,
+                      type: globalField.type,
+                      schemaHint: globalField.schemaHint,
+                      instruction: globalField.instruction,
+                      enabled: globalField.enabled
+                  }
+                : null;
+            return { ...f, _source: 'override', _globalDefaults: globalDefaults };
+        });
+    } else if (client.fieldOverrides) {
         effectiveFields = globalFields.map((f) => {
             const override = client.fieldOverrides[f.key];
             if (!override) return { ...f, _source: 'global' };
@@ -573,8 +588,6 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
                 effectiveFields.push({ ...def, key, _source: 'override' });
             }
         }
-    } else if (client.fieldDefinitions) {
-        effectiveFields = client.fieldDefinitions.map((f) => ({ ...f, _source: 'override' }));
     } else {
         effectiveFields = globalFields.map((f) => ({ ...f, _source: 'global' }));
     }
@@ -682,7 +695,8 @@ async function saveClientOverrides(clientId, section, data) {
 
     switch (section) {
         case 'fields':
-            config.fieldOverrides = data;
+            config.fieldDefinitions = data;
+            delete config.fieldOverrides;
             break;
         case 'tags':
             config.tagOverrides = data;

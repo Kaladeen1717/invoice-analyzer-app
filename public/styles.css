@@ -2091,6 +2091,46 @@ tr.confirm-delete td {
     gap: 0.75rem;
 }
 
+/* Cell modified indicator — left border accent for cells differing from global default */
+.cell-modified {
+    border-left: 3px solid var(--primary) !important;
+    background: rgba(59, 130, 246, 0.04);
+}
+
+/* Custom right-click context menu for resetting to global default */
+.detail-context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    min-width: 200px;
+    overflow: hidden;
+    display: none;
+}
+
+.detail-context-menu.visible {
+    display: block;
+}
+
+.detail-context-menu-item {
+    display: block;
+    width: 100%;
+    padding: 0.625rem 1rem;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.detail-context-menu-item:hover {
+    background: var(--bg-card-hover);
+}
+
 /* Detail editable inputs */
 .detail-edit-input {
     width: 100%;

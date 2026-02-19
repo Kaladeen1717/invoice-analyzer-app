@@ -66,6 +66,58 @@ describe('validateFieldDefinitions', () => {
     test('rejects non-boolean enabled', () => {
         expect(() => validateFieldDefinitions([validField({ enabled: 'yes' })])).toThrow('"enabled" must be a boolean');
     });
+
+    test('accepts a reduced array after deletion', () => {
+        const fields = [
+            validField({ key: 'fieldA', label: 'Field A' }),
+            validField({ key: 'fieldB', label: 'Field B' }),
+            validField({ key: 'fieldC', label: 'Field C' })
+        ];
+        fields.splice(1, 1); // simulate deleting fieldB
+        expect(() => validateFieldDefinitions(fields)).not.toThrow();
+        expect(fields).toHaveLength(2);
+    });
+
+    test('accepts fields with extra properties like builtIn', () => {
+        const fields = [
+            validField({ key: 'invoiceNumber', label: 'Invoice Number', builtIn: true }),
+            validField({ key: 'total', label: 'Total', builtIn: true })
+        ];
+        expect(() => validateFieldDefinitions(fields)).not.toThrow();
+    });
+
+    test('accepts multiple fields with unique keys', () => {
+        const fields = [
+            validField({ key: 'alpha', label: 'Alpha' }),
+            validField({ key: 'beta', label: 'Beta' }),
+            validField({ key: 'gamma', label: 'Gamma' })
+        ];
+        expect(() => validateFieldDefinitions(fields)).not.toThrow();
+    });
+
+    test('accepts fields with annotation properties (_source, _globalDefaults)', () => {
+        const fields = [
+            validField({
+                key: 'invoiceNumber',
+                label: 'Invoice Number',
+                _source: 'override',
+                _globalDefaults: {
+                    label: 'Invoice Number',
+                    type: 'text',
+                    schemaHint: 'string value',
+                    instruction: 'extract the invoice number',
+                    enabled: true
+                }
+            }),
+            validField({
+                key: 'customField',
+                label: 'Custom Field',
+                _source: 'override',
+                _globalDefaults: null
+            })
+        ];
+        expect(() => validateFieldDefinitions(fields)).not.toThrow();
+    });
 });
 
 describe('validateTagDefinitions', () => {
