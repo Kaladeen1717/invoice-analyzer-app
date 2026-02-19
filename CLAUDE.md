@@ -20,13 +20,14 @@ Local application that analyzes invoice PDFs using Google's Gemini Vision API. S
 - `sanitize-filename` — Path traversal prevention (CodeQL-recognized sanitizer)
 - `dotenv` — Environment variable loading
 - `eslint` + `prettier` — Code quality and formatting
-- `jest` — Unit testing
+- `jest` — Unit and API integration testing
+- `supertest` — HTTP assertion library for Express endpoint tests (dev)
 - `knip` — Dead code and dependency detection
 
 ## Project Structure
 
 ```
-server.js               — Express server, REST API endpoints (29 endpoints), SSE streaming
+server.js               — Express server, REST API endpoints (32 endpoints), SSE streaming, exports app
 batch-process.js        — CLI entry point for batch invoice processing
 config.json             — Global processing configuration (not committed)
 .env                    — API keys and port (never commit)
@@ -63,7 +64,8 @@ public/
     results-viewer.js   — Processing history viewer with filtering, retry, pagination
 
 clients/                — Per-client JSON config files (gitignored, not committed)
-tests/                  — Unit tests (Jest)
+tests/                  — Unit tests (Jest), mirrors src/ structure
+  api/                  — Supertest API endpoint tests (clients, config, processing, results, health)
 scripts/                — Utility scripts (migrate-clients.js)
 ```
 
@@ -207,6 +209,8 @@ app.get('/api/example/:id', processingLimiter, async (req, res) => {
 });
 ```
 
+4. Add Supertest tests in the appropriate `tests/api/*.test.js` file (see "Adding tests for a new endpoint")
+
 ### Adding a new UI editor section
 
 1. Create `public/modules/my-editor.js`
@@ -246,10 +250,44 @@ npm run test:watch    # Watch mode for development
 npm run test:coverage # Generate coverage report
 ```
 
-- Tests live in `tests/` mirroring `src/` modules
-- Focus on pure function tests — no network calls, no external dependencies
-- Current coverage: `filename-generator`, `prompt-builder`, `config` validation
+### Unit tests (`tests/*.test.js`)
+
+- Mirror `src/` modules: `src/foo.js` → `tests/foo.test.js`
+- Pure function tests — no network calls, no external dependencies
+- Current coverage: `filename-generator`, `prompt-builder`, `config`, `result-manager`
 - Mock `fs` only when testing file I/O functions
+
+### API endpoint tests (`tests/api/*.test.js`)
+
+- Use Supertest against the Express `app` (exported from `server.js` behind `require.main === module` guard)
+- Mock backend modules at module level: `jest.mock('../../src/client-manager')`, `jest.mock('../../src/config')`, etc.
+- No filesystem or network side effects — all dependencies are mocked
+- Current coverage: all 32 endpoints across 5 test files (134 tests)
+
+**Test file → endpoint mapping:**
+
+| File                 | Endpoints                                                                    |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `clients.test.js`    | 9 Client CRUD + overrides                                                    |
+| `config.test.js`     | 15 Global config (fields, tags, prompt, model, output, export/import/backup) |
+| `processing.test.js` | 3 SSE (process, process-all, retry) + files listing                          |
+| `results.test.js`    | Results pagination, summary, aggregate stats                                 |
+| `health.test.js`     | Health check                                                                 |
+
+**Key patterns:**
+
+- SSE endpoints return `text/event-stream` — parse with: `res.text.split('\n\n').filter(c => c.startsWith('data: ')).map(c => JSON.parse(c.replace('data: ', '')))`
+- Use unique client IDs per SSE test to avoid `activeProcessing` Map collisions across tests
+- When mocking `fs` for endpoints that coexist with `express.static`, preserve the real module: `jest.mock('fs', () => ({ ...jest.requireActual('fs'), promises: { access: jest.fn(), ... } }))`
+- Error routing convention: `error.message.includes('not found')` → 404, `'already exists'` → 409, else 400 or 500
+
+### Adding tests for a new endpoint
+
+1. Identify which `tests/api/*.test.js` file covers the endpoint group
+2. Add mock setup in `beforeEach` if the endpoint uses new dependencies
+3. Write happy-path test, then error cases (400, 404, 500)
+4. For SSE endpoints: mock callbacks (`onProgress`, `onComplete`) and parse event stream
+5. Run `npm test` to verify
 
 ## Coding Conventions
 
