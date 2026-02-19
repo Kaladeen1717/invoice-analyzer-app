@@ -141,10 +141,12 @@ function renderFieldList() {
         placeholder.className = 'empty-placeholder';
         const p1 = document.createElement('p');
         p1.textContent = 'No extraction fields defined.';
-        const p2 = document.createElement('p');
-        p2.textContent = 'Click "+ Add Custom Field" to create one.';
         placeholder.appendChild(p1);
-        placeholder.appendChild(p2);
+        if (editMode) {
+            const p2 = document.createElement('p');
+            p2.textContent = 'Click "+ Add Custom Field" to create one.';
+            placeholder.appendChild(p2);
+        }
         fieldListEl.appendChild(placeholder);
         updateFieldsSaveBar();
         return;
@@ -445,7 +447,7 @@ async function saveFieldDefinitions() {
     readFieldsFromDOM();
 
     if (fieldDefinitions.length === 0) {
-        showAlert('Cannot save an empty field list', 'error');
+        showAlert('At least one field definition is required', 'error');
         return;
     }
 

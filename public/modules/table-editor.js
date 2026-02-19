@@ -2,6 +2,8 @@
 // Field editor and tag editor register handlers; this module dispatches
 // cell writes and delete confirmations to the correct handler.
 
+import { showAlert } from './ui-utils.js';
+
 const handlers = new Map();
 
 /**
@@ -116,20 +118,35 @@ export function deactivateCellEdit(td) {
  */
 export function showInlineDeleteConfirm(index, tableClass) {
     const handler = handlers.get(tableClass);
-    if (!handler) return;
+    if (!handler) {
+        showAlert('Delete failed: no handler registered for table type', 'error');
+        return;
+    }
 
     const definitions = handler.getDefinitions();
     const item = definitions[index];
-    if (!item) return;
+    if (!item) {
+        showAlert(`Delete failed: no item found at index ${index}`, 'error');
+        return;
+    }
 
     const table = document.querySelector('.' + tableClass);
-    if (!table) return;
+    if (!table) {
+        showAlert(`Delete failed: table element not found (.${tableClass})`, 'error');
+        return;
+    }
     const tr = table.querySelector(`tr[data-index="${index}"]`);
-    if (!tr) return;
+    if (!tr) {
+        showAlert(`Delete failed: table row not found for index ${index}`, 'error');
+        return;
+    }
 
     tr.classList.add('confirm-delete');
     const actionsTd = tr.querySelector('td.col-actions');
-    if (!actionsTd) return;
+    if (!actionsTd) {
+        showAlert('Delete failed: actions column not found in row', 'error');
+        return;
+    }
     actionsTd.textContent = '';
 
     const confirmDiv = document.createElement('div');
