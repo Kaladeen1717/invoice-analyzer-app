@@ -359,10 +359,21 @@ async function processInvoice(inputPath, config, options = {}) {
             tokenUsage
         };
     } catch (error) {
+        // Tag rate-limit errors so parallel-processor can use longer backoff
+        if (
+            error.message &&
+            (error.message.includes('429') ||
+                error.message.includes('RATE_LIMIT') ||
+                error.message.includes('Resource has been exhausted'))
+        ) {
+            error.isRateLimited = true;
+        }
+
         return {
             success: false,
             originalFilename: filename,
             error: error.message,
+            isRateLimited: error.isRateLimited || false,
             rawResponse: error._rawResponse || null,
             tokenUsage: error._tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
         };
