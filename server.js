@@ -373,10 +373,8 @@ app.get('/api/config', async (req, res) => {
             model: config.model || null,
             fieldDefinitions: config.fieldDefinitions || null,
             tagDefinitions: config.tagDefinitions || null,
-            extraction: config.extraction,
             output: config.output,
-            processing: config.processing,
-            documentTypes: config.documentTypes || null
+            processing: config.processing
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to load config', details: error.message });
@@ -670,9 +668,7 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
             ...globalConfig,
             model: clientConfig.model,
             folders: clientConfig.folders,
-            extraction: clientConfig.extraction,
             output: clientConfig.output,
-            documentTypes: clientConfig.documentTypes,
             fieldDefinitions: clientConfig.fieldDefinitions,
             tagDefinitions: clientConfig.tagDefinitions,
             promptTemplate: clientConfig.promptTemplate
@@ -993,9 +989,7 @@ app.post('/api/clients/:id/process', processingLimiter, async (req, res) => {
             ...globalConfig,
             model: clientConfig.model,
             folders: clientConfig.folders,
-            extraction: clientConfig.extraction,
             output: clientConfig.output,
-            documentTypes: clientConfig.documentTypes,
             fieldDefinitions: clientConfig.fieldDefinitions,
             tagDefinitions: clientConfig.tagDefinitions,
             promptTemplate: clientConfig.promptTemplate
@@ -1158,9 +1152,7 @@ app.post('/api/clients/process-all', processingLimiter, async (req, res) => {
                     ...globalConfig,
                     model: clientConfig.model,
                     folders: clientConfig.folders,
-                    extraction: clientConfig.extraction,
                     output: clientConfig.output,
-                    documentTypes: clientConfig.documentTypes,
                     fieldDefinitions: clientConfig.fieldDefinitions,
                     tagDefinitions: clientConfig.tagDefinitions
                 };

@@ -2,9 +2,7 @@ const {
     buildExtractionPrompt,
     parseGeminiResponse,
     validateAnalysis,
-    resolveTagInstruction,
-    formatDocumentTypes,
-    TAG_REPLACED_FIELDS
+    resolveTagInstruction
 } = require('../src/prompt-builder');
 
 describe('resolveTagInstruction', () => {
@@ -32,9 +30,25 @@ describe('resolveTagInstruction', () => {
 
 describe('buildExtractionPrompt', () => {
     const baseConfig = {
-        extraction: { fields: ['supplierName', 'totalAmount'], includeSummary: false },
-        processing: { concurrency: 1, retryAttempts: 0 },
-        output: { filenameTemplate: '{supplierName}.pdf' }
+        fieldDefinitions: [
+            {
+                key: 'supplierName',
+                label: 'Supplier',
+                type: 'text',
+                schemaHint: 'Full company/supplier name',
+                instruction: 'extract the supplier name',
+                enabled: true
+            },
+            {
+                key: 'totalAmount',
+                label: 'Amount',
+                type: 'number',
+                schemaHint: 'Total amount',
+                instruction: 'extract total amount',
+                enabled: true
+            }
+        ],
+        output: { filenameTemplate: '{supplierName}.pdf', includeSummary: false }
     };
 
     test('builds prompt with structured template', () => {
@@ -62,7 +76,7 @@ describe('buildExtractionPrompt', () => {
         expect(buildExtractionPrompt(config)).toBe('This is my raw prompt');
     });
 
-    test('includes field instructions for data-driven mode', () => {
+    test('includes field instructions for enabled fields only', () => {
         const config = {
             ...baseConfig,
             fieldDefinitions: [
@@ -101,16 +115,6 @@ describe('buildExtractionPrompt', () => {
     test('includes tag instructions when tagDefinitions present', () => {
         const config = {
             ...baseConfig,
-            fieldDefinitions: [
-                {
-                    key: 'supplierName',
-                    label: 'Supplier',
-                    type: 'text',
-                    schemaHint: 'string',
-                    instruction: 'extract name',
-                    enabled: true
-                }
-            ],
             tagDefinitions: [
                 { id: 'private', label: 'Private', instruction: 'Set true if private', enabled: true },
                 { id: 'urgent', label: 'Urgent', instruction: 'Set true if urgent', enabled: false }
@@ -122,47 +126,10 @@ describe('buildExtractionPrompt', () => {
         expect(prompt).not.toContain('tags.urgent');
     });
 
-    test('excludes tag-replaced fields when tags are active', () => {
-        const config = {
-            ...baseConfig,
-            fieldDefinitions: [
-                {
-                    key: 'supplierName',
-                    label: 'Supplier',
-                    type: 'text',
-                    schemaHint: 'string',
-                    instruction: 'name',
-                    enabled: true
-                },
-                {
-                    key: 'documentTypes',
-                    label: 'Doc Types',
-                    type: 'array',
-                    schemaHint: 'array',
-                    instruction: 'types',
-                    enabled: true
-                },
-                {
-                    key: 'isPrivate',
-                    label: 'Private',
-                    type: 'boolean',
-                    schemaHint: 'bool',
-                    instruction: 'private',
-                    enabled: true
-                }
-            ],
-            tagDefinitions: [{ id: 'private', label: 'Private', instruction: 'private check', enabled: true }]
-        };
-        const prompt = buildExtractionPrompt(config);
-        expect(prompt).toContain('supplierName');
-        expect(prompt).not.toMatch(/For documentTypes/);
-        expect(prompt).not.toMatch(/For isPrivate/);
-    });
-
     test('includes summary instruction when enabled', () => {
         const config = {
             ...baseConfig,
-            extraction: { ...baseConfig.extraction, includeSummary: true }
+            output: { ...baseConfig.output, includeSummary: true }
         };
         const prompt = buildExtractionPrompt(config);
         expect(prompt).toContain('summary');
@@ -191,9 +158,8 @@ describe('parseGeminiResponse', () => {
 });
 
 describe('validateAnalysis', () => {
-    test('fills missing fields with type-appropriate defaults (data-driven)', () => {
+    test('fills missing fields with type-appropriate defaults', () => {
         const config = {
-            extraction: { fields: [] },
             fieldDefinitions: [
                 { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true },
                 { key: 'amount', label: 'Amount', type: 'number', schemaHint: 'n', instruction: 'i', enabled: true },
@@ -210,7 +176,6 @@ describe('validateAnalysis', () => {
 
     test('preserves existing values', () => {
         const config = {
-            extraction: { fields: [] },
             fieldDefinitions: [
                 { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true }
             ]
@@ -221,7 +186,6 @@ describe('validateAnalysis', () => {
 
     test('falls back paymentDate to invoiceDate', () => {
         const config = {
-            extraction: { fields: [] },
             fieldDefinitions: [
                 {
                     key: 'paymentDate',
@@ -247,7 +211,6 @@ describe('validateAnalysis', () => {
 
     test('ensures tag booleans default to false', () => {
         const config = {
-            extraction: { fields: [] },
             fieldDefinitions: [],
             tagDefinitions: [
                 { id: 'private', label: 'Private', instruction: 'i', enabled: true },
@@ -257,25 +220,5 @@ describe('validateAnalysis', () => {
         const result = validateAnalysis({ tags: { private: true } }, config);
         expect(result.tags.private).toBe(true);
         expect(result.tags.urgent).toBe(false);
-    });
-});
-
-describe('formatDocumentTypes', () => {
-    test('returns Unknown for empty/null', () => {
-        expect(formatDocumentTypes(null)).toBe('Unknown');
-        expect(formatDocumentTypes([])).toBe('Unknown');
-    });
-
-    test('maps type IDs to labels', () => {
-        const result = formatDocumentTypes(['commercial_invoice', 'receipt']);
-        expect(result).toContain('Commercial Invoice');
-        expect(result).toContain('Receipt');
-    });
-});
-
-describe('TAG_REPLACED_FIELDS', () => {
-    test('contains expected fields', () => {
-        expect(TAG_REPLACED_FIELDS).toContain('documentTypes');
-        expect(TAG_REPLACED_FIELDS).toContain('isPrivate');
     });
 });

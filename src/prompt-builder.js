@@ -2,11 +2,6 @@
  * Builds dynamic Gemini prompts based on configuration
  */
 
-const { getDefaultDocumentTypes } = require('./config');
-
-// Field keys that are replaced by the unified tag system
-const TAG_REPLACED_FIELDS = ['documentTypes', 'isPrivate'];
-
 /**
  * Resolve parameter templates in a tag instruction
  * Replaces {{paramName}} with the parameter value
@@ -28,127 +23,23 @@ function resolveTagInstruction(tag, paramOverrides) {
 
 /**
  * Build the invoice analysis prompt from configuration
- * @param {Object} config - The configuration object (with optional documentTypes array)
+ * @param {Object} config - The configuration object
  * @returns {string} The Gemini prompt
  */
 function buildExtractionPrompt(config) {
-    const { fields, includeSummary, privateAddressMarker } = config.extraction;
-
-    // Get document types from config or use defaults
-    const documentTypes = config.documentTypes || getDefaultDocumentTypes();
-    const documentTypeIds = documentTypes.map((dt) => dt.id);
-
-    // Check for data-driven field definitions and tag definitions
     const fieldDefinitions = config.fieldDefinitions;
     const tagDefinitions = config.tagDefinitions;
+    const includeSummary = config.output && config.output.includeSummary;
 
     // Build the JSON structure dynamically
     const jsonStructure = {};
     const instructions = [];
 
-    if (fieldDefinitions) {
-        // Data-driven mode
-        let enabledFields = fieldDefinitions.filter((f) => f.enabled);
+    const enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
-        // When tag system is active, skip fields that are now handled as tags
-        if (tagDefinitions) {
-            enabledFields = enabledFields.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
-        }
-
-        for (const field of enabledFields) {
-            jsonStructure[field.key] = field.schemaHint;
-
-            // Special handling for fields that need dynamic content (legacy compat when no tagDefinitions)
-            if (!tagDefinitions && field.key === 'documentTypes') {
-                instructions.push(
-                    `- For documentTypes, analyze the document and return an array of applicable types from: ${documentTypeIds.join(', ')}`
-                );
-                for (const dt of documentTypes) {
-                    instructions.push(`  * ${dt.id}: ${dt.description || dt.label}`);
-                }
-                instructions.push('  Multiple types can apply (e.g., a receipt that is also a commercial invoice)');
-            } else if (!tagDefinitions && field.key === 'isPrivate' && privateAddressMarker) {
-                instructions.push(
-                    `- For isPrivate, set to true if the address "${privateAddressMarker}" appears anywhere in the document, otherwise false`
-                );
-            } else {
-                instructions.push(`- For ${field.key}, ${field.instruction}`);
-            }
-        }
-    } else {
-        // Legacy: Switch-based mode
-        for (const field of fields) {
-            switch (field) {
-                case 'supplierName':
-                    jsonStructure.supplierName = 'Full company/supplier name as it appears on the invoice';
-                    instructions.push(
-                        '- For supplierName, extract the full company name with proper spacing (e.g., "Acme Corporation" not "AcmeCorporation")'
-                    );
-                    break;
-
-                case 'paymentDate':
-                    jsonStructure.paymentDate = 'YYYYMMDD format - the date payment is due';
-                    instructions.push(
-                        '- For paymentDate, look for "Due Date", "Payment Due", "Pay By", or similar fields. Convert to YYYYMMDD format. If not found, use the invoiceDate.'
-                    );
-                    break;
-
-                case 'invoiceDate':
-                    jsonStructure.invoiceDate = 'YYYYMMDD format - the date the invoice was issued';
-                    instructions.push(
-                        '- For invoiceDate, convert any date format to YYYYMMDD (e.g., "2024-01-15" becomes "20240115")'
-                    );
-                    break;
-
-                case 'invoiceNumber':
-                    jsonStructure.invoiceNumber = 'Invoice number/reference';
-                    instructions.push(
-                        '- For invoiceNumber, extract the invoice number or reference as shown on the document'
-                    );
-                    break;
-
-                case 'currency':
-                    jsonStructure.currency = 'Currency code (e.g., USD, EUR, DKK, NOK, SEK)';
-                    instructions.push('- For currency, identify the 3-letter currency code (USD, EUR, DKK, etc.)');
-                    break;
-
-                case 'totalAmount':
-                    jsonStructure.totalAmount =
-                        'Total amount as a number (no currency symbol, no thousands separators)';
-                    instructions.push(
-                        '- For totalAmount, provide just the numeric value without currency symbol or separators (e.g., "1500.50" not "$1,500.50")'
-                    );
-                    break;
-
-                case 'documentTypes':
-                    jsonStructure.documentTypes = 'Array of document type tags that apply to this document';
-                    instructions.push(
-                        `- For documentTypes, analyze the document and return an array of applicable types from: ${documentTypeIds.join(', ')}`
-                    );
-                    for (const dt of documentTypes) {
-                        instructions.push(`  * ${dt.id}: ${dt.description || dt.label}`);
-                    }
-                    instructions.push('  Multiple types can apply (e.g., a receipt that is also a commercial invoice)');
-                    break;
-
-                case 'isPrivate':
-                    jsonStructure.isPrivate = 'Boolean - true if this appears to be a private/personal invoice';
-                    if (privateAddressMarker) {
-                        instructions.push(
-                            `- For isPrivate, set to true if the address "${privateAddressMarker}" appears anywhere in the document, otherwise false`
-                        );
-                    } else {
-                        instructions.push(
-                            '- For isPrivate, set to true if this appears to be a personal/private invoice rather than business'
-                        );
-                    }
-                    break;
-
-                default:
-                    jsonStructure[field] = `Value for ${field}`;
-                    instructions.push(`- For ${field}, extract the relevant value from the invoice`);
-            }
-        }
+    for (const field of enabledFields) {
+        jsonStructure[field.key] = field.schemaHint;
+        instructions.push(`- For ${field.key}, ${field.instruction}`);
     }
 
     if (includeSummary) {
@@ -237,61 +128,35 @@ function parseGeminiResponse(responseText) {
 /**
  * Validate the extracted analysis has required fields
  * @param {Object} analysis - The parsed analysis
- * @param {Object} config - The configuration object (with optional documentTypes array)
+ * @param {Object} config - The configuration object
  * @returns {Object} The validated (and possibly filled) analysis
  */
 function validateAnalysis(analysis, config) {
     const validated = { ...analysis };
 
-    // Get document types from config or use defaults
-    const documentTypes = config.documentTypes || getDefaultDocumentTypes();
-    const validTypeIds = documentTypes.map((dt) => dt.id);
-
     const fieldDefinitions = config.fieldDefinitions;
     const tagDefinitions = config.tagDefinitions;
 
-    if (fieldDefinitions) {
-        // Data-driven: type-aware defaults from field definitions
-        let enabledFields = fieldDefinitions.filter((f) => f.enabled);
+    // Type-aware defaults from field definitions
+    const enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
-        // When tag system is active, skip tag-replaced fields
-        if (tagDefinitions) {
-            enabledFields = enabledFields.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
-        }
-
-        for (const field of enabledFields) {
-            if (validated[field.key] === undefined || validated[field.key] === null) {
-                switch (field.type) {
-                    case 'number':
-                        validated[field.key] = 0;
-                        break;
-                    case 'boolean':
-                        validated[field.key] = false;
-                        break;
-                    case 'array':
-                        validated[field.key] = [];
-                        break;
-                    case 'date':
-                    case 'text':
-                    default:
-                        validated[field.key] = 'Unknown';
-                        break;
-                }
-            }
-        }
-    } else {
-        // Legacy mode
-        for (const field of config.extraction.fields) {
-            if (validated[field] === undefined || validated[field] === null) {
-                if (field === 'totalAmount') {
-                    validated[field] = 0;
-                } else if (field === 'documentTypes') {
-                    validated[field] = [];
-                } else if (field === 'isPrivate') {
-                    validated[field] = false;
-                } else {
-                    validated[field] = 'Unknown';
-                }
+    for (const field of enabledFields) {
+        if (validated[field.key] === undefined || validated[field.key] === null) {
+            switch (field.type) {
+                case 'number':
+                    validated[field.key] = 0;
+                    break;
+                case 'boolean':
+                    validated[field.key] = false;
+                    break;
+                case 'array':
+                    validated[field.key] = [];
+                    break;
+                case 'date':
+                case 'text':
+                default:
+                    validated[field.key] = 'Unknown';
+                    break;
             }
         }
     }
@@ -301,7 +166,7 @@ function validateAnalysis(analysis, config) {
         validated.paymentDate = validated.invoiceDate;
     }
 
-    // Validate tags when tag system is active
+    // Validate tags
     if (tagDefinitions) {
         const enabledTags = tagDefinitions.filter((t) => t.enabled);
         if (!validated.tags || typeof validated.tags !== 'object') {
@@ -313,38 +178,9 @@ function validateAnalysis(analysis, config) {
                 validated.tags[tag.id] = false;
             }
         }
-    } else {
-        // Legacy: ensure documentTypes is always an array and normalize
-        if (validated.documentTypes !== undefined) {
-            if (!Array.isArray(validated.documentTypes)) {
-                validated.documentTypes = validated.documentTypes ? [validated.documentTypes] : [];
-            }
-            validated.documentTypes = validated.documentTypes
-                .map((t) => String(t).toLowerCase().replace(/\s+/g, '_'))
-                .filter((t) => validTypeIds.includes(t));
-        }
     }
 
     return validated;
-}
-
-/**
- * Format document types for display
- * @param {string[]} types - Array of document type codes
- * @param {Array} [documentTypes] - Optional document types config array with id/label
- * @returns {string} Human-readable string
- */
-function formatDocumentTypes(types, documentTypes = null) {
-    if (!types || types.length === 0) return 'Unknown';
-
-    // Build labels map from config or use defaults
-    const docTypes = documentTypes || getDefaultDocumentTypes();
-    const labels = {};
-    for (const dt of docTypes) {
-        labels[dt.id] = dt.label;
-    }
-
-    return types.map((t) => labels[t] || t).join(', ');
 }
 
 /**
@@ -384,8 +220,6 @@ module.exports = {
     buildPromptPreview,
     parseGeminiResponse,
     validateAnalysis,
-    formatDocumentTypes,
     resolveTagInstruction,
-    getActiveTags,
-    TAG_REPLACED_FIELDS
+    getActiveTags
 };

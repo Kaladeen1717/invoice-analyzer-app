@@ -11,17 +11,7 @@ const {
 } = require('./constants');
 
 const CONFIG_FILE = 'config.json';
-const REQUIRED_FIELDS = ['processing', 'extraction', 'output'];
-
-// Default document types (used when not specified in config)
-const DEFAULT_DOCUMENT_TYPES = [
-    { id: 'commercial_invoice', label: 'Commercial Invoice', description: 'Standard invoice for goods/services' },
-    { id: 'proforma_invoice', label: 'Proforma Invoice', description: 'Preliminary invoice' },
-    { id: 'receipt', label: 'Receipt', description: 'Payment confirmation' },
-    { id: 'order_confirmation', label: 'Order Confirmation', description: 'Order confirmation' },
-    { id: 'purchase_order', label: 'Purchase Order', description: 'Purchase request' },
-    { id: 'government_taxes', label: 'Government/Taxes', description: 'Tax documents' }
-];
+const REQUIRED_FIELDS = ['processing', 'output'];
 
 let cachedConfig = null;
 
@@ -119,27 +109,6 @@ function validateFieldDefinitions(fieldDefinitions) {
  */
 function getFieldDefinitions(config) {
     return config.fieldDefinitions || null;
-}
-
-/**
- * Validate document types array
- * @param {Array} documentTypes - Document types to validate
- */
-function validateDocumentTypes(documentTypes) {
-    if (!Array.isArray(documentTypes)) {
-        throw new Error('documentTypes must be an array');
-    }
-    if (documentTypes.length === 0) {
-        throw new Error('documentTypes must be a non-empty array');
-    }
-    for (const [index, dt] of documentTypes.entries()) {
-        if (!dt.id || typeof dt.id !== 'string') {
-            throw new Error(`documentTypes[${index}]: must have an "id" string`);
-        }
-        if (!dt.label || typeof dt.label !== 'string') {
-            throw new Error(`documentTypes[${index}]: must have a "label" string`);
-        }
-    }
 }
 
 /**
@@ -286,11 +255,6 @@ function validateConfig(config, options = {}) {
         }
     }
 
-    // Validate documentTypes if present
-    if (config.documentTypes) {
-        validateDocumentTypes(config.documentTypes);
-    }
-
     // Validate folders (only required in single-client mode)
     if (requireFolders) {
         if (!config.folders) {
@@ -330,13 +294,6 @@ function validateConfig(config, options = {}) {
         validatePromptTemplate(config.promptTemplate);
     }
 
-    // Validate extraction.fields (only required in legacy mode without fieldDefinitions)
-    if (!config.fieldDefinitions) {
-        if (!Array.isArray(config.extraction.fields) || config.extraction.fields.length === 0) {
-            throw new Error('extraction.fields must be a non-empty array');
-        }
-    }
-
     // Validate output
     if (!config.output.filenameTemplate) {
         throw new Error('Missing required configuration: output.filenameTemplate');
@@ -369,22 +326,6 @@ function getConfig() {
  */
 function clearConfigCache() {
     cachedConfig = null;
-}
-
-/**
- * Get document types from config or return defaults
- * @returns {Array} Array of document type objects with id, label, description
- */
-function getDocumentTypes() {
-    return cachedConfig?.documentTypes || DEFAULT_DOCUMENT_TYPES;
-}
-
-/**
- * Get the default document types
- * @returns {Array} Array of default document type objects
- */
-function getDefaultDocumentTypes() {
-    return DEFAULT_DOCUMENT_TYPES;
 }
 
 /**
@@ -436,7 +377,7 @@ async function exportConfig(scope) {
         case 'fields':
             data = {
                 fieldDefinitions: rawConfig.fieldDefinitions || null,
-                extraction: rawConfig.extraction
+                tagDefinitions: rawConfig.tagDefinitions || null
             };
             break;
 
@@ -530,14 +471,17 @@ async function importConfig(bundle) {
             if (bundle.data.fieldDefinitions) {
                 validateFieldDefinitions(bundle.data.fieldDefinitions);
             }
+            if (bundle.data.tagDefinitions) {
+                validateTagDefinitions(bundle.data.tagDefinitions);
+            }
             const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
             if (bundle.data.fieldDefinitions !== undefined) {
                 rawConfig.fieldDefinitions = bundle.data.fieldDefinitions;
                 imported.updated.push('fieldDefinitions');
             }
-            if (bundle.data.extraction) {
-                rawConfig.extraction = bundle.data.extraction;
-                imported.updated.push('extraction');
+            if (bundle.data.tagDefinitions !== undefined) {
+                rawConfig.tagDefinitions = bundle.data.tagDefinitions;
+                imported.updated.push('tagDefinitions');
             }
             await fs.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
             clearConfigCache();
@@ -745,8 +689,6 @@ module.exports = {
     getConfig,
     ensureDirectories,
     clearConfigCache,
-    getDocumentTypes,
-    getDefaultDocumentTypes,
     validateFieldDefinitions,
     getFieldDefinitions,
     validateTagDefinitions,
