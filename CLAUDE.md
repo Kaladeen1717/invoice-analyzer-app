@@ -242,6 +242,14 @@ No code changes needed — add the field to `fieldDefinitions` in config.json vi
 - To modify output files: edit `processor.js` (`addSummaryToPdf`) or `csv-logger.js`
 - To modify filename generation: edit `filename-generator.js` (`formatFieldValue`, `generateFormattedFilename`)
 
+### Rate limit handling
+
+The processing pipeline detects Gemini API rate limits (429) and uses adaptive backoff:
+
+- **Detection** (`src/processor.js`): In `processInvoice()` catch block, errors containing `429`, `RATE_LIMIT`, or `Resource has been exhausted` are tagged with `isRateLimited: true` on the result object.
+- **Adaptive backoff** (`src/parallel-processor.js`): `processWithRetry()` checks `result.isRateLimited` and uses 3x exponential backoff (1s → 3s → 9s) instead of the standard 2x (1s → 2s → 4s) for other errors.
+- **Concurrency**: Controlled by `config.processing.concurrency` (default 5) via `p-limit`. Express-level rate limiting (30 req/60s) is handled separately by `processingLimiter` middleware.
+
 ## Testing
 
 ```bash
