@@ -134,6 +134,109 @@ describe('buildExtractionPrompt', () => {
         const prompt = buildExtractionPrompt(config);
         expect(prompt).toContain('summary');
     });
+
+    describe('fieldFilter option', () => {
+        const filterConfig = {
+            ...baseConfig,
+            fieldDefinitions: [
+                {
+                    key: 'supplierName',
+                    label: 'Supplier',
+                    type: 'text',
+                    schemaHint: 'string',
+                    instruction: 'extract supplier name',
+                    enabled: true
+                },
+                {
+                    key: 'totalAmount',
+                    label: 'Amount',
+                    type: 'number',
+                    schemaHint: 'number',
+                    instruction: 'extract total amount',
+                    enabled: true
+                },
+                {
+                    key: 'currency',
+                    label: 'Currency',
+                    type: 'text',
+                    schemaHint: 'string',
+                    instruction: 'extract currency',
+                    enabled: true
+                }
+            ],
+            tagDefinitions: [
+                { id: 'private', label: 'Private', instruction: 'Set true if private', enabled: true },
+                { id: 'receipt', label: 'Receipt', instruction: 'Set true if receipt', enabled: true },
+                { id: 'disabled_tag', label: 'Disabled', instruction: 'Never shown', enabled: false }
+            ],
+            output: { ...baseConfig.output, includeSummary: true }
+        };
+
+        test('filters to specified fields only', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { fields: ['supplierName', 'currency'] }
+            });
+            expect(prompt).toContain('supplierName');
+            expect(prompt).toContain('currency');
+            expect(prompt).not.toContain('extract total amount');
+        });
+
+        test('filters to specified tags only', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { tags: ['receipt'] }
+            });
+            expect(prompt).toContain('tags.receipt');
+            expect(prompt).not.toContain('tags.private');
+        });
+
+        test('excludes summary when fieldFilter.includeSummary is false', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { includeSummary: false }
+            });
+            expect(prompt).not.toContain('summary');
+        });
+
+        test('includes summary when fieldFilter.includeSummary is true', () => {
+            const noSummaryConfig = {
+                ...filterConfig,
+                output: { ...filterConfig.output, includeSummary: false }
+            };
+            const prompt = buildExtractionPrompt(noSummaryConfig, {
+                fieldFilter: { includeSummary: true }
+            });
+            expect(prompt).toContain('summary');
+        });
+
+        test('does not filter disabled fields into results', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { tags: ['disabled_tag'] }
+            });
+            expect(prompt).not.toContain('tags.disabled_tag');
+        });
+
+        test('returns all enabled fields when fieldFilter.fields is omitted', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { tags: ['private'] }
+            });
+            expect(prompt).toContain('supplierName');
+            expect(prompt).toContain('totalAmount');
+            expect(prompt).toContain('currency');
+        });
+
+        test('returns all enabled tags when fieldFilter.tags is omitted', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { fields: ['supplierName'] }
+            });
+            expect(prompt).toContain('tags.private');
+            expect(prompt).toContain('tags.receipt');
+        });
+
+        test('backward compatible — no options acts like original', () => {
+            const withOptions = buildExtractionPrompt(filterConfig, {});
+            const without = buildExtractionPrompt(filterConfig);
+            expect(withOptions).toBe(without);
+        });
+    });
 });
 
 describe('parseGeminiResponse', () => {

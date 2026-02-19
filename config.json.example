@@ -97,6 +97,42 @@
       "instruction": "set to true if the document appears to be a personal/private invoice",
       "enabled": true,
       "builtIn": true
+    },
+    {
+      "key": "supplierUrl",
+      "label": "Supplier URL",
+      "type": "text",
+      "schemaHint": "Supplier's website URL",
+      "instruction": "extract the supplier's website URL if printed on the document. Return in lowercase without trailing slash. If not present, return \"Unknown\".",
+      "enabled": false,
+      "builtIn": false
+    },
+    {
+      "key": "bankRegistrationNumber",
+      "label": "Bank Reg. No.",
+      "type": "text",
+      "schemaHint": "Bank registration/sort code number",
+      "instruction": "extract the bank registration number or sort code from payment details. Preserve as printed including leading zeros. If not present, return \"Unknown\".",
+      "enabled": false,
+      "builtIn": false
+    },
+    {
+      "key": "bankAccountNumber",
+      "label": "Bank Account No.",
+      "type": "text",
+      "schemaHint": "Bank account number (non-IBAN)",
+      "instruction": "extract the domestic bank account number from payment details. Preserve as printed. If only IBAN present, return \"Unknown\".",
+      "enabled": false,
+      "builtIn": false
+    },
+    {
+      "key": "identifierType",
+      "label": "Identifier Type",
+      "type": "text",
+      "schemaHint": "Type of business identifier in vatNumber field",
+      "instruction": "classify the business identifier type: VAT, CVR, ORG_NUMBER, TAX_ID, or DUNS. If unknown, return \"Unknown\".",
+      "enabled": false,
+      "builtIn": false
     }
   ],
   "output": {

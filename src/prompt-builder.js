@@ -24,18 +24,31 @@ function resolveTagInstruction(tag, paramOverrides) {
 /**
  * Build the invoice analysis prompt from configuration
  * @param {Object} config - The configuration object
+ * @param {Object} [options] - Optional parameters
+ * @param {Object} [options.fieldFilter] - Filter which fields/tags to include
+ * @param {string[]} [options.fieldFilter.fields] - Array of field keys to include (omit for all enabled)
+ * @param {string[]} [options.fieldFilter.tags] - Array of tag IDs to include (omit for all enabled)
+ * @param {boolean} [options.fieldFilter.includeSummary] - Whether to include summary (defaults to config setting)
  * @returns {string} The Gemini prompt
  */
-function buildExtractionPrompt(config) {
+function buildExtractionPrompt(config, options = {}) {
     const fieldDefinitions = config.fieldDefinitions;
     const tagDefinitions = config.tagDefinitions;
-    const includeSummary = config.output && config.output.includeSummary;
+    const { fieldFilter } = options;
+    const includeSummary =
+        fieldFilter && 'includeSummary' in fieldFilter
+            ? fieldFilter.includeSummary
+            : config.output && config.output.includeSummary;
 
     // Build the JSON structure dynamically
     const jsonStructure = {};
     const instructions = [];
 
-    const enabledFields = fieldDefinitions.filter((f) => f.enabled);
+    let enabledFields = fieldDefinitions.filter((f) => f.enabled);
+    if (fieldFilter && fieldFilter.fields) {
+        const fieldSet = new Set(fieldFilter.fields);
+        enabledFields = enabledFields.filter((f) => fieldSet.has(f.key));
+    }
 
     for (const field of enabledFields) {
         jsonStructure[field.key] = field.schemaHint;
@@ -52,7 +65,11 @@ function buildExtractionPrompt(config) {
     // Build tags section from tagDefinitions
     const tagInstructions = [];
     if (tagDefinitions) {
-        const enabledTags = tagDefinitions.filter((t) => t.enabled);
+        let enabledTags = tagDefinitions.filter((t) => t.enabled);
+        if (fieldFilter && fieldFilter.tags) {
+            const tagSet = new Set(fieldFilter.tags);
+            enabledTags = enabledTags.filter((t) => tagSet.has(t.id));
+        }
         if (enabledTags.length > 0) {
             const tagsSchema = {};
             for (const tag of enabledTags) {

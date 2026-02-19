@@ -21,6 +21,10 @@ clients/*.json
 # Test data
 test-invoices/
 
+# Evaluation fixtures (real invoices + ground truth — private)
+tests/fixtures/eval-corpus/
+tests/fixtures/eval-results/
+
 # OS files
 .DS_Store
 Thumbs.db
