@@ -229,15 +229,16 @@ function renderTagList() {
         { text: 'Label', cls: 'col-label' },
         { text: 'ID', cls: 'col-id' },
         { text: 'Instruction', cls: 'col-instruction' },
-        { text: 'PDF', cls: 'col-output' },
-        { text: 'CSV', cls: 'col-output' },
-        { text: 'File', cls: 'col-output' },
+        { text: 'PDF', cls: 'col-output', tooltip: 'Include tag result in PDF summary page' },
+        { text: 'CSV', cls: 'col-output', tooltip: 'Add a column for this tag in the CSV log' },
+        { text: 'Filename', cls: 'col-output', tooltip: 'Append text to filename when tag is true' },
         { text: 'Actions', cls: 'col-actions' }
     ];
     headers.forEach((h) => {
         const th = document.createElement('th');
         th.className = h.cls;
         th.textContent = h.text;
+        if (h.tooltip) th.title = h.tooltip;
         headerRow.appendChild(th);
     });
     thead.appendChild(headerRow);
