@@ -1,6 +1,6 @@
 {
     "$schema": "https://unpkg.com/knip@5/schema.json",
-    "entry": ["batch-process.js", "tests/**/*.test.js"],
+    "entry": ["batch-process.js", "scripts/*.js", "tests/**/*.test.js"],
     "project": ["src/**/*.js", "tests/**/*.js"],
     "exclude": ["exports"]
 }

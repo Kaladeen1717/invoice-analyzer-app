@@ -225,16 +225,6 @@ async function getClientConfig(clientId, globalConfig) {
         csvPath: path.join(client.folderPath, csvFilename)
     };
 
-    // Extraction config: client OVERRIDES global entirely (not merge)
-    let extraction;
-    if (client.extraction) {
-        // Client has extraction config - use it entirely (override)
-        extraction = { ...client.extraction };
-    } else {
-        // No client extraction - use global
-        extraction = { ...globalConfig.extraction };
-    }
-
     // Output config: outputOverride merges into global, legacy output replaces entirely
     let output = globalConfig.output;
     if (client.outputOverride) {
@@ -242,9 +232,6 @@ async function getClientConfig(clientId, globalConfig) {
     } else if (client.output) {
         output = client.output;
     }
-
-    // Document types: client can override, otherwise use global
-    const documentTypes = client.documentTypes || globalConfig.documentTypes;
 
     // Field definitions: full replacement first, then legacy sparse merge, then global
     let fieldDefinitions = globalConfig.fieldDefinitions || [];
@@ -308,9 +295,7 @@ async function getClientConfig(clientId, globalConfig) {
         model,
         folders,
         processing: globalConfig.processing,
-        extraction,
         output,
-        documentTypes,
         fieldDefinitions,
         tagDefinitions,
         promptTemplate

@@ -1,49 +1,21 @@
 const fs = require('fs').promises;
 
-// Legacy hardcoded headers (used when no fieldDefinitions in config)
-const LEGACY_CSV_HEADERS = [
-    'Enriched Filename',
-    'Original Filename',
-    'Supplier Name',
-    'Payment Date',
-    'Invoice Date',
-    'Invoice Number',
-    'Currency',
-    'Amount',
-    'Document Types',
-    'Private',
-    'Summary',
-    'Processed At'
-];
-
 /**
  * Build CSV headers dynamically from field definitions
- * @param {Object} config - Configuration object (with optional fieldDefinitions)
+ * @param {Object} config - Configuration object
  * @returns {string[]} Array of CSV column headers
  */
-// Field keys replaced by the unified tag system
-const TAG_REPLACED_FIELDS = ['documentTypes', 'isPrivate'];
-
 function buildCsvHeaders(config) {
-    const fieldDefinitions = config && config.fieldDefinitions;
-    if (!fieldDefinitions) {
-        return LEGACY_CSV_HEADERS;
-    }
-
+    const fieldDefinitions = config.fieldDefinitions;
     const tagDefinitions = config.tagDefinitions;
 
     const headers = ['Enriched Filename', 'Original Filename'];
-    let enabledFields = fieldDefinitions.filter((f) => f.enabled);
-
-    // When tag system is active, exclude tag-replaced fields
-    if (tagDefinitions) {
-        enabledFields = enabledFields.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
-    }
+    const enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
     for (const field of enabledFields) {
         headers.push(field.label);
     }
-    if (config.extraction && config.extraction.includeSummary) {
+    if (config.output && config.output.includeSummary) {
         headers.push('Summary');
     }
     // Add tag columns
@@ -98,7 +70,7 @@ function formatDateForCSV(dateStr) {
  * Ensure CSV file exists with headers
  * Creates the file with headers if it doesn't exist
  * @param {string} csvPath - Path to the CSV file
- * @param {Object} [config] - Configuration object (for dynamic headers)
+ * @param {Object} config - Configuration object (for dynamic headers)
  */
 async function ensureCsvExists(csvPath, config) {
     try {
@@ -141,7 +113,7 @@ function formatFieldForCSV(value, type) {
  * @param {string} data.outputFilename - The enriched filename
  * @param {string} data.originalFilename - The original filename
  * @param {Object} data.analysis - The analysis result from Gemini
- * @param {Object} [config] - Configuration object (for dynamic columns)
+ * @param {Object} config - Configuration object (for dynamic columns)
  */
 async function appendInvoiceRow(csvPath, data, config) {
     const { outputFilename, originalFilename, analysis } = data;
@@ -149,97 +121,30 @@ async function appendInvoiceRow(csvPath, data, config) {
     // Ensure CSV exists before appending
     await ensureCsvExists(csvPath, config);
 
-    const fieldDefinitions = config && config.fieldDefinitions;
+    const fieldDefinitions = config.fieldDefinitions;
+    const tagDefinitions = config.tagDefinitions;
 
-    const tagDefinitions = config && config.tagDefinitions;
+    // Build row from enabled field definitions
+    const row = [outputFilename || '', originalFilename || ''];
+    const enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
-    let row;
-    if (fieldDefinitions) {
-        // Dynamic mode: build row from enabled field definitions
-        row = [outputFilename || '', originalFilename || ''];
-        let enabledFields = fieldDefinitions.filter((f) => f.enabled);
-
-        // When tag system is active, exclude tag-replaced fields
-        if (tagDefinitions) {
-            enabledFields = enabledFields.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
-        }
-
-        for (const field of enabledFields) {
-            row.push(formatFieldForCSV(analysis?.[field.key], field.type));
-        }
-        if (config.extraction && config.extraction.includeSummary) {
-            row.push(analysis?.summary || '');
-        }
-        // Add tag values
-        if (tagDefinitions) {
-            const csvTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.csv);
-            for (const tag of csvTags) {
-                row.push(analysis?.tags?.[tag.id] ? 'Yes' : 'No');
-            }
-        }
-        row.push(new Date().toISOString());
-    } else {
-        // Legacy mode: hardcoded columns
-        row = [
-            outputFilename || '',
-            originalFilename || '',
-            analysis?.supplierName || '',
-            formatDateForCSV(analysis?.paymentDate),
-            formatDateForCSV(analysis?.invoiceDate),
-            analysis?.invoiceNumber || '',
-            analysis?.currency || '',
-            analysis?.totalAmount || '',
-            Array.isArray(analysis?.documentTypes) ? analysis.documentTypes.join('; ') : '',
-            analysis?.isPrivate ? 'Yes' : 'No',
-            analysis?.summary || '',
-            new Date().toISOString()
-        ];
+    for (const field of enabledFields) {
+        row.push(formatFieldForCSV(analysis?.[field.key], field.type));
     }
+    if (config.output && config.output.includeSummary) {
+        row.push(analysis?.summary || '');
+    }
+    // Add tag values
+    if (tagDefinitions) {
+        const csvTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.csv);
+        for (const tag of csvTags) {
+            row.push(analysis?.tags?.[tag.id] ? 'Yes' : 'No');
+        }
+    }
+    row.push(new Date().toISOString());
 
     const rowLine = row.map((v) => escapeCSV(v)).join(',') + '\n';
     await fs.appendFile(csvPath, rowLine, 'utf-8');
-}
-
-/**
- * Read all rows from a CSV file
- * @param {string} csvPath - Path to the CSV file
- * @returns {Promise<Array<Object>>} Array of row objects
- */
-async function readCsv(csvPath) {
-    try {
-        const content = await fs.readFile(csvPath, 'utf-8');
-        const lines = content.split('\n').filter((line) => line.trim());
-
-        if (lines.length === 0) {
-            return [];
-        }
-
-        // Skip header row
-        const dataLines = lines.slice(1);
-
-        return dataLines.map((line) => {
-            const values = parseCSVLine(line);
-            return {
-                enrichedFilename: values[0] || '',
-                originalFilename: values[1] || '',
-                supplierName: values[2] || '',
-                paymentDate: values[3] || '',
-                invoiceDate: values[4] || '',
-                invoiceNumber: values[5] || '',
-                currency: values[6] || '',
-                amount: values[7] || '',
-                documentTypes: values[8] || '',
-                isPrivate: values[9] || '',
-                summary: values[10] || '',
-                processedAt: values[11] || ''
-            };
-        });
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            return [];
-        }
-        throw error;
-    }
 }
 
 /**
@@ -291,6 +196,31 @@ function parseCSVLine(line) {
 }
 
 /**
+ * Read all rows from a CSV file
+ * Returns rows as arrays of values (use buildCsvHeaders to get column names)
+ * @param {string} csvPath - Path to the CSV file
+ * @returns {Promise<Array<string[]>>} Array of row value arrays (excluding header)
+ */
+async function readCsv(csvPath) {
+    try {
+        const content = await fs.readFile(csvPath, 'utf-8');
+        const lines = content.split('\n').filter((line) => line.trim());
+
+        if (lines.length === 0) {
+            return [];
+        }
+
+        // Skip header row, return data rows as arrays
+        return lines.slice(1).map((line) => parseCSVLine(line));
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return [];
+        }
+        throw error;
+    }
+}
+
+/**
  * Get the count of rows in a CSV file (excluding header)
  * @param {string} csvPath - Path to the CSV file
  * @returns {Promise<number>} Number of data rows
@@ -309,7 +239,6 @@ async function getCsvRowCount(csvPath) {
 }
 
 module.exports = {
-    LEGACY_CSV_HEADERS,
     buildCsvHeaders,
     ensureCsvExists,
     appendInvoiceRow,

@@ -7,13 +7,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-const {
-    buildExtractionPrompt,
-    parseGeminiResponse,
-    validateAnalysis,
-    formatDocumentTypes,
-    TAG_REPLACED_FIELDS
-} = require('./prompt-builder');
+const { buildExtractionPrompt, parseGeminiResponse, validateAnalysis } = require('./prompt-builder');
 const { generateFormattedFilename, getUniqueFilename, formatDateForDisplay } = require('./filename-generator');
 const { DEFAULT_MODEL } = require('./constants');
 
@@ -171,7 +165,7 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
 
     yPosition -= 40;
 
-    // Tags section (unified tag system)
+    // Tags section
     const tagDefinitions = config.tagDefinitions;
     if (tagDefinitions && analysis.tags) {
         const pdfTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.pdf && analysis.tags[t.id]);
@@ -195,26 +189,6 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
 
             yPosition -= 25;
         }
-    } else if (analysis.documentTypes && analysis.documentTypes.length > 0) {
-        // Legacy: Document Type Tags section
-        page.drawText('Document Type:', {
-            x: margin,
-            y: yPosition,
-            size: fontSize,
-            font: boldFont,
-            color: rgb(0, 0, 0)
-        });
-
-        const docTypeText = sanitizeTextForPdf(formatDocumentTypes(analysis.documentTypes));
-        page.drawText(docTypeText, {
-            x: margin + 120,
-            y: yPosition,
-            size: fontSize,
-            font: font,
-            color: rgb(0.2, 0.4, 0.6)
-        });
-
-        yPosition -= 25;
     }
 
     // Build details from configured fields
@@ -222,22 +196,7 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     const skipTypes = ['array', 'boolean'];
 
     const fieldDefinitions = config.fieldDefinitions;
-    let fieldEntries;
-    if (fieldDefinitions) {
-        fieldEntries = fieldDefinitions.filter((f) => f.enabled && !skipTypes.includes(f.type));
-        // When tag system is active, exclude tag-replaced fields
-        if (tagDefinitions) {
-            fieldEntries = fieldEntries.filter((f) => !TAG_REPLACED_FIELDS.includes(f.key));
-        }
-    } else {
-        fieldEntries = config.extraction.fields
-            .filter((f) => f !== 'documentTypes' && f !== 'isPrivate')
-            .map((f) => ({
-                key: f,
-                label: f.charAt(0).toUpperCase() + f.slice(1).replace(/([A-Z])/g, ' $1'),
-                type: 'text'
-            }));
-    }
+    const fieldEntries = fieldDefinitions.filter((f) => f.enabled && !skipTypes.includes(f.type));
 
     for (const field of fieldEntries) {
         const key = field.key;
@@ -271,7 +230,7 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     }
 
     // Summary section (if included)
-    if (config.extraction.includeSummary && analysis.summary) {
+    if (config.output && config.output.includeSummary && analysis.summary) {
         yPosition -= 15;
         page.drawText('Summary:', {
             x: margin,
@@ -400,10 +359,21 @@ async function processInvoice(inputPath, config, options = {}) {
             tokenUsage
         };
     } catch (error) {
+        // Tag rate-limit errors so parallel-processor can use longer backoff
+        if (
+            error.message &&
+            (error.message.includes('429') ||
+                error.message.includes('RATE_LIMIT') ||
+                error.message.includes('Resource has been exhausted'))
+        ) {
+            error.isRateLimited = true;
+        }
+
         return {
             success: false,
             originalFilename: filename,
             error: error.message,
+            isRateLimited: error.isRateLimited || false,
             rawResponse: error._rawResponse || null,
             tokenUsage: error._tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
         };

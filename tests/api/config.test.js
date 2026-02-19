@@ -24,10 +24,8 @@ const MOCK_CONFIG = {
     model: 'gemini-3-flash-preview',
     fieldDefinitions: [{ key: 'vendor', label: 'Vendor', type: 'text' }],
     tagDefinitions: [{ key: 'category', label: 'Category', values: ['A', 'B'] }],
-    extraction: { maxPages: 5 },
     output: { filenameTemplate: '{vendor}_{date}' },
     processing: { concurrency: 3 },
-    documentTypes: null,
     promptTemplate: { header: 'Extract fields', footer: 'Return JSON' },
     rawPrompt: null
 };
@@ -48,7 +46,6 @@ describe('GET /api/config', () => {
         expect(res.body.model).toBe('gemini-3-flash-preview');
         expect(res.body.fieldDefinitions).toEqual(MOCK_CONFIG.fieldDefinitions);
         expect(res.body.tagDefinitions).toEqual(MOCK_CONFIG.tagDefinitions);
-        expect(res.body.extraction).toEqual(MOCK_CONFIG.extraction);
         expect(res.body.output).toEqual(MOCK_CONFIG.output);
         expect(res.body.processing).toEqual(MOCK_CONFIG.processing);
         expect(loadConfig).toHaveBeenCalledWith({ requireFolders: false });

@@ -48,9 +48,7 @@ const MOCK_GLOBAL_CONFIG = {
 const MOCK_CLIENT_CONFIG = {
     model: 'gemini-3-flash-preview',
     folders: { base: '/invoices/acme', processedOriginal: '/invoices/acme/processed-original', csvPath: '/log.csv' },
-    extraction: {},
     output: {},
-    documentTypes: null,
     fieldDefinitions: [],
     tagDefinitions: [],
     promptTemplate: {}

@@ -51,8 +51,10 @@ async function processWithRetry(filePath, config, options = {}) {
 
         // Don't retry on the last attempt
         if (attempt < maxAttempts) {
-            // Exponential backoff
-            const delay = baseDelay * Math.pow(2, attempt - 1);
+            // Rate-limited errors get more aggressive backoff (1s, 3s, 9s)
+            // Other errors use standard exponential backoff (1s, 2s, 4s)
+            const isRateLimit = result.isRateLimited;
+            const delay = isRateLimit ? baseDelay * Math.pow(3, attempt - 1) : baseDelay * Math.pow(2, attempt - 1);
             if (onProgress) {
                 onProgress({
                     status: 'retrying',
