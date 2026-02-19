@@ -1252,12 +1252,16 @@ app.get('/api/health', async (req, res) => {
 // START SERVER
 // ============================================================================
 
-app.listen(PORT, () => {
-    console.log(`\n🚀 Invoice Analyzer Admin running on http://localhost:${PORT}`);
-    console.log(`📄 Open http://localhost:${PORT} in your browser to manage clients\n`);
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`\n🚀 Invoice Analyzer Admin running on http://localhost:${PORT}`);
+        console.log(`📄 Open http://localhost:${PORT} in your browser to manage clients\n`);
 
-    if (!process.env.GEMINI_API_KEY) {
-        console.warn('⚠️  WARNING: GEMINI_API_KEY not found in .env file');
-        console.warn('   Please add your API key to continue\n');
-    }
-});
+        if (!process.env.GEMINI_API_KEY) {
+            console.warn('⚠️  WARNING: GEMINI_API_KEY not found in .env file');
+            console.warn('   Please add your API key to continue\n');
+        }
+    });
+}
+
+module.exports = app;
