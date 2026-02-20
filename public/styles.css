@@ -908,6 +908,10 @@ h1 {
     width: 90px;
 }
 
+.fields-table .col-format {
+    min-width: 140px;
+}
+
 .fields-table .col-hint {
     min-width: 200px;
     max-width: 300px;

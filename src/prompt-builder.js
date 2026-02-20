@@ -2,6 +2,9 @@
  * Builds dynamic Gemini prompts based on configuration
  */
 
+const { validateAllFormats } = require('./format-validator');
+const { VALID_FIELD_FORMATS, FORMAT_NONE } = require('./constants');
+
 /**
  * Resolve parameter templates in a tag instruction
  * Replaces {{paramName}} with the parameter value
@@ -51,7 +54,14 @@ function buildExtractionPrompt(config, options = {}) {
     }
 
     for (const field of enabledFields) {
-        jsonStructure[field.key] = field.schemaHint;
+        let schemaHint = field.schemaHint;
+        if (field.format && field.format !== FORMAT_NONE) {
+            const formatDef = VALID_FIELD_FORMATS[field.format];
+            if (formatDef) {
+                schemaHint += ` (${formatDef.standard}: ${formatDef.pattern})`;
+            }
+        }
+        jsonStructure[field.key] = schemaHint;
         instructions.push(`- For ${field.key}, ${field.instruction}`);
     }
 
@@ -146,7 +156,7 @@ function parseGeminiResponse(responseText) {
  * Validate the extracted analysis has required fields
  * @param {Object} analysis - The parsed analysis
  * @param {Object} config - The configuration object
- * @returns {Object} The validated (and possibly filled) analysis
+ * @returns {Object} The validated (and possibly filled) analysis, with _formatWarnings if any
  */
 function validateAnalysis(analysis, config) {
     const validated = { ...analysis };
@@ -195,6 +205,13 @@ function validateAnalysis(analysis, config) {
                 validated.tags[tag.id] = false;
             }
         }
+    }
+
+    // Format-aware validation (non-blocking: apply corrections, collect warnings)
+    const { corrected, warnings } = validateAllFormats(validated, fieldDefinitions);
+    Object.assign(validated, corrected);
+    if (warnings.length > 0) {
+        validated._formatWarnings = warnings;
     }
 
     return validated;

@@ -67,15 +67,25 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
 
     const prompt = buildExtractionPrompt(config);
 
-    const result = await model.generateContent([
-        {
-            inlineData: {
-                mimeType: 'application/pdf',
-                data: pdfBase64
+    const result = await model.generateContent({
+        contents: [
+            {
+                role: 'user',
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: 'application/pdf',
+                            data: pdfBase64
+                        }
+                    },
+                    { text: prompt }
+                ]
             }
-        },
-        { text: prompt }
-    ]);
+        ],
+        generationConfig: {
+            temperature: 0
+        }
+    });
 
     const response = await result.response;
     const text = response.text();

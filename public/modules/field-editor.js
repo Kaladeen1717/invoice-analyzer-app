@@ -2,7 +2,7 @@
 // Manages the global extraction field definitions (load, render, inline edit, save).
 
 import { showAlert } from './ui-utils.js';
-import { VALID_FIELD_TYPES } from './constants.js';
+import { VALID_FIELD_TYPES, VALID_FIELD_FORMATS, FORMAT_NONE } from './constants.js';
 import { registerTableHandler, activateCellEdit, deactivateCellEdit, showInlineDeleteConfirm } from './table-editor.js';
 
 // --- State ---
@@ -117,8 +117,14 @@ export function readFieldsFromDOM() {
 function onCellWrite(index, fieldName, input, tr) {
     if (index >= fieldDefinitions.length || !fieldName) return;
 
-    fieldDefinitions[index][fieldName] =
-        input.tagName === 'INPUT' && input.type === 'checkbox' ? input.checked : input.value.trim();
+    const value = input.tagName === 'INPUT' && input.type === 'checkbox' ? input.checked : input.value.trim();
+
+    // Handle format field: empty string → FORMAT_NONE
+    if (fieldName === 'format') {
+        fieldDefinitions[index].format = value === '' ? FORMAT_NONE : value;
+    } else {
+        fieldDefinitions[index][fieldName] = value;
+    }
 
     // Auto-generate key from label for new fields
     if (fieldName === 'label') {
@@ -131,6 +137,29 @@ function onCellWrite(index, fieldName, input, tr) {
             if (keyView) keyView.textContent = keyInput.value;
         }
     }
+
+    // When type changes, reset format if incompatible (FORMAT_NONE is always compatible)
+    if (fieldName === 'type') {
+        const currentFormat = fieldDefinitions[index].format;
+        if (currentFormat && currentFormat !== FORMAT_NONE) {
+            const formatDef = VALID_FIELD_FORMATS[currentFormat];
+            if (!formatDef || !formatDef.compatibleTypes.includes(value)) {
+                fieldDefinitions[index].format = FORMAT_NONE;
+            }
+        }
+        renderFieldList();
+    }
+}
+
+/**
+ * Get formats compatible with a given field type
+ * @param {string} fieldType - The field type
+ * @returns {Array<{key: string, label: string}>} Compatible formats
+ */
+function getCompatibleFormats(fieldType) {
+    return Object.entries(VALID_FIELD_FORMATS)
+        .filter(([, def]) => def.compatibleTypes.includes(fieldType))
+        .map(([key, def]) => ({ key, label: def.label }));
 }
 
 function renderFieldList() {
@@ -164,6 +193,7 @@ function renderFieldList() {
         { text: 'Label', cls: 'col-label' },
         { text: 'Key', cls: 'col-key' },
         { text: 'Type', cls: 'col-type' },
+        { text: 'Format', cls: 'col-format' },
         { text: 'Schema Hint', cls: 'col-hint' },
         { text: 'Instruction', cls: 'col-instruction' },
         { text: 'Source', cls: 'col-source' },
@@ -259,6 +289,40 @@ function renderFieldList() {
         typeEdit.appendChild(typeSelect);
         tdType.appendChild(typeEdit);
         tr.appendChild(tdType);
+
+        // Format column — click-to-edit (only for text/date types)
+        const tdFormat = document.createElement('td');
+        const hasFormats = getCompatibleFormats(field.type).length > 0;
+        tdFormat.className = 'col-format' + (hasFormats ? ' cell-editable' : '');
+        const formatView = document.createElement('span');
+        formatView.className = 'cell-view';
+        formatView.textContent = field.format
+            ? field.format === FORMAT_NONE
+                ? 'None'
+                : VALID_FIELD_FORMATS[field.format]?.label || field.format
+            : '—';
+        tdFormat.appendChild(formatView);
+        if (hasFormats) {
+            const formatEdit = document.createElement('span');
+            formatEdit.className = 'cell-edit';
+            const formatSelect = document.createElement('select');
+            formatSelect.dataset.field = 'format';
+            const noneOpt = document.createElement('option');
+            noneOpt.value = FORMAT_NONE;
+            noneOpt.textContent = 'None';
+            noneOpt.selected = !field.format || field.format === FORMAT_NONE;
+            formatSelect.appendChild(noneOpt);
+            for (const fmt of getCompatibleFormats(field.type)) {
+                const opt = document.createElement('option');
+                opt.value = fmt.key;
+                opt.textContent = fmt.label;
+                opt.selected = fmt.key === field.format;
+                formatSelect.appendChild(opt);
+            }
+            formatEdit.appendChild(formatSelect);
+            tdFormat.appendChild(formatEdit);
+        }
+        tr.appendChild(tdFormat);
 
         // Schema Hint column — click-to-edit
         const tdHint = document.createElement('td');

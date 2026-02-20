@@ -93,6 +93,34 @@ describe('formatFieldValue', () => {
         expect(formatFieldValue('customField', null, { customField: 'hello' })).toBe('hello');
         expect(formatFieldValue('customField', null, {})).toBe('Unknown');
     });
+
+    describe('format-driven formatting', () => {
+        test('formats iso4217 to uppercase', () => {
+            expect(formatFieldValue('currency', null, { currency: 'eur' }, 'iso4217')).toBe('EUR');
+        });
+
+        test('formats iso8601 date', () => {
+            expect(formatFieldValue('paymentDate', null, { paymentDate: '20240115' }, 'iso8601')).toBe('2024-01-15');
+        });
+
+        test('formats iso3166_alpha2 to uppercase', () => {
+            expect(formatFieldValue('country', null, { country: 'dk' }, 'iso3166_alpha2')).toBe('DK');
+        });
+
+        test('formats iso3166_alpha3 to uppercase', () => {
+            expect(formatFieldValue('country', null, { country: 'dnk' }, 'iso3166_alpha3')).toBe('DNK');
+        });
+
+        test('falls back to field-key logic when format returns null', () => {
+            // Unknown values fall through to the field-key switch case
+            expect(formatFieldValue('currency', null, { currency: 'Unknown' }, 'iso4217')).toBe('Unknown');
+        });
+
+        test('format takes precedence over field-key logic', () => {
+            // A custom field with iso4217 format gets uppercased via format logic
+            expect(formatFieldValue('customCurrency', null, { customCurrency: 'eur' }, 'iso4217')).toBe('EUR');
+        });
+    });
 });
 
 describe('generateFilename', () => {
@@ -177,6 +205,21 @@ describe('generateFormattedFilename', () => {
             config
         );
         expect(result).toBe('Acme Corp.pdf');
+    });
+
+    test('uses format from fieldDefinitions in config', () => {
+        const config = {
+            fieldDefinitions: [
+                { key: 'supplierName', type: 'text', enabled: true },
+                { key: 'currency', type: 'text', format: 'iso4217', enabled: true }
+            ]
+        };
+        const result = generateFormattedFilename(
+            '{supplierName} - {currency}.pdf',
+            { supplierName: 'Acme', currency: 'eur' },
+            config
+        );
+        expect(result).toBe('Acme - EUR.pdf');
     });
 
     test('cleans up double dashes from empty placeholders', () => {

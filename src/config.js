@@ -4,6 +4,8 @@ const sanitize = require('sanitize-filename');
 
 const {
     VALID_FIELD_TYPES,
+    VALID_FIELD_FORMATS,
+    FORMAT_NONE,
     DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
     DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
     DEFAULT_CSV_FILENAME,
@@ -98,6 +100,21 @@ function validateFieldDefinitions(fieldDefinitions) {
         }
         if (typeof field.enabled !== 'boolean') {
             throw new Error(`fieldDefinitions[${index}]: "enabled" must be a boolean`);
+        }
+        if (field.format !== undefined && field.format !== null) {
+            if (field.format !== FORMAT_NONE && !VALID_FIELD_FORMATS[field.format]) {
+                throw new Error(
+                    `fieldDefinitions[${index}]: "format" must be one of: ${Object.keys(VALID_FIELD_FORMATS).join(', ')}`
+                );
+            }
+            if (
+                field.format !== FORMAT_NONE &&
+                !VALID_FIELD_FORMATS[field.format].compatibleTypes.includes(field.type)
+            ) {
+                throw new Error(
+                    `fieldDefinitions[${index}]: format "${field.format}" is not compatible with type "${field.type}"`
+                );
+            }
         }
     }
 }
