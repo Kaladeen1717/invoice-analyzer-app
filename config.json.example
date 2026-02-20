@@ -39,8 +39,8 @@
       "key": "paymentDate",
       "label": "Payment Date",
       "type": "date",
-      "schemaHint": "YYYYMMDD format - the date payment is due",
-      "instruction": "look for \"Due Date\", \"Payment Due\", \"Pay By\", or similar fields. Convert to YYYYMMDD format. If not found, use the invoiceDate.",
+      "schemaHint": "ISO 8601 date (YYYY-MM-DD) - the date payment is due",
+      "instruction": "look for \"Due Date\", \"Payment Due\", \"Pay By\", or similar fields. Convert to YYYY-MM-DD format. If not found, use the invoiceDate.",
       "enabled": true,
       "builtIn": true
     },
@@ -48,8 +48,8 @@
       "key": "invoiceDate",
       "label": "Invoice Date",
       "type": "date",
-      "schemaHint": "YYYYMMDD format - the date the invoice was issued",
-      "instruction": "convert any date format to YYYYMMDD (e.g., \"2024-01-15\" becomes \"20240115\")",
+      "schemaHint": "ISO 8601 date (YYYY-MM-DD) - the date the invoice was issued",
+      "instruction": "convert any date format to YYYY-MM-DD (e.g., \"15 January 2024\" becomes \"2024-01-15\")",
       "enabled": true,
       "builtIn": true
     },

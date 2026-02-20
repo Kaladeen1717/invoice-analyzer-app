@@ -37,26 +37,33 @@ function sanitizeForFilename(str) {
 }
 
 /**
- * Convert YYYYMMDD date to DD.MM.YYYY format
- * @param {string} dateStr - Date in YYYYMMDD format
- * @returns {string} Date in DD.MM.YYYY format
+ * Convert date to ISO 8601 (YYYY-MM-DD) format
+ * Accepts both YYYYMMDD (legacy) and YYYY-MM-DD (ISO) input
+ * @param {string} dateStr - Date in YYYYMMDD or YYYY-MM-DD format
+ * @returns {string} Date in YYYY-MM-DD format
  */
 function formatDateForDisplay(dateStr) {
     if (!dateStr || dateStr === 'Unknown') {
         return 'Unknown';
     }
 
-    // Clean the date string
-    const cleaned = String(dateStr).replace(/\D/g, '');
+    const str = String(dateStr);
+
+    // Already ISO 8601 format (YYYY-MM-DD)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        return str;
+    }
+
+    // Clean non-digits for legacy YYYYMMDD input
+    const cleaned = str.replace(/\D/g, '');
 
     if (cleaned.length >= 8) {
         const year = cleaned.substring(0, 4);
         const month = cleaned.substring(4, 6);
         const day = cleaned.substring(6, 8);
-        return `${day}.${month}.${year}`;
+        return `${year}-${month}-${day}`;
     }
 
-    // If not valid YYYYMMDD, return as-is
     return dateStr;
 }
 
@@ -141,11 +148,7 @@ function formatFieldValue(fieldName, value, analysis = {}) {
         case 'paymentDate': {
             const rawDateValue = analysis[fieldName] || value;
             if (!rawDateValue || rawDateValue === 'Unknown') return 'Unknown';
-            const dateStr = String(rawDateValue).replace(/\D/g, '');
-            if (dateStr.length >= 8) {
-                return dateStr.substring(0, 8);
-            }
-            return dateStr || 'Unknown';
+            return formatDateForDisplay(rawDateValue);
         }
 
         case 'paymentDateFormatted': {
@@ -191,7 +194,7 @@ function formatFieldValue(fieldName, value, analysis = {}) {
             if (Array.isArray(fieldValue)) return '';
             if (typeof fieldValue === 'boolean') return '';
             const strValue = String(fieldValue);
-            if (/^\d{8}$/.test(strValue)) return strValue;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(strValue) || /^\d{8}$/.test(strValue)) return strValue;
             return strValue;
         }
     }

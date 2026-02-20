@@ -183,6 +183,7 @@ When adding new endpoints or functions that take user input and build file paths
 ## Linear Integration
 
 - **Team**: Invoice Analyzer | **Prefix**: `INV`
+- **Labels**: bug, feature, improvement, chore, docs, research
 - See `.claude/rules/linear-workflow.md` for full workflow rules, ticket description standards, and quality requirements
 - Commit format: `{type}(INV-{number}): {description}`
 - Branch format: `{type}/INV-{number}-{short-description}`

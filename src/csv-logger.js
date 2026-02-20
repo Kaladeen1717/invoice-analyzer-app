@@ -50,20 +50,29 @@ function escapeCSV(value) {
 }
 
 /**
- * Format date from YYYYMMDD to DD.MM.YYYY
- * @param {string} dateStr - Date in YYYYMMDD format
- * @returns {string} Date in DD.MM.YYYY format
+ * Format date to ISO 8601 (YYYY-MM-DD)
+ * Accepts both YYYYMMDD (legacy) and YYYY-MM-DD (ISO) input
+ * @param {string} dateStr - Date in YYYYMMDD or YYYY-MM-DD format
+ * @returns {string} Date in YYYY-MM-DD format
  */
 function formatDateForCSV(dateStr) {
-    if (!dateStr || dateStr === 'Unknown' || dateStr.length !== 8) {
+    if (!dateStr || dateStr === 'Unknown') {
         return dateStr || '';
     }
 
-    const year = dateStr.substring(0, 4);
-    const month = dateStr.substring(4, 6);
-    const day = dateStr.substring(6, 8);
+    const str = String(dateStr);
 
-    return `${day}.${month}.${year}`;
+    // Already ISO 8601
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        return str;
+    }
+
+    // Legacy YYYYMMDD (8 digits)
+    if (/^\d{8}$/.test(str)) {
+        return `${str.substring(0, 4)}-${str.substring(4, 6)}-${str.substring(6, 8)}`;
+    }
+
+    return str;
 }
 
 /**

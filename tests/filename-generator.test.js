@@ -30,12 +30,12 @@ describe('sanitizeForFilename', () => {
 });
 
 describe('formatDateForDisplay', () => {
-    test('converts YYYYMMDD to DD.MM.YYYY', () => {
-        expect(formatDateForDisplay('20240115')).toBe('15.01.2024');
+    test('converts YYYYMMDD to YYYY-MM-DD', () => {
+        expect(formatDateForDisplay('20240115')).toBe('2024-01-15');
     });
 
-    test('handles date with separators', () => {
-        expect(formatDateForDisplay('2024-01-15')).toBe('15.01.2024');
+    test('passes through ISO 8601 date as-is', () => {
+        expect(formatDateForDisplay('2024-01-15')).toBe('2024-01-15');
     });
 
     test('returns Unknown for null/empty/Unknown', () => {
@@ -56,17 +56,17 @@ describe('formatFieldValue', () => {
         expect(formatFieldValue('totalAmount', null, { totalAmount: 'abc' })).toBe('0');
     });
 
-    test('formats paymentDate as YYYYMMDD', () => {
-        expect(formatFieldValue('paymentDate', null, { paymentDate: '2024-01-15' })).toBe('20240115');
+    test('formats paymentDate as YYYY-MM-DD', () => {
+        expect(formatFieldValue('paymentDate', null, { paymentDate: '2024-01-15' })).toBe('2024-01-15');
     });
 
-    test('formats paymentDateFormatted as DD.MM.YYYY', () => {
-        expect(formatFieldValue('paymentDateFormatted', null, { paymentDate: '20240115' })).toBe('15.01.2024');
+    test('formats paymentDateFormatted as YYYY-MM-DD', () => {
+        expect(formatFieldValue('paymentDateFormatted', null, { paymentDate: '20240115' })).toBe('2024-01-15');
     });
 
     test('formats invoiceDateIfDifferent when dates differ', () => {
         const analysis = { paymentDate: '20240115', invoiceDate: '20240110' };
-        expect(formatFieldValue('invoiceDateIfDifferent', null, analysis)).toBe(' - 10.01.2024');
+        expect(formatFieldValue('invoiceDateIfDifferent', null, analysis)).toBe(' - 2024-01-10');
     });
 
     test('returns empty when invoiceDateIfDifferent and dates match', () => {
@@ -122,7 +122,7 @@ describe('generateFormattedFilename', () => {
             paymentDate: '20240115',
             totalAmount: 1500.5
         });
-        expect(result).toBe('Acme Corp - 15.01.2024 - 1500.50.pdf');
+        expect(result).toBe('Acme Corp - 2024-01-15 - 1500.50.pdf');
     });
 
     test('handles tag placeholders from config', () => {

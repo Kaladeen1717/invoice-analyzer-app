@@ -5,7 +5,7 @@
 - **Team**: Invoice Analyzer
 - **Prefix**: INV (tickets: INV-1, INV-2, etc.)
 - **Statuses**: Backlog > Todo > In Progress > In Review > Done (+ Canceled)
-- **Labels**: bug, feature, improvement, chore, docs
+- **Labels**: bug, feature, improvement, chore, docs, research
 - **Priorities**: Linear built-in (Urgent, High, Medium, Low, No Priority)
 
 ## Working on Tickets
@@ -39,6 +39,7 @@ Types:
 - `docs` — Documentation changes
 - `refactor` — Code restructuring without behavior change
 - `test` — Adding or updating tests
+- `research` — Documentation artifacts from exploration work (never code changes)
 
 Examples:
 
@@ -111,6 +112,19 @@ Add these sections based on the ticket label:
 #### `chore` (Maintenance)
 
 - **Technical Approach** — Step-by-step plan with config examples, commands, or file snippets where applicable.
+
+#### `research` (Exploration)
+
+- **Investigation Scope** — What questions to answer, what to audit or analyze.
+- **Expected Outcome** — What deliverables to produce (e.g., findings summary, follow-up tickets).
+
+**Research ticket rules:**
+
+- Research tickets are for exploring and qualifying ideas — never for making code changes.
+- The outcome of a Research ticket is knowledge + concrete follow-up tickets (if warranted).
+- Use the `research` commit type only for documentation artifacts produced during investigation, never for code changes.
+- Research tickets move to Done when the investigation is complete, regardless of whether follow-up tickets are created.
+- Keep the scope focused: one research question per ticket. Split broad investigations into multiple tickets.
 
 #### `refactor` (Restructuring)
 
