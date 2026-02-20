@@ -66,6 +66,7 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
     const pdfBase64 = await pdfToBase64(pdfPath);
 
     const prompt = buildExtractionPrompt(config);
+    const useJsonMode = config.extraction?.useJsonMode && !config.rawPrompt;
 
     const result = await model.generateContent({
         contents: [
@@ -83,7 +84,8 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
             }
         ],
         generationConfig: {
-            temperature: 0
+            temperature: 0,
+            ...(useJsonMode && { responseMimeType: 'application/json' })
         }
     });
 
@@ -99,7 +101,7 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
     };
 
     try {
-        const analysis = parseGeminiResponse(text);
+        const analysis = parseGeminiResponse(text, { useJsonMode });
         const validatedAnalysis = validateAnalysis(analysis, config);
 
         return {

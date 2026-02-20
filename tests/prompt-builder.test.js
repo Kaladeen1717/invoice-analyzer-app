@@ -258,6 +258,26 @@ describe('parseGeminiResponse', () => {
     test('throws on invalid JSON', () => {
         expect(() => parseGeminiResponse('not json')).toThrow('Failed to parse Gemini response');
     });
+
+    describe('useJsonMode', () => {
+        test('parses raw JSON directly', () => {
+            const result = parseGeminiResponse('{"supplierName": "Acme"}', { useJsonMode: true });
+            expect(result).toEqual({ supplierName: 'Acme' });
+        });
+
+        test('does not strip markdown fences when enabled', () => {
+            expect(() => parseGeminiResponse('```json\n{"supplierName": "Acme"}\n```', { useJsonMode: true })).toThrow(
+                'Failed to parse Gemini response'
+            );
+        });
+
+        test('still strips markdown fences when disabled', () => {
+            const result = parseGeminiResponse('```json\n{"supplierName": "Acme"}\n```', {
+                useJsonMode: false
+            });
+            expect(result).toEqual({ supplierName: 'Acme' });
+        });
+    });
 });
 
 describe('validateAnalysis', () => {
