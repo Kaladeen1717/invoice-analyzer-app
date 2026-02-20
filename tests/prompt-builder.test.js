@@ -324,4 +324,90 @@ describe('validateAnalysis', () => {
         expect(result.tags.private).toBe(true);
         expect(result.tags.urgent).toBe(false);
     });
+
+    test('auto-corrects format values (iso4217 lowercase)', () => {
+        const config = {
+            fieldDefinitions: [
+                {
+                    key: 'currency',
+                    label: 'Currency',
+                    type: 'text',
+                    format: 'iso4217',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ currency: 'eur' }, config);
+        expect(result.currency).toBe('EUR');
+    });
+
+    test('auto-corrects iso8601 datetime to date-only', () => {
+        const config = {
+            fieldDefinitions: [
+                {
+                    key: 'invoiceDate',
+                    label: 'Date',
+                    type: 'date',
+                    format: 'iso8601',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ invoiceDate: '2024-01-15T10:30:00Z' }, config);
+        expect(result.invoiceDate).toBe('2024-01-15');
+    });
+
+    test('adds _formatWarnings for invalid format values', () => {
+        const config = {
+            fieldDefinitions: [
+                {
+                    key: 'currency',
+                    label: 'Currency',
+                    type: 'text',
+                    format: 'iso4217',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ currency: 'INVALID' }, config);
+        expect(result.currency).toBe('INVALID');
+        expect(result._formatWarnings).toHaveLength(1);
+        expect(result._formatWarnings[0].field).toBe('currency');
+    });
+
+    test('no _formatWarnings when all values are valid', () => {
+        const config = {
+            fieldDefinitions: [
+                {
+                    key: 'currency',
+                    label: 'Currency',
+                    type: 'text',
+                    format: 'iso4217',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ currency: 'USD' }, config);
+        expect(result.currency).toBe('USD');
+        expect(result._formatWarnings).toBeUndefined();
+    });
+
+    test('skips format validation for fields without format', () => {
+        const config = {
+            fieldDefinitions: [
+                { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true }
+            ]
+        };
+        const result = validateAnalysis({ name: 'anything' }, config);
+        expect(result.name).toBe('anything');
+        expect(result._formatWarnings).toBeUndefined();
+    });
 });

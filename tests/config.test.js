@@ -95,6 +95,46 @@ describe('validateFieldDefinitions', () => {
         expect(() => validateFieldDefinitions(fields)).not.toThrow();
     });
 
+    test('accepts field with valid format', () => {
+        expect(() => validateFieldDefinitions([validField({ type: 'date', format: 'iso8601' })])).not.toThrow();
+    });
+
+    test('accepts field with format: iso4217 on text type', () => {
+        expect(() => validateFieldDefinitions([validField({ type: 'text', format: 'iso4217' })])).not.toThrow();
+    });
+
+    test('accepts field without format (undefined)', () => {
+        expect(() => validateFieldDefinitions([validField()])).not.toThrow();
+    });
+
+    test('accepts field with format: null', () => {
+        expect(() => validateFieldDefinitions([validField({ format: null })])).not.toThrow();
+    });
+
+    test('accepts field with format: "none" on any type', () => {
+        for (const type of ['text', 'number', 'boolean', 'date', 'array']) {
+            expect(() => validateFieldDefinitions([validField({ type, format: 'none' })])).not.toThrow();
+        }
+    });
+
+    test('rejects invalid format key', () => {
+        expect(() => validateFieldDefinitions([validField({ format: 'invalid_format' })])).toThrow(
+            '"format" must be one of'
+        );
+    });
+
+    test('rejects format incompatible with field type', () => {
+        expect(() => validateFieldDefinitions([validField({ type: 'text', format: 'iso8601' })])).toThrow(
+            'not compatible with type "text"'
+        );
+    });
+
+    test('rejects format incompatible with number type', () => {
+        expect(() => validateFieldDefinitions([validField({ type: 'number', format: 'iso4217' })])).toThrow(
+            'not compatible with type "number"'
+        );
+    });
+
     test('accepts fields with annotation properties (_source, _globalDefaults)', () => {
         const fields = [
             validField({
@@ -190,19 +230,28 @@ describe('validateTagDefinitions', () => {
         expect(() => validateTagDefinitions([tag])).toThrow('must have a "default" value');
     });
 
-    test('validates output config booleans', () => {
-        const tag = validTag({ output: { filename: 'yes' } });
-        expect(() => validateTagDefinitions([tag])).toThrow('must be a boolean');
-    });
-
     test('validates filenamePlaceholder format', () => {
-        const tag = validTag({ output: { filenamePlaceholder: 'invalid-placeholder' } });
+        const tag = validTag({ filenamePlaceholder: 'invalid-placeholder' });
         expect(() => validateTagDefinitions([tag])).toThrow('must be alphanumeric camelCase');
     });
 
     test('accepts valid filenamePlaceholder', () => {
-        const tag = validTag({ output: { filenamePlaceholder: 'privateTag' } });
+        const tag = validTag({ filenamePlaceholder: 'privateTag' });
         expect(() => validateTagDefinitions([tag])).not.toThrow();
+    });
+
+    test('accepts tag with filenameFormat string', () => {
+        const tag = validTag({ filenameFormat: ' - PRIVATE', filenamePlaceholder: 'privateTag' });
+        expect(() => validateTagDefinitions([tag])).not.toThrow();
+    });
+
+    test('rejects non-string filenameFormat', () => {
+        const tag = validTag({ filenameFormat: 123 });
+        expect(() => validateTagDefinitions([tag])).toThrow('must be a string');
+    });
+
+    test('accepts tag without filename properties', () => {
+        expect(() => validateTagDefinitions([validTag()])).not.toThrow();
     });
 });
 

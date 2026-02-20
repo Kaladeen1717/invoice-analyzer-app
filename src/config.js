@@ -4,6 +4,8 @@ const sanitize = require('sanitize-filename');
 
 const {
     VALID_FIELD_TYPES,
+    VALID_FIELD_FORMATS,
+    FORMAT_NONE,
     DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
     DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
     DEFAULT_CSV_FILENAME,
@@ -99,6 +101,21 @@ function validateFieldDefinitions(fieldDefinitions) {
         if (typeof field.enabled !== 'boolean') {
             throw new Error(`fieldDefinitions[${index}]: "enabled" must be a boolean`);
         }
+        if (field.format !== undefined && field.format !== null) {
+            if (field.format !== FORMAT_NONE && !VALID_FIELD_FORMATS[field.format]) {
+                throw new Error(
+                    `fieldDefinitions[${index}]: "format" must be one of: ${Object.keys(VALID_FIELD_FORMATS).join(', ')}`
+                );
+            }
+            if (
+                field.format !== FORMAT_NONE &&
+                !VALID_FIELD_FORMATS[field.format].compatibleTypes.includes(field.type)
+            ) {
+                throw new Error(
+                    `fieldDefinitions[${index}]: format "${field.format}" is not compatible with type "${field.type}"`
+                );
+            }
+        }
     }
 }
 
@@ -153,15 +170,19 @@ function validateTagDefinitions(tagDefinitions) {
                 }
             }
         }
-        // Validate output config if present
-        if (tag.output && typeof tag.output === 'object') {
-            for (const boolKey of ['filename', 'pdf', 'csv']) {
-                if (boolKey in tag.output && typeof tag.output[boolKey] !== 'boolean') {
-                    throw new Error(`tagDefinitions[${index}].output.${boolKey}: must be a boolean`);
-                }
+        // Validate top-level filename properties
+        if (
+            tag.filenamePlaceholder !== undefined &&
+            tag.filenamePlaceholder !== null &&
+            tag.filenamePlaceholder !== ''
+        ) {
+            if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(tag.filenamePlaceholder)) {
+                throw new Error(`tagDefinitions[${index}].filenamePlaceholder: must be alphanumeric camelCase`);
             }
-            if (tag.output.filenamePlaceholder && !/^[a-zA-Z][a-zA-Z0-9]*$/.test(tag.output.filenamePlaceholder)) {
-                throw new Error(`tagDefinitions[${index}].output.filenamePlaceholder: must be alphanumeric camelCase`);
+        }
+        if (tag.filenameFormat !== undefined && tag.filenameFormat !== null) {
+            if (typeof tag.filenameFormat !== 'string') {
+                throw new Error(`tagDefinitions[${index}].filenameFormat: must be a string`);
             }
         }
     }

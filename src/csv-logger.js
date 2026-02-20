@@ -20,8 +20,8 @@ function buildCsvHeaders(config) {
     }
     // Add tag columns
     if (tagDefinitions) {
-        const csvTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.csv);
-        for (const tag of csvTags) {
+        const enabledTags = tagDefinitions.filter((t) => t.enabled);
+        for (const tag of enabledTags) {
             headers.push(tag.label);
         }
     }
@@ -145,8 +145,8 @@ async function appendInvoiceRow(csvPath, data, config) {
     }
     // Add tag values
     if (tagDefinitions) {
-        const csvTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.csv);
-        for (const tag of csvTags) {
+        const enabledTags = tagDefinitions.filter((t) => t.enabled);
+        for (const tag of enabledTags) {
             row.push(analysis?.tags?.[tag.id] ? 'Yes' : 'No');
         }
     }

@@ -15,32 +15,26 @@ const TAG_PRESETS = {
         label: 'Private',
         instruction: 'Set to true if the address "{{address}}" appears anywhere in the document.',
         parameters: [{ name: 'address', defaultValue: '' }],
-        output: {
-            pdf: true,
-            csv: true,
-            filename: true,
-            filenameFormat: ' - PRIVATE',
-            filenamePlaceholder: 'privateTag'
-        }
+        filenameFormat: ' - PRIVATE',
+        filenamePlaceholder: 'privateTag'
     },
     'content-keyword': {
         label: 'Contains Keyword',
         instruction: 'Set to true if the document contains the keyword "{{keyword}}".',
-        parameters: [{ name: 'keyword', defaultValue: '' }],
-        output: { pdf: true, csv: true, filename: false }
+        parameters: [{ name: 'keyword', defaultValue: '' }]
     },
     'document-classification': {
         label: 'Credit Note',
         instruction:
             'Set to true if this document is a credit note (negative invoice, refund, or credit memo) rather than a standard invoice.',
         parameters: [],
-        output: { pdf: true, csv: true, filename: true, filenameFormat: ' - CREDIT', filenamePlaceholder: 'creditTag' }
+        filenameFormat: ' - CREDIT',
+        filenamePlaceholder: 'creditTag'
     },
     custom: {
         label: '',
         instruction: '',
-        parameters: [],
-        output: { pdf: false, csv: false, filename: false }
+        parameters: []
     }
 };
 
@@ -229,9 +223,6 @@ function renderTagList() {
         { text: 'Label', cls: 'col-label' },
         { text: 'ID', cls: 'col-id' },
         { text: 'Instruction', cls: 'col-instruction' },
-        { text: 'PDF', cls: 'col-output', tooltip: 'Include tag result in PDF summary page' },
-        { text: 'CSV', cls: 'col-output', tooltip: 'Add a column for this tag in the CSV log' },
-        { text: 'Filename', cls: 'col-output', tooltip: 'Append text to filename when tag is true' },
         { text: 'Actions', cls: 'col-actions' }
     ];
     headers.forEach((h) => {
@@ -313,56 +304,6 @@ function renderTagList() {
         instrEdit.appendChild(instrTextarea);
         tdInstr.appendChild(instrEdit);
         tr.appendChild(tdInstr);
-
-        // PDF output checkbox
-        const tdPdf = document.createElement('td');
-        tdPdf.className = 'col-output';
-        const pdfCb = document.createElement('input');
-        pdfCb.type = 'checkbox';
-        pdfCb.className = 'output-checkbox';
-        pdfCb.checked = !!(tag.output && tag.output.pdf);
-        pdfCb.addEventListener('change', () => {
-            if (!tag.output) tag.output = {};
-            tag.output.pdf = pdfCb.checked;
-            updateTagsSaveBar();
-        });
-        tdPdf.appendChild(pdfCb);
-        tr.appendChild(tdPdf);
-
-        // CSV output checkbox
-        const tdCsv = document.createElement('td');
-        tdCsv.className = 'col-output';
-        const csvCb = document.createElement('input');
-        csvCb.type = 'checkbox';
-        csvCb.className = 'output-checkbox';
-        csvCb.checked = !!(tag.output && tag.output.csv);
-        csvCb.addEventListener('change', () => {
-            if (!tag.output) tag.output = {};
-            tag.output.csv = csvCb.checked;
-            updateTagsSaveBar();
-        });
-        tdCsv.appendChild(csvCb);
-        tr.appendChild(tdCsv);
-
-        // Filename output checkbox
-        const tdFn = document.createElement('td');
-        tdFn.className = 'col-output';
-        const fnCb = document.createElement('input');
-        fnCb.type = 'checkbox';
-        fnCb.className = 'output-checkbox';
-        fnCb.checked = !!(tag.output && tag.output.filename);
-        fnCb.addEventListener('change', () => {
-            if (!tag.output) tag.output = {};
-            tag.output.filename = fnCb.checked;
-            const detailRow = tbody.querySelector(`tr.tag-detail-row[data-index="${index}"]`);
-            if (detailRow) {
-                const fnOpts = detailRow.querySelector('.filename-options');
-                if (fnOpts) fnOpts.style.display = fnCb.checked ? 'flex' : 'none';
-            }
-            updateTagsSaveBar();
-        });
-        tdFn.appendChild(fnCb);
-        tr.appendChild(tdFn);
 
         // Actions column
         const tdActions = document.createElement('td');
@@ -462,7 +403,6 @@ function buildTagDetailContent(container, tag, index) {
 
     const fnOpts = document.createElement('div');
     fnOpts.className = 'filename-options';
-    fnOpts.style.display = tag.output && tag.output.filename ? 'flex' : 'none';
 
     const fmtGroup = document.createElement('div');
     fmtGroup.className = 'form-group';
@@ -472,11 +412,10 @@ function buildTagDetailContent(container, tag, index) {
     const fmtInput = document.createElement('input');
     fmtInput.type = 'text';
     fmtInput.placeholder = 'e.g., " - PRIVATE"';
-    fmtInput.value = (tag.output && tag.output.filenameFormat) || '';
+    fmtInput.value = tag.filenameFormat || '';
     fmtInput.disabled = !tagEditMode;
     fmtInput.addEventListener('input', () => {
-        if (!tag.output) tag.output = {};
-        tag.output.filenameFormat = fmtInput.value;
+        tag.filenameFormat = fmtInput.value;
         updateTagsSaveBar();
     });
     fmtGroup.appendChild(fmtInput);
@@ -490,11 +429,10 @@ function buildTagDetailContent(container, tag, index) {
     const phInput = document.createElement('input');
     phInput.type = 'text';
     phInput.placeholder = 'e.g., privateTag';
-    phInput.value = (tag.output && tag.output.filenamePlaceholder) || '';
+    phInput.value = tag.filenamePlaceholder || '';
     phInput.disabled = !tagEditMode;
     phInput.addEventListener('input', () => {
-        if (!tag.output) tag.output = {};
-        tag.output.filenamePlaceholder = phInput.value;
+        tag.filenamePlaceholder = phInput.value;
         updateTagsSaveBar();
     });
     phGroup.appendChild(phInput);
@@ -606,9 +544,10 @@ function addTagFromPreset(presetKey) {
         label: preset.label,
         instruction: preset.instruction,
         enabled: true,
-        parameters: (preset.parameters || []).map((p) => ({ ...p })),
-        output: { ...preset.output }
+        parameters: (preset.parameters || []).map((p) => ({ ...p }))
     };
+    if (preset.filenamePlaceholder) newTag.filenamePlaceholder = preset.filenamePlaceholder;
+    if (preset.filenameFormat) newTag.filenameFormat = preset.filenameFormat;
 
     tagDefinitions.push(newTag);
     renderTagList();

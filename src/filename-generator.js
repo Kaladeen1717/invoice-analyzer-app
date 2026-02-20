@@ -128,14 +128,43 @@ async function getUniqueFilename(outputDir, filename) {
 }
 
 /**
+ * Apply format-driven formatting to a value
+ * @param {string} format - The format key (e.g., 'iso4217', 'iso8601')
+ * @param {*} value - The value to format
+ * @returns {string|null} The formatted value, or null if no format-specific logic applies
+ */
+function applyFormatForFilename(format, value) {
+    if (!format || !value || value === 'Unknown') return null;
+    const str = String(value);
+    switch (format) {
+        case 'iso4217':
+        case 'iso3166_alpha2':
+        case 'iso3166_alpha3':
+            return str.toUpperCase();
+        case 'iso8601':
+            return formatDateForDisplay(str);
+        default:
+            return null;
+    }
+}
+
+/**
  * Format a value for display in the filename
  * Handles special formatting for different field types
  * @param {string} fieldName - The name of the field
  * @param {*} value - The value to format
  * @param {Object} analysis - Full analysis object for context
+ * @param {string} [format] - Optional format key from field definition
  * @returns {string} The formatted value
  */
-function formatFieldValue(fieldName, value, analysis = {}) {
+function formatFieldValue(fieldName, value, analysis = {}, format) {
+    // Try format-driven logic first (if format is provided and field has a value)
+    if (format) {
+        const fieldValue = analysis[fieldName] !== undefined ? analysis[fieldName] : value;
+        const formatted = applyFormatForFilename(format, fieldValue);
+        if (formatted !== null) return formatted;
+    }
+
     switch (fieldName) {
         case 'totalAmount': {
             const numValue = analysis.totalAmount !== undefined ? analysis.totalAmount : value;
@@ -220,10 +249,20 @@ function generateFormattedFilename(template, analysis, config) {
     const tagPlaceholders = {};
     if (config && config.tagDefinitions) {
         for (const tag of config.tagDefinitions) {
-            if (tag.enabled && tag.output && tag.output.filename && tag.output.filenamePlaceholder) {
-                tagPlaceholders[tag.output.filenamePlaceholder] = tag;
+            if (tag.enabled && tag.filenamePlaceholder) {
+                tagPlaceholders[tag.filenamePlaceholder] = tag;
                 // Tag placeholders include their own separators
-                separatorFields.push(tag.output.filenamePlaceholder);
+                separatorFields.push(tag.filenamePlaceholder);
+            }
+        }
+    }
+
+    // Build field format lookup from config
+    const fieldFormatMap = {};
+    if (config && config.fieldDefinitions) {
+        for (const field of config.fieldDefinitions) {
+            if (field.format) {
+                fieldFormatMap[field.key] = field.format;
             }
         }
     }
@@ -233,11 +272,12 @@ function generateFormattedFilename(template, analysis, config) {
         if (tagPlaceholders[fieldName]) {
             const tag = tagPlaceholders[fieldName];
             const isActive = analysis.tags && analysis.tags[tag.id];
-            return isActive ? tag.output.filenameFormat || '' : '';
+            return isActive ? tag.filenameFormat || '' : '';
         }
 
         const value = analysis[fieldName];
-        const formatted = formatFieldValue(fieldName, value, analysis);
+        const format = fieldFormatMap[fieldName];
+        const formatted = formatFieldValue(fieldName, value, analysis, format);
 
         // Special handling for fields that can be empty (like privateTag)
         if (formatted === '' || formatted === null || formatted === undefined) {
