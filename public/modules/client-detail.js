@@ -187,8 +187,8 @@ export function closeClientDetail() {
 
 function createSourceBadge(source) {
     const badge = document.createElement('span');
-    badge.className = source === 'override' ? 'source-badge source-badge-override' : 'source-badge source-badge-global';
-    badge.textContent = source === 'override' ? 'Custom' : 'Global Default';
+    badge.className = source === 'custom' ? 'source-badge source-badge-override' : 'source-badge source-badge-global';
+    badge.textContent = source === 'custom' ? 'Custom' : 'Global';
     return badge;
 }
 

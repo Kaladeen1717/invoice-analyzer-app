@@ -130,18 +130,18 @@ ${suffix}`;
  * @param {string} responseText - The raw response from Gemini
  * @returns {Object} The parsed analysis object
  */
-function parseGeminiResponse(responseText) {
+function parseGeminiResponse(responseText, { useJsonMode = false } = {}) {
     let jsonText = responseText.trim();
 
-    // Handle markdown code blocks
-    if (jsonText.startsWith('```json')) {
-        jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-    } else if (jsonText.startsWith('```')) {
-        jsonText = jsonText.replace(/```\n?/g, '');
+    if (!useJsonMode) {
+        // Legacy path: strip markdown code blocks from free-text responses
+        if (jsonText.startsWith('```json')) {
+            jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        } else if (jsonText.startsWith('```')) {
+            jsonText = jsonText.replace(/```\n?/g, '');
+        }
+        jsonText = jsonText.trim();
     }
-
-    // Remove any trailing whitespace or newlines
-    jsonText = jsonText.trim();
 
     try {
         return JSON.parse(jsonText);

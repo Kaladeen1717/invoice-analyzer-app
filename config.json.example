@@ -23,7 +23,8 @@
       "documentTypes",
       "isPrivate"
     ],
-    "includeSummary": true
+    "includeSummary": true,
+    "useJsonMode": false
   },
   "fieldDefinitions": [
     {
