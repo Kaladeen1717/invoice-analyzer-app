@@ -233,47 +233,44 @@ async function getClientConfig(clientId, globalConfig) {
         output = client.output;
     }
 
-    // Field definitions: full replacement first, then legacy sparse merge, then global
+    // Field definitions: toggle-only model with custom field support
     let fieldDefinitions = globalConfig.fieldDefinitions || [];
     if (client.fieldDefinitions) {
+        // Backward compat: full replacement for unmigrated configs
+        console.warn(`Client "${clientId}": fieldDefinitions is deprecated, migrate to fieldOverrides`);
         fieldDefinitions = client.fieldDefinitions;
     } else if (client.fieldOverrides) {
+        const globalFieldKeys = new Set(fieldDefinitions.map((f) => f.key));
+        // Apply enabled toggles to global fields
         fieldDefinitions = fieldDefinitions.map((field) => {
             const override = client.fieldOverrides[field.key];
             if (!override) return field;
-            return { ...field, ...override, key: field.key, builtIn: field.builtIn };
+            return { ...field, enabled: typeof override.enabled === 'boolean' ? override.enabled : field.enabled };
         });
-        // Add client-specific custom fields
+        // Add custom fields (keys not in global)
         for (const [key, def] of Object.entries(client.fieldOverrides)) {
-            if (!fieldDefinitions.find((f) => f.key === key)) {
+            if (!globalFieldKeys.has(key)) {
                 fieldDefinitions.push({ ...def, key });
             }
         }
     }
 
-    // Tag definitions: start with global, merge client tagOverrides (parameter values and enabled state)
+    // Tag definitions: toggle-only model with custom tag support
     let tagDefinitions = globalConfig.tagDefinitions || null;
     if (tagDefinitions && client.tagOverrides) {
+        const globalTagIds = new Set(tagDefinitions.map((t) => t.id));
+        // Apply enabled toggles to global tags
         tagDefinitions = tagDefinitions.map((tag) => {
             const override = client.tagOverrides[tag.id];
             if (!override) return tag;
-
-            const merged = { ...tag };
-            // Allow client to override enabled state
-            if (typeof override.enabled === 'boolean') {
-                merged.enabled = override.enabled;
-            }
-            // Merge parameter values
-            if (override.parameters && tag.parameters) {
-                merged.parameters = { ...tag.parameters };
-                for (const [paramKey, paramValue] of Object.entries(override.parameters)) {
-                    if (merged.parameters[paramKey]) {
-                        merged.parameters[paramKey] = { ...merged.parameters[paramKey], default: paramValue };
-                    }
-                }
-            }
-            return merged;
+            return { ...tag, enabled: typeof override.enabled === 'boolean' ? override.enabled : tag.enabled };
         });
+        // Add custom tags (ids not in global)
+        for (const [id, def] of Object.entries(client.tagOverrides)) {
+            if (!globalTagIds.has(id)) {
+                tagDefinitions.push({ ...def, id });
+            }
+        }
     }
 
     // Prompt template: promptOverride merges section-by-section into global
@@ -542,69 +539,59 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
     const client = clientsConfig.clients[clientId];
     if (!client) throw new Error(`Client "${clientId}" not found`);
 
-    // Field definitions: full replacement first, then legacy sparse merge, then global
+    // Field definitions: toggle-only model with custom field support
     const globalFields = globalConfig.fieldDefinitions || [];
     let effectiveFields;
     if (client.fieldDefinitions) {
-        // Full replacement — annotate each field with _globalDefaults for visual diff
+        // Backward compat: full replacement for unmigrated configs
         const globalFieldMap = new Map(globalFields.map((f) => [f.key, f]));
         effectiveFields = client.fieldDefinitions.map((f) => {
-            const globalField = globalFieldMap.get(f.key);
-            const globalDefaults = globalField
-                ? {
-                      label: globalField.label,
-                      type: globalField.type,
-                      schemaHint: globalField.schemaHint,
-                      instruction: globalField.instruction,
-                      enabled: globalField.enabled
-                  }
-                : null;
-            return { ...f, _source: 'override', _globalDefaults: globalDefaults };
+            const isGlobal = globalFieldMap.has(f.key);
+            return { ...f, _source: isGlobal ? 'override' : 'custom' };
         });
     } else if (client.fieldOverrides) {
+        const globalFieldKeys = new Set(globalFields.map((f) => f.key));
         effectiveFields = globalFields.map((f) => {
             const override = client.fieldOverrides[f.key];
             if (!override) return { ...f, _source: 'global' };
-            return { ...f, ...override, key: f.key, builtIn: f.builtIn, _source: 'override' };
+            return {
+                ...f,
+                enabled: typeof override.enabled === 'boolean' ? override.enabled : f.enabled,
+                _source: 'override'
+            };
         });
-        // Add client-specific custom fields
+        // Add custom fields (keys not in global)
         for (const [key, def] of Object.entries(client.fieldOverrides)) {
-            if (!globalFields.find((f) => f.key === key)) {
-                effectiveFields.push({ ...def, key, _source: 'override' });
+            if (!globalFieldKeys.has(key)) {
+                effectiveFields.push({ ...def, key, _source: 'custom' });
             }
         }
     } else {
         effectiveFields = globalFields.map((f) => ({ ...f, _source: 'global' }));
     }
 
-    // Tag definitions: start with global, merge client tagOverrides
+    // Tag definitions: toggle-only model with custom tag support
     const globalTags = globalConfig.tagDefinitions || [];
+    const globalTagIds = new Set(globalTags.map((t) => t.id));
     const effectiveTags = globalTags.map((tag) => {
         const override = client.tagOverrides?.[tag.id];
         if (!override) {
-            return { ...tag, _source: 'global', _parameterSources: {} };
+            return { ...tag, _source: 'global' };
         }
-
-        const merged = { ...tag, _source: 'global', _parameterSources: {} };
-
-        if (typeof override.enabled === 'boolean') {
-            merged.enabled = override.enabled;
-            merged._source = 'override';
-        }
-
-        if (override.parameters && tag.parameters) {
-            merged.parameters = {};
-            for (const [paramKey, paramDef] of Object.entries(tag.parameters)) {
-                merged.parameters[paramKey] = { ...paramDef };
-                if (override.parameters[paramKey] !== undefined) {
-                    merged.parameters[paramKey].default = override.parameters[paramKey];
-                    merged._parameterSources[paramKey] = 'override';
-                }
+        return {
+            ...tag,
+            enabled: typeof override.enabled === 'boolean' ? override.enabled : tag.enabled,
+            _source: 'override'
+        };
+    });
+    // Add custom tags from overrides
+    if (client.tagOverrides) {
+        for (const [id, def] of Object.entries(client.tagOverrides)) {
+            if (!globalTagIds.has(id)) {
+                effectiveTags.push({ ...def, id, _source: 'custom' });
             }
         }
-
-        return merged;
-    });
+    }
 
     // Prompt template: section-level overrides or full override
     const globalPrompt = globalConfig.promptTemplate || {};
@@ -680,8 +667,8 @@ async function saveClientOverrides(clientId, section, data) {
 
     switch (section) {
         case 'fields':
-            config.fieldDefinitions = data;
-            delete config.fieldOverrides;
+            config.fieldOverrides = data;
+            delete config.fieldDefinitions;
             break;
         case 'tags':
             config.tagOverrides = data;

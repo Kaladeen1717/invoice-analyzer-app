@@ -178,7 +178,7 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     // Tags section
     const tagDefinitions = config.tagDefinitions;
     if (tagDefinitions && analysis.tags) {
-        const pdfTags = tagDefinitions.filter((t) => t.enabled && t.output && t.output.pdf && analysis.tags[t.id]);
+        const pdfTags = tagDefinitions.filter((t) => t.enabled && analysis.tags[t.id]);
         if (pdfTags.length > 0) {
             page.drawText('Tags:', {
                 x: margin,

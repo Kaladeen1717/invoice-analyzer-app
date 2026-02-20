@@ -249,10 +249,10 @@ function generateFormattedFilename(template, analysis, config) {
     const tagPlaceholders = {};
     if (config && config.tagDefinitions) {
         for (const tag of config.tagDefinitions) {
-            if (tag.enabled && tag.output && tag.output.filename && tag.output.filenamePlaceholder) {
-                tagPlaceholders[tag.output.filenamePlaceholder] = tag;
+            if (tag.enabled && tag.filenamePlaceholder) {
+                tagPlaceholders[tag.filenamePlaceholder] = tag;
                 // Tag placeholders include their own separators
-                separatorFields.push(tag.output.filenamePlaceholder);
+                separatorFields.push(tag.filenamePlaceholder);
             }
         }
     }
@@ -272,7 +272,7 @@ function generateFormattedFilename(template, analysis, config) {
         if (tagPlaceholders[fieldName]) {
             const tag = tagPlaceholders[fieldName];
             const isActive = analysis.tags && analysis.tags[tag.id];
-            return isActive ? tag.output.filenameFormat || '' : '';
+            return isActive ? tag.filenameFormat || '' : '';
         }
 
         const value = analysis[fieldName];

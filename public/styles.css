@@ -970,6 +970,11 @@ h1 {
     border-color: var(--border);
 }
 
+/* Read-only cells in edit mode (global fields in client detail) */
+.fields-table.edit-mode td.read-only {
+    color: var(--text-secondary);
+}
+
 /* Inline delete confirmation */
 .row-delete-confirm {
     display: flex;
@@ -1093,34 +1098,6 @@ tr.confirm-delete td {
     background: rgba(34, 197, 94, 0.15);
     color: var(--success);
     border-color: var(--success);
-}
-
-/* Field badges */
-.field-badge-builtin,
-.field-badge-custom,
-.field-badge-type {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    padding: 0.125rem 0.5rem;
-    border-radius: 9999px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    white-space: nowrap;
-}
-
-.field-badge-builtin {
-    background: rgba(59, 130, 246, 0.15);
-    color: var(--primary-light);
-}
-
-.field-badge-custom {
-    background: rgba(168, 85, 247, 0.15);
-    color: var(--accent);
-}
-
-.field-badge-type {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-secondary);
 }
 
 /* Icon button (toggle, move, edit, delete) */
@@ -2063,6 +2040,40 @@ tr.confirm-delete td {
     font-style: italic;
 }
 
+.detail-prompt-preview {
+    margin-top: 1.5rem;
+}
+
+.detail-prompt-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.detail-prompt-char-count {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.detail-prompt-preview-code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 0;
+}
+
+.detail-prompt-preview-code code {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
 /* Detail filename template display */
 .detail-filename-value {
     background: var(--bg-dark);
@@ -2073,6 +2084,35 @@ tr.confirm-delete td {
     font-size: 0.85rem;
     color: var(--success);
     word-break: break-all;
+}
+
+.detail-filename-chips {
+    margin-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.detail-filename-chips .chip-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.detail-filename-chips .chip-group-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    min-width: 3.5rem;
+    padding-top: 0.3rem;
+}
+
+.detail-filename-chips .chip-group-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
 }
 
 /* Detail section save bars */
@@ -2099,40 +2139,6 @@ tr.confirm-delete td {
 .cell-modified {
     border-left: 3px solid var(--primary) !important;
     background: rgba(59, 130, 246, 0.04);
-}
-
-/* Custom right-click context menu for resetting to global default */
-.detail-context-menu {
-    position: fixed;
-    z-index: 1000;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-md);
-    min-width: 200px;
-    overflow: hidden;
-    display: none;
-}
-
-.detail-context-menu.visible {
-    display: block;
-}
-
-.detail-context-menu-item {
-    display: block;
-    width: 100%;
-    padding: 0.625rem 1rem;
-    background: none;
-    border: none;
-    color: var(--text-primary);
-    font-size: 0.8125rem;
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.detail-context-menu-item:hover {
-    background: var(--bg-card-hover);
 }
 
 /* Detail editable inputs */

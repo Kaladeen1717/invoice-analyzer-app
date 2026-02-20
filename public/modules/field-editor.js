@@ -196,7 +196,6 @@ function renderFieldList() {
         { text: 'Format', cls: 'col-format' },
         { text: 'Schema Hint', cls: 'col-hint' },
         { text: 'Instruction', cls: 'col-instruction' },
-        { text: 'Source', cls: 'col-source' },
         { text: 'Actions', cls: 'col-actions' }
     ];
     headers.forEach((h) => {
@@ -359,15 +358,6 @@ function renderFieldList() {
         instrEdit.appendChild(instrTextarea);
         tdInstruction.appendChild(instrEdit);
         tr.appendChild(tdInstruction);
-
-        // Source column
-        const tdSource = document.createElement('td');
-        tdSource.className = 'col-source';
-        const badge = document.createElement('span');
-        badge.className = field.builtIn ? 'field-badge-builtin' : 'field-badge-custom';
-        badge.textContent = field.builtIn ? 'Built-in' : 'Custom';
-        tdSource.appendChild(badge);
-        tr.appendChild(tdSource);
 
         // Actions column
         const tdActions = document.createElement('td');

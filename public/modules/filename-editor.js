@@ -8,7 +8,7 @@ let filenameTemplate = '';
 let originalFilenameTemplate = '';
 let filenameLoaded = false;
 
-const FILENAME_SAMPLE_DATA = {
+export const FILENAME_SAMPLE_DATA = {
     supplierName: 'Acme Corp',
     paymentDate: '20250115',
     paymentDateFormatted: '15.01.2025',
@@ -20,7 +20,7 @@ const FILENAME_SAMPLE_DATA = {
     totalAmount: '1,500.50'
 };
 
-const SPECIAL_PLACEHOLDERS = [
+export const SPECIAL_PLACEHOLDERS = [
     { key: 'paymentDateFormatted', tooltip: 'Payment date as DD.MM.YYYY' },
     { key: 'invoiceDateFormatted', tooltip: 'Invoice date as DD.MM.YYYY' },
     { key: 'invoiceDateIfDifferent', tooltip: 'Invoice date only if different from payment date, prefixed with " - "' }
@@ -112,10 +112,10 @@ function renderPlaceholderChips(fields, tags) {
     tagPlaceholderChips.textContent = '';
     tags.forEach((tag) => {
         if (!tag.enabled) return;
-        if (!tag.output || !tag.output.filename || !tag.output.filenamePlaceholder) return;
-        const chip = createPlaceholderChip(tag.output.filenamePlaceholder, tag.label, 'tag-chip');
+        if (!tag.filenamePlaceholder) return;
+        const chip = createPlaceholderChip(tag.filenamePlaceholder, tag.label, 'tag-chip');
         tagPlaceholderChips.appendChild(chip);
-        FILENAME_SAMPLE_DATA[tag.output.filenamePlaceholder] = tag.output.filenameFormat || '';
+        FILENAME_SAMPLE_DATA[tag.filenamePlaceholder] = tag.filenameFormat || '';
     });
 
     const tagGroup = document.getElementById('tagPlaceholders');
@@ -129,13 +129,13 @@ function renderPlaceholderChips(fields, tags) {
     });
 }
 
-function createPlaceholderChip(key, tooltipText, extraClass) {
+export function createPlaceholderChip(key, tooltipText, extraClass, onInsert) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'placeholder-chip' + (extraClass ? ' ' + extraClass : '');
     chip.textContent = '{' + key + '}';
     chip.title = tooltipText;
-    chip.addEventListener('click', () => insertPlaceholder(key));
+    chip.addEventListener('click', () => (onInsert || insertPlaceholder)(key));
     return chip;
 }
 

@@ -2,6 +2,7 @@ const request = require('supertest');
 
 jest.mock('../../src/client-manager');
 jest.mock('../../src/config');
+jest.mock('../../src/prompt-builder');
 
 const {
     getAllClients,
@@ -9,12 +10,14 @@ const {
     createClient,
     updateClient,
     deleteClient,
+    getClientConfig,
     getClientFolderStatus,
     getAnnotatedClientConfig,
     saveClientOverrides,
     removeClientOverrides
 } = require('../../src/client-manager');
 const { loadConfig } = require('../../src/config');
+const { buildPromptPreview } = require('../../src/prompt-builder');
 const { VALID_OVERRIDE_SECTIONS } = require('../../src/constants');
 
 const app = require('../../server');
@@ -405,5 +408,49 @@ describe('DELETE /api/clients/:id/overrides/:section', () => {
         removeClientOverrides.mockRejectedValue(new Error('Client "nope" not found'));
 
         await request(app).delete('/api/clients/nope/overrides/fields').expect(404);
+    });
+});
+
+// ============================================================================
+// POST /api/clients/:id/prompt/preview
+// ============================================================================
+
+describe('POST /api/clients/:id/prompt/preview', () => {
+    it('returns assembled prompt preview for client', async () => {
+        const mergedConfig = {
+            model: 'gemini-2.0-flash',
+            fieldDefinitions: [{ key: 'total', label: 'Total', type: 'number', enabled: true }],
+            promptTemplate: { preamble: 'Analyze this invoice' }
+        };
+        getClientConfig.mockResolvedValue(mergedConfig);
+        buildPromptPreview.mockReturnValue('Assembled prompt text here');
+
+        const res = await request(app).post('/api/clients/acme/prompt/preview').send({}).expect(200);
+
+        expect(res.body.preview).toBe('Assembled prompt text here');
+        expect(getClientConfig).toHaveBeenCalledWith('acme', MOCK_GLOBAL_CONFIG);
+        expect(buildPromptPreview).toHaveBeenCalledWith(mergedConfig, {});
+    });
+
+    it('passes promptTemplate overrides to buildPromptPreview', async () => {
+        getClientConfig.mockResolvedValue({ model: 'test' });
+        buildPromptPreview.mockReturnValue('Preview with override');
+
+        const override = { preamble: 'Custom preamble' };
+        const res = await request(app)
+            .post('/api/clients/acme/prompt/preview')
+            .send({ promptTemplate: override })
+            .expect(200);
+
+        expect(res.body.preview).toBe('Preview with override');
+        expect(buildPromptPreview).toHaveBeenCalledWith({ model: 'test' }, override);
+    });
+
+    it('returns 404 when client not found', async () => {
+        getClientConfig.mockRejectedValue(new Error('Client "nope" not found'));
+
+        const res = await request(app).post('/api/clients/nope/prompt/preview').send({}).expect(404);
+
+        expect(res.body.error).toContain('not found');
     });
 });

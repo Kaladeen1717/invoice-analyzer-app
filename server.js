@@ -359,6 +359,24 @@ app.delete('/api/clients/:id/overrides/:section', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/clients/:id/prompt/preview - Build prompt preview for client's merged config
+ */
+app.post('/api/clients/:id/prompt/preview', processingLimiter, async (req, res) => {
+    try {
+        const config = await loadConfig({ requireFolders: false });
+        const mergedConfig = await getClientConfig(req.params.id, config);
+        const templateOverride = req.body.promptTemplate || {};
+        const preview = buildPromptPreview(mergedConfig, templateOverride);
+        res.json({ preview });
+    } catch (error) {
+        if (error.message.includes('not found')) {
+            return res.status(404).json({ error: error.message });
+        }
+        res.status(500).json({ error: 'Failed to build client prompt preview', details: error.message });
+    }
+});
+
 // ============================================================================
 // GLOBAL CONFIG API ENDPOINTS
 // ============================================================================

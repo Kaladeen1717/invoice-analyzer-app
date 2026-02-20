@@ -161,11 +161,8 @@ describe('generateFormattedFilename', () => {
                     label: 'Private',
                     instruction: 'test',
                     enabled: true,
-                    output: {
-                        filename: true,
-                        filenamePlaceholder: 'privateTag',
-                        filenameFormat: ' - PRIVATE'
-                    }
+                    filenamePlaceholder: 'privateTag',
+                    filenameFormat: ' - PRIVATE'
                 }
             ]
         };
@@ -188,11 +185,8 @@ describe('generateFormattedFilename', () => {
                     label: 'Private',
                     instruction: 'test',
                     enabled: true,
-                    output: {
-                        filename: true,
-                        filenamePlaceholder: 'privateTag',
-                        filenameFormat: ' - PRIVATE'
-                    }
+                    filenamePlaceholder: 'privateTag',
+                    filenameFormat: ' - PRIVATE'
                 }
             ]
         };

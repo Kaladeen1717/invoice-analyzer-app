@@ -170,15 +170,19 @@ function validateTagDefinitions(tagDefinitions) {
                 }
             }
         }
-        // Validate output config if present
-        if (tag.output && typeof tag.output === 'object') {
-            for (const boolKey of ['filename', 'pdf', 'csv']) {
-                if (boolKey in tag.output && typeof tag.output[boolKey] !== 'boolean') {
-                    throw new Error(`tagDefinitions[${index}].output.${boolKey}: must be a boolean`);
-                }
+        // Validate top-level filename properties
+        if (
+            tag.filenamePlaceholder !== undefined &&
+            tag.filenamePlaceholder !== null &&
+            tag.filenamePlaceholder !== ''
+        ) {
+            if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(tag.filenamePlaceholder)) {
+                throw new Error(`tagDefinitions[${index}].filenamePlaceholder: must be alphanumeric camelCase`);
             }
-            if (tag.output.filenamePlaceholder && !/^[a-zA-Z][a-zA-Z0-9]*$/.test(tag.output.filenamePlaceholder)) {
-                throw new Error(`tagDefinitions[${index}].output.filenamePlaceholder: must be alphanumeric camelCase`);
+        }
+        if (tag.filenameFormat !== undefined && tag.filenameFormat !== null) {
+            if (typeof tag.filenameFormat !== 'string') {
+                throw new Error(`tagDefinitions[${index}].filenameFormat: must be a string`);
             }
         }
     }

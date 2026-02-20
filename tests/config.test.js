@@ -230,19 +230,28 @@ describe('validateTagDefinitions', () => {
         expect(() => validateTagDefinitions([tag])).toThrow('must have a "default" value');
     });
 
-    test('validates output config booleans', () => {
-        const tag = validTag({ output: { filename: 'yes' } });
-        expect(() => validateTagDefinitions([tag])).toThrow('must be a boolean');
-    });
-
     test('validates filenamePlaceholder format', () => {
-        const tag = validTag({ output: { filenamePlaceholder: 'invalid-placeholder' } });
+        const tag = validTag({ filenamePlaceholder: 'invalid-placeholder' });
         expect(() => validateTagDefinitions([tag])).toThrow('must be alphanumeric camelCase');
     });
 
     test('accepts valid filenamePlaceholder', () => {
-        const tag = validTag({ output: { filenamePlaceholder: 'privateTag' } });
+        const tag = validTag({ filenamePlaceholder: 'privateTag' });
         expect(() => validateTagDefinitions([tag])).not.toThrow();
+    });
+
+    test('accepts tag with filenameFormat string', () => {
+        const tag = validTag({ filenameFormat: ' - PRIVATE', filenamePlaceholder: 'privateTag' });
+        expect(() => validateTagDefinitions([tag])).not.toThrow();
+    });
+
+    test('rejects non-string filenameFormat', () => {
+        const tag = validTag({ filenameFormat: 123 });
+        expect(() => validateTagDefinitions([tag])).toThrow('must be a string');
+    });
+
+    test('accepts tag without filename properties', () => {
+        expect(() => validateTagDefinitions([validTag()])).not.toThrow();
     });
 });
 
