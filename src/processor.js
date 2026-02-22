@@ -69,6 +69,7 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
     const useJsonMode = config.extraction?.useJsonMode && !config.rawPrompt;
 
     const result = await model.generateContent({
+        systemInstruction: prompt,
         contents: [
             {
                 role: 'user',
@@ -78,14 +79,16 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
                             mimeType: 'application/pdf',
                             data: pdfBase64
                         }
-                    },
-                    { text: prompt }
+                    }
                 ]
             }
         ],
         generationConfig: {
             temperature: 0,
-            ...(useJsonMode && { responseMimeType: 'application/json' })
+            ...(useJsonMode && { responseMimeType: 'application/json' }),
+            // Gemini 3 uses thinkingLevel (not thinkingBudget). 'low' balances cost/speed
+            // with safety margin for complex extractions. See INV-69 for analysis.
+            thinkingConfig: { thinkingLevel: 'low' }
         }
     });
 
@@ -97,7 +100,9 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
     const tokenUsage = {
         promptTokens: usageMetadata.promptTokenCount || 0,
         outputTokens: usageMetadata.candidatesTokenCount || 0,
-        totalTokens: usageMetadata.totalTokenCount || 0
+        totalTokens: usageMetadata.totalTokenCount || 0,
+        cachedTokens: usageMetadata.cachedContentTokenCount || 0,
+        thoughtsTokens: usageMetadata.thoughtsTokenCount || 0
     };
 
     try {
@@ -317,7 +322,13 @@ async function processInvoice(inputPath, config, options = {}) {
         const analysisWithTokens = await analyzeInvoice(inputPath, config, { apiKey });
 
         // Extract token usage and remove from analysis object
-        const tokenUsage = analysisWithTokens._tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
+        const tokenUsage = analysisWithTokens._tokenUsage || {
+            promptTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cachedTokens: 0,
+            thoughtsTokens: 0
+        };
         const { _tokenUsage, ...analysis } = analysisWithTokens;
 
         if (onProgress) {
@@ -387,7 +398,13 @@ async function processInvoice(inputPath, config, options = {}) {
             error: error.message,
             isRateLimited: error.isRateLimited || false,
             rawResponse: error._rawResponse || null,
-            tokenUsage: error._tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+            tokenUsage: error._tokenUsage || {
+                promptTokens: 0,
+                outputTokens: 0,
+                totalTokens: 0,
+                cachedTokens: 0,
+                thoughtsTokens: 0
+            }
         };
     }
 }

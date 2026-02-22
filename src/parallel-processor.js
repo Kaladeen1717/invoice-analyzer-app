@@ -72,7 +72,7 @@ async function processWithRetry(filePath, config, options = {}) {
         success: false,
         originalFilename: path.basename(filePath),
         error: lastError,
-        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 },
+        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0, thoughtsTokens: 0 },
         duration: Date.now() - startTime
     };
 }
@@ -106,7 +106,7 @@ async function processAllInvoices(config, options = {}) {
             failed: 0,
             results: [],
             csvRowsAdded: 0,
-            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 }
         };
         if (onComplete) onComplete(result);
         return result;
@@ -198,14 +198,15 @@ async function processAllInvoices(config, options = {}) {
     // Aggregate token usage
     const tokenUsage = results.reduce(
         (acc, r) => {
-            const usage = r.tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
+            const usage = r.tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 };
             return {
                 promptTokens: acc.promptTokens + usage.promptTokens,
                 outputTokens: acc.outputTokens + usage.outputTokens,
-                totalTokens: acc.totalTokens + usage.totalTokens
+                totalTokens: acc.totalTokens + usage.totalTokens,
+                cachedTokens: acc.cachedTokens + (usage.cachedTokens || 0)
             };
         },
-        { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+        { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 }
     );
 
     const summary = {
@@ -291,7 +292,7 @@ async function processAllClients(globalConfig, options = {}) {
             totalFiles: 0,
             totalSuccess: 0,
             totalFailed: 0,
-            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 }
         };
         if (onComplete) onComplete(result);
         return result;
@@ -303,7 +304,7 @@ async function processAllClients(globalConfig, options = {}) {
         totalFiles: 0,
         totalSuccess: 0,
         totalFailed: 0,
-        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 }
     };
 
     for (const clientId of clientIds) {
@@ -399,6 +400,7 @@ async function processAllClients(globalConfig, options = {}) {
             results.tokenUsage.promptTokens += clientResults.tokenUsage.promptTokens;
             results.tokenUsage.outputTokens += clientResults.tokenUsage.outputTokens;
             results.tokenUsage.totalTokens += clientResults.tokenUsage.totalTokens;
+            results.tokenUsage.cachedTokens += clientResults.tokenUsage.cachedTokens || 0;
         }
 
         if (onClientComplete) {
