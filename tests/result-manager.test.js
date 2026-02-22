@@ -27,7 +27,7 @@ function successResult(overrides = {}) {
         originalFilename: 'invoice-001.pdf',
         outputFilename: 'Acme Corp - 20240115.pdf',
         analysis: { supplierName: 'Acme Corp', totalAmount: 1500, tags: { private: false } },
-        tokenUsage: { promptTokens: 100, outputTokens: 50, totalTokens: 150 },
+        tokenUsage: { promptTokens: 100, outputTokens: 50, totalTokens: 150, cachedTokens: 10, thoughtsTokens: 0 },
         ...overrides
     };
 }
@@ -37,7 +37,7 @@ function failedResult(overrides = {}) {
         success: false,
         originalFilename: 'invoice-002.pdf',
         error: 'Gemini API error: rate limit exceeded',
-        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 },
+        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0, thoughtsTokens: 0 },
         ...overrides
     };
 }
@@ -160,6 +160,7 @@ describe('getSummary', () => {
         expect(summary.failed).toBe(1);
         expect(summary.successRate).toBe(67);
         expect(summary.tokenUsage.totalTokens).toBe(300);
+        expect(summary.tokenUsage.cachedTokens).toBe(20);
         expect(summary.firstProcessed).toBeTruthy();
         expect(summary.lastProcessed).toBeTruthy();
     });

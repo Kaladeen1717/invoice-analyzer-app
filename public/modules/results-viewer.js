@@ -237,11 +237,18 @@ function renderSuccessDetail(content, result) {
         appendDetailField(content, 'Duration:', (result.duration / 1000).toFixed(1) + 's');
     }
     if (result.tokenUsage) {
-        appendDetailField(
-            content,
-            'Tokens:',
-            `${result.tokenUsage.promptTokens} prompt + ${result.tokenUsage.outputTokens} output = ${result.tokenUsage.totalTokens} total`
-        );
+        let tokenText = `${result.tokenUsage.promptTokens} prompt + ${result.tokenUsage.outputTokens} output = ${result.tokenUsage.totalTokens} total`;
+        const extras = [];
+        if (result.tokenUsage.cachedTokens > 0) {
+            extras.push(`${result.tokenUsage.cachedTokens} cached`);
+        }
+        if (result.tokenUsage.thoughtsTokens > 0) {
+            extras.push(`${result.tokenUsage.thoughtsTokens} thinking`);
+        }
+        if (extras.length > 0) {
+            tokenText += ` (${extras.join(', ')})`;
+        }
+        appendDetailField(content, 'Tokens:', tokenText);
     }
 
     // Extracted fields

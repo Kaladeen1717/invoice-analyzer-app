@@ -851,6 +851,7 @@ app.get('/api/stats', async (req, res) => {
             totalFailed: 0,
             successRate: 0,
             totalTokens: 0,
+            totalCachedTokens: 0,
             lastProcessed: null
         };
 
@@ -868,6 +869,7 @@ app.get('/api/stats', async (req, res) => {
                         failed: summary.failed,
                         successRate: summary.successRate,
                         totalTokens: summary.tokenUsage.totalTokens,
+                        totalCachedTokens: summary.tokenUsage.cachedTokens || 0,
                         lastProcessed: summary.lastProcessed
                     };
 
@@ -875,6 +877,7 @@ app.get('/api/stats', async (req, res) => {
                     aggregate.totalSuccess += summary.success;
                     aggregate.totalFailed += summary.failed;
                     aggregate.totalTokens += summary.tokenUsage.totalTokens;
+                    aggregate.totalCachedTokens += summary.tokenUsage.cachedTokens || 0;
 
                     if (
                         summary.lastProcessed &&
