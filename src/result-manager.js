@@ -60,7 +60,13 @@ async function appendResult(folderPath, result, options = {}) {
         model: options.model || null,
         extractedFields: result.success ? result.analysis || {} : {},
         tags: result.success && result.analysis ? result.analysis.tags || {} : {},
-        tokenUsage: result.tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 },
+        tokenUsage: result.tokenUsage || {
+            promptTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cachedTokens: 0,
+            thoughtsTokens: 0
+        },
         timestamp: now,
         error: result.error || null,
         rawResponse: result.rawResponse || null,
@@ -131,7 +137,7 @@ async function getSummary(folderPath) {
             failed: 0,
             dryRun: 0,
             successRate: 0,
-            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0 },
+            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0, thoughtsTokens: 0 },
             firstProcessed: null,
             lastProcessed: null
         };
@@ -143,14 +149,22 @@ async function getSummary(folderPath) {
 
     const tokenUsage = results.reduce(
         (acc, r) => {
-            const usage = r.tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
+            const usage = r.tokenUsage || {
+                promptTokens: 0,
+                outputTokens: 0,
+                totalTokens: 0,
+                cachedTokens: 0,
+                thoughtsTokens: 0
+            };
             return {
                 promptTokens: acc.promptTokens + usage.promptTokens,
                 outputTokens: acc.outputTokens + usage.outputTokens,
-                totalTokens: acc.totalTokens + usage.totalTokens
+                totalTokens: acc.totalTokens + usage.totalTokens,
+                cachedTokens: acc.cachedTokens + (usage.cachedTokens || 0),
+                thoughtsTokens: acc.thoughtsTokens + (usage.thoughtsTokens || 0)
             };
         },
-        { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+        { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0, thoughtsTokens: 0 }
     );
 
     const timestamps = results.map((r) => r.timestamp).sort();
@@ -190,7 +204,13 @@ async function updateResult(folderPath, id, result, options = {}) {
         model: options.model || data.results[index].model,
         extractedFields: result.success ? result.analysis || {} : {},
         tags: result.success && result.analysis ? result.analysis.tags || {} : {},
-        tokenUsage: result.tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 },
+        tokenUsage: result.tokenUsage || {
+            promptTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cachedTokens: 0,
+            thoughtsTokens: 0
+        },
         timestamp: now,
         error: result.error || null,
         duration: options.duration || null,

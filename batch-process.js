@@ -56,6 +56,9 @@ function printTokenUsage(tokenUsage) {
     log(`    Prompt tokens: ${formatTokenCount(tokenUsage.promptTokens)}`, colors.dim);
     log(`    Media tokens:  ${formatTokenCount(mediaTokens)}`, colors.dim);
     log(`    Output tokens: ${formatTokenCount(tokenUsage.outputTokens)}`, colors.dim);
+    if (tokenUsage.cachedTokens > 0) {
+        log(`    Cached tokens: ${formatTokenCount(tokenUsage.cachedTokens)}`, colors.green);
+    }
     log(`    Total tokens:  ${formatTokenCount(tokenUsage.totalTokens)}`, colors.cyan);
 }
 

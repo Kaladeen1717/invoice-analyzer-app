@@ -42,3 +42,6 @@ npm-debug.log*
 
 # Local Claude Code permissions (not portable)
 .claude/settings.local.json
+
+# Personal setup playbook (not project docs)
+setup.md
