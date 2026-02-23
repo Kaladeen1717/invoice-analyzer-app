@@ -34,22 +34,22 @@
     "author": "",
     "license": "ISC",
     "dependencies": {
-        "@google/generative-ai": "^0.21.0",
+        "@google/generative-ai": "^0.24.1",
         "dotenv": "^16.4.5",
         "express": "^4.21.2",
         "express-rate-limit": "^8.2.1",
-        "p-limit": "^7.2.0",
+        "p-limit": "^7.3.0",
         "pdf-lib": "^1.17.1",
         "sanitize-filename": "^1.6.3"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
-        "eslint": "^10.0.0",
+        "eslint": "^10.0.2",
         "eslint-config-prettier": "^10.1.8",
         "globals": "^17.3.0",
         "jest": "^30.2.0",
-        "knip": "^5.84.1",
-        "nodemon": "^3.1.11",
+        "knip": "^5.85.0",
+        "nodemon": "^3.1.14",
         "prettier": "^3.8.1",
         "supertest": "^7.2.2"
     }
