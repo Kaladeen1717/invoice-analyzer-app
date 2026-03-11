@@ -48,6 +48,7 @@ setup.md
 
 # TypeScript build output
 dist/
+*.tsbuildinfo
 
 # Compiled frontend (source in src/frontend/)
 public/app.js
