@@ -18,7 +18,7 @@ Verify all CI checks would pass locally using the same command above. The CI pip
 2. **Typecheck** — `npm run typecheck` (verify all TypeScript types)
 3. **Lint** — `npm run lint`
 4. **Format** — `npm run format:check`
-5. **Test** — `npm test` (on Node 18 and 20)
+5. **Test** — `npm test` (on Node 20 and 22)
 6. **Audit** — `npm audit --audit-level=moderate`
 7. **Knip** — `npx knip` (dead code detection)
 
