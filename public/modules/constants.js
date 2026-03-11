@@ -1,6 +1,5 @@
 // Shared constants — single source of truth for the frontend.
 // Backend constants are in src/constants.js (CommonJS) — keep in sync.
-
 export const KNOWN_MODELS = [
     'gemini-3-flash-preview',
     'gemini-2.5-flash-preview-05-20',
@@ -9,9 +8,7 @@ export const KNOWN_MODELS = [
     'gemini-1.5-flash',
     'gemini-1.5-pro'
 ];
-
 export const VALID_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'array'];
-
 export const VALID_FIELD_FORMATS = {
     iso8601: { label: 'Date (ISO 8601)', standard: 'ISO 8601', pattern: 'YYYY-MM-DD', compatibleTypes: ['date'] },
     iso4217: {
@@ -21,13 +18,13 @@ export const VALID_FIELD_FORMATS = {
         compatibleTypes: ['text']
     },
     iso3166_alpha2: {
-        label: 'Country Code (ISO 3166 α2)',
+        label: 'Country Code (ISO 3166 \u03b12)',
         standard: 'ISO 3166-1',
         pattern: '2-letter code (DK)',
         compatibleTypes: ['text']
     },
     iso3166_alpha3: {
-        label: 'Country Code (ISO 3166 α3)',
+        label: 'Country Code (ISO 3166 \u03b13)',
         standard: 'ISO 3166-1',
         pattern: '3-letter code (DNK)',
         compatibleTypes: ['text']
@@ -57,9 +54,7 @@ export const VALID_FIELD_FORMATS = {
         compatibleTypes: ['text']
     }
 };
-
 export const FORMAT_NONE = 'none';
-
 export const VALID_OVERRIDE_SECTIONS = ['fields', 'tags', 'prompt', 'output', 'model'];
-
 export const DEFAULT_MODEL = 'gemini-3-flash-preview';
+//# sourceMappingURL=constants.js.map

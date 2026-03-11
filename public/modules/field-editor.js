@@ -1,31 +1,28 @@
 // Field Definitions Editor module
 // Manages the global extraction field definitions (load, render, inline edit, save).
-
 import { showAlert } from './ui-utils.js';
 import { VALID_FIELD_TYPES, VALID_FIELD_FORMATS, FORMAT_NONE } from './constants.js';
 import { registerTableHandler, activateCellEdit, deactivateCellEdit, showInlineDeleteConfirm } from './table-editor.js';
-
 // --- State ---
 let fieldDefinitions = [];
 let originalFieldDefinitions = [];
 let fieldsLoaded = false;
 let editMode = false;
-
 // --- DOM refs (set in init) ---
-let fieldListEl, fieldsSaveBar, addFieldBtn, editToggleBtn, saveFieldsBtn;
-
+let fieldListEl;
+let fieldsSaveBar;
+let addFieldBtn;
+let editToggleBtn;
+let saveFieldsBtn;
 // --- Public API ---
-
 export function initFieldEditor() {
     fieldListEl = document.getElementById('fieldList');
     fieldsSaveBar = document.getElementById('fieldsSaveBar');
     addFieldBtn = document.getElementById('addFieldBtn');
     editToggleBtn = document.getElementById('editToggleBtn');
     saveFieldsBtn = document.getElementById('saveFieldsBtn');
-
     const reloadFieldsBtn = document.getElementById('reloadFieldsBtn');
     const discardFieldsBtn = document.getElementById('discardFieldsBtn');
-
     // Register with shared table-editor
     registerTableHandler('fields-table', {
         isEditMode: () => editMode,
@@ -34,7 +31,6 @@ export function initFieldEditor() {
         render: renderFieldList,
         updateSaveBar: updateFieldsSaveBar
     });
-
     // Event listeners
     editToggleBtn.addEventListener('click', toggleEditMode);
     reloadFieldsBtn.addEventListener('click', () => {
@@ -45,11 +41,9 @@ export function initFieldEditor() {
     saveFieldsBtn.addEventListener('click', saveFieldDefinitions);
     discardFieldsBtn.addEventListener('click', discardFieldChanges);
 }
-
 export function isFieldsLoaded() {
     return fieldsLoaded;
 }
-
 export async function loadFieldDefinitions() {
     try {
         fieldListEl.textContent = '';
@@ -57,23 +51,23 @@ export async function loadFieldDefinitions() {
         loadingDiv.className = 'loading-placeholder';
         loadingDiv.textContent = 'Loading fields...';
         fieldListEl.appendChild(loadingDiv);
-
         const response = await fetch('/api/config');
         const data = await response.json();
-
         if (response.ok) {
             fieldDefinitions = data.fieldDefinitions || [];
             originalFieldDefinitions = JSON.parse(JSON.stringify(fieldDefinitions));
             fieldsLoaded = true;
             renderFieldList();
-        } else {
+        }
+        else {
             fieldListEl.textContent = '';
             const errDiv = document.createElement('div');
             errDiv.className = 'error-placeholder';
             errDiv.textContent = 'Error: ' + (data.error || 'Unknown error');
             fieldListEl.appendChild(errDiv);
         }
-    } catch (error) {
+    }
+    catch (error) {
         fieldListEl.textContent = '';
         const errDiv = document.createElement('div');
         errDiv.className = 'error-placeholder';
@@ -81,16 +75,13 @@ export async function loadFieldDefinitions() {
         fieldListEl.appendChild(errDiv);
     }
 }
-
 /** Mark fields as needing reload (e.g. after config import/restore). */
 export function invalidateFields() {
     fieldsLoaded = false;
 }
-
 export function hasUnsavedFieldChanges() {
     return JSON.stringify(fieldDefinitions) !== JSON.stringify(originalFieldDefinitions);
 }
-
 export function discardFieldChanges() {
     fieldDefinitions = JSON.parse(JSON.stringify(originalFieldDefinitions));
     if (editMode) {
@@ -101,7 +92,6 @@ export function discardFieldChanges() {
     }
     renderFieldList();
 }
-
 /**
  * Flush any editing cells to state (call before checking unsaved changes).
  */
@@ -111,21 +101,18 @@ export function readFieldsFromDOM() {
         table.querySelectorAll('td.editing').forEach((td) => deactivateCellEdit(td));
     }
 }
-
 // --- Internal ---
-
 function onCellWrite(index, fieldName, input, tr) {
-    if (index >= fieldDefinitions.length || !fieldName) return;
-
+    if (index >= fieldDefinitions.length || !fieldName)
+        return;
     const value = input.tagName === 'INPUT' && input.type === 'checkbox' ? input.checked : input.value.trim();
-
-    // Handle format field: empty string → FORMAT_NONE
+    // Handle format field: empty string -> FORMAT_NONE
     if (fieldName === 'format') {
         fieldDefinitions[index].format = value === '' ? FORMAT_NONE : value;
-    } else {
+    }
+    else {
         fieldDefinitions[index][fieldName] = value;
     }
-
     // Auto-generate key from label for new fields
     if (fieldName === 'label') {
         const keyTd = tr.querySelector('td.col-key');
@@ -134,10 +121,10 @@ function onCellWrite(index, fieldName, input, tr) {
             keyInput.value = labelToCamelCase(input.value);
             fieldDefinitions[index].key = keyInput.value;
             const keyView = keyTd.querySelector('.cell-view code');
-            if (keyView) keyView.textContent = keyInput.value;
+            if (keyView)
+                keyView.textContent = keyInput.value;
         }
     }
-
     // When type changes, reset format if incompatible (FORMAT_NONE is always compatible)
     if (fieldName === 'type') {
         const currentFormat = fieldDefinitions[index].format;
@@ -150,21 +137,16 @@ function onCellWrite(index, fieldName, input, tr) {
         renderFieldList();
     }
 }
-
 /**
  * Get formats compatible with a given field type
- * @param {string} fieldType - The field type
- * @returns {Array<{key: string, label: string}>} Compatible formats
  */
 function getCompatibleFormats(fieldType) {
     return Object.entries(VALID_FIELD_FORMATS)
         .filter(([, def]) => def.compatibleTypes.includes(fieldType))
         .map(([key, def]) => ({ key, label: def.label }));
 }
-
 function renderFieldList() {
     fieldListEl.textContent = '';
-
     if (fieldDefinitions.length === 0) {
         const placeholder = document.createElement('div');
         placeholder.className = 'empty-placeholder';
@@ -180,11 +162,9 @@ function renderFieldList() {
         updateFieldsSaveBar();
         return;
     }
-
     const table = document.createElement('table');
     table.className = 'fields-table' + (editMode ? ' edit-mode' : '');
     table.id = 'fieldsTable';
-
     // Build thead
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
@@ -206,16 +186,14 @@ function renderFieldList() {
     });
     thead.appendChild(headerRow);
     table.appendChild(thead);
-
     // Build tbody
     const tbody = document.createElement('tbody');
     tbody.id = 'fieldListBody';
-
     fieldDefinitions.forEach((field, index) => {
         const tr = document.createElement('tr');
-        if (!field.enabled) tr.className = 'disabled';
-        tr.dataset.index = index;
-
+        if (!field.enabled)
+            tr.className = 'disabled';
+        tr.dataset.index = String(index);
         // Enabled column — toggle dot
         const tdEnabled = document.createElement('td');
         tdEnabled.className = 'col-enabled';
@@ -227,7 +205,6 @@ function renderFieldList() {
         }
         tdEnabled.appendChild(toggleIcon);
         tr.appendChild(tdEnabled);
-
         // Label column — click-to-edit
         const tdLabel = document.createElement('td');
         tdLabel.className = 'col-label cell-editable';
@@ -244,7 +221,6 @@ function renderFieldList() {
         labelEdit.appendChild(labelInput);
         tdLabel.appendChild(labelEdit);
         tr.appendChild(tdLabel);
-
         // Key column — click-to-edit (read-only for built-in or existing keys)
         const tdKey = document.createElement('td');
         const isKeyReadonly = field.builtIn || field.key !== '';
@@ -266,7 +242,6 @@ function renderFieldList() {
             tdKey.appendChild(keyEdit);
         }
         tr.appendChild(tdKey);
-
         // Type column — click-to-edit
         const tdType = document.createElement('td');
         tdType.className = 'col-type cell-editable';
@@ -288,7 +263,6 @@ function renderFieldList() {
         typeEdit.appendChild(typeSelect);
         tdType.appendChild(typeEdit);
         tr.appendChild(tdType);
-
         // Format column — click-to-edit (only for text/date types)
         const tdFormat = document.createElement('td');
         const hasFormats = getCompatibleFormats(field.type).length > 0;
@@ -299,7 +273,7 @@ function renderFieldList() {
             ? field.format === FORMAT_NONE
                 ? 'None'
                 : VALID_FIELD_FORMATS[field.format]?.label || field.format
-            : '—';
+            : '\u2014';
         tdFormat.appendChild(formatView);
         if (hasFormats) {
             const formatEdit = document.createElement('span');
@@ -322,7 +296,6 @@ function renderFieldList() {
             tdFormat.appendChild(formatEdit);
         }
         tr.appendChild(tdFormat);
-
         // Schema Hint column — click-to-edit
         const tdHint = document.createElement('td');
         tdHint.className = 'col-hint cell-editable';
@@ -340,7 +313,6 @@ function renderFieldList() {
         hintEdit.appendChild(hintTextarea);
         tdHint.appendChild(hintEdit);
         tr.appendChild(tdHint);
-
         // Instruction column — click-to-edit
         const tdInstruction = document.createElement('td');
         tdInstruction.className = 'col-instruction cell-editable';
@@ -358,26 +330,21 @@ function renderFieldList() {
         instrEdit.appendChild(instrTextarea);
         tdInstruction.appendChild(instrEdit);
         tr.appendChild(tdInstruction);
-
         // Actions column
         const tdActions = document.createElement('td');
         tdActions.className = 'col-actions';
         buildFieldActions(tdActions, index, field);
         tr.appendChild(tdActions);
-
         tbody.appendChild(tr);
     });
-
     table.appendChild(tbody);
     fieldListEl.appendChild(table);
-
     // Attach click-to-edit handlers only in edit mode
     if (editMode) {
         table.querySelectorAll('td.cell-editable').forEach((td) => {
             td.addEventListener('click', () => activateCellEdit(td));
         });
     }
-
     // Auto-generate key from label for new rows
     table.querySelectorAll('#fieldListBody tr').forEach((row) => {
         const keyEdit = row.querySelector('td.col-key .cell-edit input[data-field="key"]');
@@ -388,14 +355,11 @@ function renderFieldList() {
             });
         }
     });
-
     updateFieldsSaveBar();
 }
-
 function buildFieldActions(tdActions, index, field) {
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'row-actions';
-
     const moveUpBtn = document.createElement('button');
     moveUpBtn.className = 'btn-icon';
     moveUpBtn.title = 'Move up';
@@ -406,7 +370,6 @@ function buildFieldActions(tdActions, index, field) {
         moveField(index, -1);
     });
     actionsDiv.appendChild(moveUpBtn);
-
     const moveDownBtn = document.createElement('button');
     moveDownBtn.className = 'btn-icon';
     moveDownBtn.title = 'Move down';
@@ -417,7 +380,6 @@ function buildFieldActions(tdActions, index, field) {
         moveField(index, 1);
     });
     actionsDiv.appendChild(moveDownBtn);
-
     if (!field.builtIn) {
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn-icon btn-icon-danger';
@@ -429,10 +391,8 @@ function buildFieldActions(tdActions, index, field) {
         });
         actionsDiv.appendChild(deleteBtn);
     }
-
     tdActions.appendChild(actionsDiv);
 }
-
 function toggleEditMode() {
     if (editMode && hasUnsavedFieldChanges()) {
         if (!confirm('You have unsaved changes. Discard and exit edit mode?')) {
@@ -440,16 +400,15 @@ function toggleEditMode() {
         }
         fieldDefinitions = JSON.parse(JSON.stringify(originalFieldDefinitions));
     }
-
     editMode = !editMode;
     editToggleBtn.classList.toggle('active', editMode);
     editToggleBtn.querySelector('span').textContent = editMode ? 'Editing' : 'Locked';
     addFieldBtn.style.display = editMode ? 'inline-flex' : 'none';
     renderFieldList();
 }
-
 function addNewFieldRow() {
-    if (!editMode) toggleEditMode();
+    if (!editMode)
+        toggleEditMode();
     readFieldsFromDOM();
     fieldDefinitions.push({
         key: '',
@@ -460,56 +419,49 @@ function addNewFieldRow() {
         enabled: true
     });
     renderFieldList();
-
     const lastRow = document.querySelector('#fieldListBody tr:last-child');
     if (lastRow) {
         const labelTd = lastRow.querySelector('td.col-label');
-        if (labelTd) activateCellEdit(labelTd);
+        if (labelTd)
+            activateCellEdit(labelTd);
     }
 }
-
 function updateFieldsSaveBar() {
     fieldsSaveBar.style.display = hasUnsavedFieldChanges() ? 'flex' : 'none';
 }
-
 function labelToCamelCase(label) {
     return label
         .trim()
         .split(/\s+/)
         .map((word, i) => {
-            const lower = word.toLowerCase();
-            return i === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
-        })
+        const lower = word.toLowerCase();
+        return i === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
         .join('');
 }
-
 function toggleField(index) {
     fieldDefinitions[index].enabled = !fieldDefinitions[index].enabled;
     renderFieldList();
 }
-
 function moveField(index, direction) {
     const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= fieldDefinitions.length) return;
+    if (newIndex < 0 || newIndex >= fieldDefinitions.length)
+        return;
     const temp = fieldDefinitions[index];
     fieldDefinitions[index] = fieldDefinitions[newIndex];
     fieldDefinitions[newIndex] = temp;
     renderFieldList();
 }
-
 async function saveFieldDefinitions() {
     readFieldsFromDOM();
-
     if (fieldDefinitions.length === 0) {
         showAlert('At least one field definition is required', 'error');
         return;
     }
-
     const validTypes = VALID_FIELD_TYPES;
     for (let i = 0; i < fieldDefinitions.length; i++) {
         const field = fieldDefinitions[i];
         const rowNum = i + 1;
-
         if (!field.label) {
             showAlert(`Row ${rowNum}: label is required`, 'error');
             return;
@@ -519,10 +471,7 @@ async function saveFieldDefinitions() {
             return;
         }
         if (!/^[a-z][a-zA-Z0-9]*$/.test(field.key)) {
-            showAlert(
-                `Row ${rowNum}: key must start with a lowercase letter and contain only alphanumeric characters`,
-                'error'
-            );
+            showAlert(`Row ${rowNum}: key must start with a lowercase letter and contain only alphanumeric characters`, 'error');
             return;
         }
         if (!validTypes.includes(field.type)) {
@@ -537,14 +486,12 @@ async function saveFieldDefinitions() {
             showAlert(`Row ${rowNum}: instruction is required`, 'error');
             return;
         }
-
         const duplicateIndex = fieldDefinitions.findIndex((f, j) => j !== i && f.key === field.key);
         if (duplicateIndex !== -1) {
             showAlert(`Row ${rowNum}: duplicate key "${field.key}" (also in row ${duplicateIndex + 1})`, 'error');
             return;
         }
     }
-
     try {
         saveFieldsBtn.disabled = true;
         saveFieldsBtn.textContent = '';
@@ -552,15 +499,12 @@ async function saveFieldDefinitions() {
         spinner.className = 'spinner';
         saveFieldsBtn.appendChild(spinner);
         saveFieldsBtn.appendChild(document.createTextNode(' Saving...'));
-
         const response = await fetch('/api/config/fields', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ fieldDefinitions })
         });
-
         const result = await response.json();
-
         if (response.ok) {
             originalFieldDefinitions = JSON.parse(JSON.stringify(fieldDefinitions));
             if (editMode) {
@@ -571,12 +515,15 @@ async function saveFieldDefinitions() {
             }
             renderFieldList();
             showAlert(result.message || 'Field definitions saved', 'success');
-        } else {
+        }
+        else {
             showAlert(result.error || result.details || 'Failed to save fields', 'error');
         }
-    } catch (error) {
+    }
+    catch (error) {
         showAlert(`Failed to save fields: ${error.message}`, 'error');
-    } finally {
+    }
+    finally {
         saveFieldsBtn.disabled = false;
         saveFieldsBtn.textContent = '';
         const span = document.createElement('span');
@@ -584,3 +531,4 @@ async function saveFieldDefinitions() {
         saveFieldsBtn.appendChild(span);
     }
 }
+//# sourceMappingURL=field-editor.js.map

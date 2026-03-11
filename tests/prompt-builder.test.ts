@@ -1,0 +1,433 @@
+import {
+    buildExtractionPrompt,
+    parseGeminiResponse,
+    validateAnalysis,
+    resolveTagInstruction
+} from '../src/prompt-builder.js';
+
+describe('resolveTagInstruction', () => {
+    test('substitutes parameter templates', () => {
+        const tag = {
+            instruction: 'Check if address "{{address}}" appears',
+            parameters: { address: { label: 'Address', default: '123 Main St' } }
+        };
+        expect(resolveTagInstruction(tag as any)).toBe('Check if address "123 Main St" appears');
+    });
+
+    test('uses override values when provided', () => {
+        const tag = {
+            instruction: 'Check "{{address}}"',
+            parameters: { address: { label: 'Address', default: '123 Main St' } }
+        };
+        expect(resolveTagInstruction(tag as any, { address: '456 Oak Ave' })).toBe('Check "456 Oak Ave"');
+    });
+
+    test('returns instruction unchanged when no parameters', () => {
+        const tag = { instruction: 'Simple instruction' };
+        expect(resolveTagInstruction(tag as any)).toBe('Simple instruction');
+    });
+});
+
+describe('buildExtractionPrompt', () => {
+    const baseConfig: any = {
+        fieldDefinitions: [
+            {
+                key: 'supplierName',
+                label: 'Supplier',
+                type: 'text',
+                schemaHint: 'Full company/supplier name',
+                instruction: 'extract the supplier name',
+                enabled: true
+            },
+            {
+                key: 'totalAmount',
+                label: 'Amount',
+                type: 'number',
+                schemaHint: 'Total amount',
+                instruction: 'extract total amount',
+                enabled: true
+            }
+        ],
+        output: { filenameTemplate: '{supplierName}.pdf', includeSummary: false }
+    };
+
+    test('builds prompt with structured template', () => {
+        const config: any = {
+            ...baseConfig,
+            promptTemplate: {
+                preamble: 'Analyze this invoice:',
+                generalRules: 'Use Unknown for missing fields.',
+                suffix: 'Return valid JSON.'
+            }
+        };
+        const prompt = buildExtractionPrompt(config);
+        expect(prompt).toContain('Analyze this invoice:');
+        expect(prompt).toContain('Use Unknown for missing fields.');
+        expect(prompt).toContain('Return valid JSON.');
+        expect(prompt).toContain('supplierName');
+        expect(prompt).toContain('totalAmount');
+    });
+
+    test('uses rawPrompt when set', () => {
+        const config: any = {
+            ...baseConfig,
+            rawPrompt: 'This is my raw prompt'
+        };
+        expect(buildExtractionPrompt(config)).toBe('This is my raw prompt');
+    });
+
+    test('includes field instructions for enabled fields only', () => {
+        const config: any = {
+            ...baseConfig,
+            fieldDefinitions: [
+                {
+                    key: 'supplierName',
+                    label: 'Supplier',
+                    type: 'text',
+                    schemaHint: 'string',
+                    instruction: 'extract the supplier name',
+                    enabled: true
+                },
+                {
+                    key: 'amount',
+                    label: 'Amount',
+                    type: 'number',
+                    schemaHint: 'number',
+                    instruction: 'extract total amount',
+                    enabled: true
+                },
+                {
+                    key: 'notes',
+                    label: 'Notes',
+                    type: 'text',
+                    schemaHint: 'string',
+                    instruction: 'extract notes',
+                    enabled: false
+                }
+            ]
+        };
+        const prompt = buildExtractionPrompt(config);
+        expect(prompt).toContain('extract the supplier name');
+        expect(prompt).toContain('extract total amount');
+        expect(prompt).not.toContain('extract notes');
+    });
+
+    test('includes tag instructions when tagDefinitions present', () => {
+        const config: any = {
+            ...baseConfig,
+            tagDefinitions: [
+                { id: 'private', label: 'Private', instruction: 'Set true if private', enabled: true },
+                { id: 'urgent', label: 'Urgent', instruction: 'Set true if urgent', enabled: false }
+            ]
+        };
+        const prompt = buildExtractionPrompt(config);
+        expect(prompt).toContain('tags.private');
+        expect(prompt).toContain('Set true if private');
+        expect(prompt).not.toContain('tags.urgent');
+    });
+
+    test('includes summary instruction when enabled', () => {
+        const config: any = {
+            ...baseConfig,
+            output: { ...baseConfig.output, includeSummary: true }
+        };
+        const prompt = buildExtractionPrompt(config);
+        expect(prompt).toContain('summary');
+    });
+
+    describe('fieldFilter option', () => {
+        const filterConfig: any = {
+            ...baseConfig,
+            fieldDefinitions: [
+                {
+                    key: 'supplierName',
+                    label: 'Supplier',
+                    type: 'text',
+                    schemaHint: 'string',
+                    instruction: 'extract supplier name',
+                    enabled: true
+                },
+                {
+                    key: 'totalAmount',
+                    label: 'Amount',
+                    type: 'number',
+                    schemaHint: 'number',
+                    instruction: 'extract total amount',
+                    enabled: true
+                },
+                {
+                    key: 'currency',
+                    label: 'Currency',
+                    type: 'text',
+                    schemaHint: 'string',
+                    instruction: 'extract currency',
+                    enabled: true
+                }
+            ],
+            tagDefinitions: [
+                { id: 'private', label: 'Private', instruction: 'Set true if private', enabled: true },
+                { id: 'receipt', label: 'Receipt', instruction: 'Set true if receipt', enabled: true },
+                { id: 'disabled_tag', label: 'Disabled', instruction: 'Never shown', enabled: false }
+            ],
+            output: { ...baseConfig.output, includeSummary: true }
+        };
+
+        test('filters to specified fields only', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { fields: ['supplierName', 'currency'] }
+            });
+            expect(prompt).toContain('supplierName');
+            expect(prompt).toContain('currency');
+            expect(prompt).not.toContain('extract total amount');
+        });
+
+        test('filters to specified tags only', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { tags: ['receipt'] }
+            });
+            expect(prompt).toContain('tags.receipt');
+            expect(prompt).not.toContain('tags.private');
+        });
+
+        test('excludes summary when fieldFilter.includeSummary is false', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { includeSummary: false }
+            });
+            expect(prompt).not.toContain('summary');
+        });
+
+        test('includes summary when fieldFilter.includeSummary is true', () => {
+            const noSummaryConfig: any = {
+                ...filterConfig,
+                output: { ...filterConfig.output, includeSummary: false }
+            };
+            const prompt = buildExtractionPrompt(noSummaryConfig, {
+                fieldFilter: { includeSummary: true }
+            });
+            expect(prompt).toContain('summary');
+        });
+
+        test('does not filter disabled fields into results', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { tags: ['disabled_tag'] }
+            });
+            expect(prompt).not.toContain('tags.disabled_tag');
+        });
+
+        test('returns all enabled fields when fieldFilter.fields is omitted', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { tags: ['private'] }
+            });
+            expect(prompt).toContain('supplierName');
+            expect(prompt).toContain('totalAmount');
+            expect(prompt).toContain('currency');
+        });
+
+        test('returns all enabled tags when fieldFilter.tags is omitted', () => {
+            const prompt = buildExtractionPrompt(filterConfig, {
+                fieldFilter: { fields: ['supplierName'] }
+            });
+            expect(prompt).toContain('tags.private');
+            expect(prompt).toContain('tags.receipt');
+        });
+
+        test('backward compatible — no options acts like original', () => {
+            const withOptions = buildExtractionPrompt(filterConfig, {});
+            const without = buildExtractionPrompt(filterConfig);
+            expect(withOptions).toBe(without);
+        });
+    });
+});
+
+describe('parseGeminiResponse', () => {
+    test('parses plain JSON', () => {
+        const result = parseGeminiResponse('{"supplierName": "Acme"}');
+        expect(result).toEqual({ supplierName: 'Acme' });
+    });
+
+    test('strips markdown code fences', () => {
+        const result = parseGeminiResponse('```json\n{"supplierName": "Acme"}\n```');
+        expect(result).toEqual({ supplierName: 'Acme' });
+    });
+
+    test('strips plain code fences', () => {
+        const result = parseGeminiResponse('```\n{"supplierName": "Acme"}\n```');
+        expect(result).toEqual({ supplierName: 'Acme' });
+    });
+
+    test('throws on invalid JSON', () => {
+        expect(() => parseGeminiResponse('not json')).toThrow('Failed to parse Gemini response');
+    });
+
+    describe('useJsonMode', () => {
+        test('parses raw JSON directly', () => {
+            const result = parseGeminiResponse('{"supplierName": "Acme"}', { useJsonMode: true });
+            expect(result).toEqual({ supplierName: 'Acme' });
+        });
+
+        test('does not strip markdown fences when enabled', () => {
+            expect(() => parseGeminiResponse('```json\n{"supplierName": "Acme"}\n```', { useJsonMode: true })).toThrow(
+                'Failed to parse Gemini response'
+            );
+        });
+
+        test('still strips markdown fences when disabled', () => {
+            const result = parseGeminiResponse('```json\n{"supplierName": "Acme"}\n```', {
+                useJsonMode: false
+            });
+            expect(result).toEqual({ supplierName: 'Acme' });
+        });
+    });
+});
+
+describe('validateAnalysis', () => {
+    test('fills missing fields with type-appropriate defaults', () => {
+        const config: any = {
+            fieldDefinitions: [
+                { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true },
+                { key: 'amount', label: 'Amount', type: 'number', schemaHint: 'n', instruction: 'i', enabled: true },
+                { key: 'flag', label: 'Flag', type: 'boolean', schemaHint: 'b', instruction: 'i', enabled: true },
+                { key: 'items', label: 'Items', type: 'array', schemaHint: 'a', instruction: 'i', enabled: true }
+            ]
+        };
+        const result = validateAnalysis({}, config);
+        expect(result.name).toBe('Unknown');
+        expect(result.amount).toBe(0);
+        expect(result.flag).toBe(false);
+        expect(result.items).toEqual([]);
+    });
+
+    test('preserves existing values', () => {
+        const config: any = {
+            fieldDefinitions: [
+                { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true }
+            ]
+        };
+        const result = validateAnalysis({ name: 'Acme' }, config);
+        expect(result.name).toBe('Acme');
+    });
+
+    test('falls back paymentDate to invoiceDate', () => {
+        const config: any = {
+            fieldDefinitions: [
+                {
+                    key: 'paymentDate',
+                    label: 'Pay Date',
+                    type: 'date',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                },
+                {
+                    key: 'invoiceDate',
+                    label: 'Inv Date',
+                    type: 'date',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ invoiceDate: '20240115' }, config);
+        expect(result.paymentDate).toBe('20240115');
+    });
+
+    test('ensures tag booleans default to false', () => {
+        const config: any = {
+            fieldDefinitions: [],
+            tagDefinitions: [
+                { id: 'private', label: 'Private', instruction: 'i', enabled: true },
+                { id: 'urgent', label: 'Urgent', instruction: 'i', enabled: true }
+            ]
+        };
+        const result = validateAnalysis({ tags: { private: true } }, config);
+        expect(result.tags!.private).toBe(true);
+        expect(result.tags!.urgent).toBe(false);
+    });
+
+    test('auto-corrects format values (iso4217 lowercase)', () => {
+        const config: any = {
+            fieldDefinitions: [
+                {
+                    key: 'currency',
+                    label: 'Currency',
+                    type: 'text',
+                    format: 'iso4217',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ currency: 'eur' }, config);
+        expect(result.currency).toBe('EUR');
+    });
+
+    test('auto-corrects iso8601 datetime to date-only', () => {
+        const config: any = {
+            fieldDefinitions: [
+                {
+                    key: 'invoiceDate',
+                    label: 'Date',
+                    type: 'date',
+                    format: 'iso8601',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ invoiceDate: '2024-01-15T10:30:00Z' }, config);
+        expect(result.invoiceDate).toBe('2024-01-15');
+    });
+
+    test('adds _formatWarnings for invalid format values', () => {
+        const config: any = {
+            fieldDefinitions: [
+                {
+                    key: 'currency',
+                    label: 'Currency',
+                    type: 'text',
+                    format: 'iso4217',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ currency: 'INVALID' }, config);
+        expect(result.currency).toBe('INVALID');
+        expect(result._formatWarnings).toHaveLength(1);
+        expect(result._formatWarnings![0].field).toBe('currency');
+    });
+
+    test('no _formatWarnings when all values are valid', () => {
+        const config: any = {
+            fieldDefinitions: [
+                {
+                    key: 'currency',
+                    label: 'Currency',
+                    type: 'text',
+                    format: 'iso4217',
+                    schemaHint: 's',
+                    instruction: 'i',
+                    enabled: true
+                }
+            ]
+        };
+        const result = validateAnalysis({ currency: 'USD' }, config);
+        expect(result.currency).toBe('USD');
+        expect(result._formatWarnings).toBeUndefined();
+    });
+
+    test('skips format validation for fields without format', () => {
+        const config: any = {
+            fieldDefinitions: [
+                { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true }
+            ]
+        };
+        const result = validateAnalysis({ name: 'anything' }, config);
+        expect(result.name).toBe('anything');
+        expect(result._formatWarnings).toBeUndefined();
+    });
+});

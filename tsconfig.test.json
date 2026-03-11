@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "Node16",
+        "rootDir": ".",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "noEmit": true,
+        "types": ["jest"]
+    },
+    "include": ["tests/**/*.ts", "src/**/*.ts", "server.ts"],
+    "exclude": ["src/frontend/**"]
+}

@@ -1,7 +1,6 @@
 // Shared application state — imported by all modules that need cross-module state.
 // Each editor module owns its own local state (definitions, editMode, etc.).
 // This module only holds state that multiple modules need to read/write.
-
 export const app = {
     clients: [],
     isProcessing: false,
@@ -10,3 +9,4 @@ export const app = {
     editingClientId: null,
     deleteClientId: null
 };
+//# sourceMappingURL=state.js.map

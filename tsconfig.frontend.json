@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ES2022",
+        "moduleResolution": "bundler",
+        "outDir": "./public",
+        "rootDir": "./src/frontend",
+        "strict": true,
+        "skipLibCheck": true,
+        "declaration": true,
+        "declarationDir": "./public",
+        "sourceMap": true,
+        "composite": true,
+        "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    },
+    "include": ["src/frontend/**/*.ts"]
+}

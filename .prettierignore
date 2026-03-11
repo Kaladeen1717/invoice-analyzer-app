@@ -6,3 +6,6 @@ test-invoices/
 clients/
 config.json
 package-lock.json
+dist/
+public/modules/*.js
+public/app.js

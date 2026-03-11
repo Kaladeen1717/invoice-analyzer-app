@@ -45,3 +45,15 @@ npm-debug.log*
 
 # Personal setup playbook (not project docs)
 setup.md
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
+# Compiled frontend (source in src/frontend/)
+public/app.js
+public/app.js.map
+public/app.d.ts
+public/modules/*.js
+public/modules/*.js.map
+public/modules/*.d.ts
