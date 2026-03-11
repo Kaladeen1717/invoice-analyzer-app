@@ -10,18 +10,20 @@ alwaysApply: true
 
 Node.js/Express app that analyzes invoice PDFs using Gemini Vision API. Multi-client support with web Admin UI and CLI batch processing.
 
-- **Entry points**: `server.js` (web server), `batch-process.js` (CLI)
-- **Business logic**: `src/` modules (processor, parallel-processor, client-manager, config, csv-logger, prompt-builder, filename-generator)
-- **Web UI**: `public/` (index.html, app.js, styles.css)
-- **Client configs**: `clients/*.json` (per-client settings)
-- **Runtime**: Node.js v18+, CommonJS modules
+- **Entry points**: `server.ts` (web server), `batch-process.ts` (CLI)
+- **Business logic**: `src/` modules (processor, parallel-processor, client-manager, config, csv-logger, prompt-builder, filename-generator, result-manager)
+- **Type definitions**: `src/types/` (config.ts, client.ts, processing.ts, index.ts)
+- **Frontend source**: `src/frontend/` (TypeScript, compiled by `tsc` to `public/`)
+- **Web UI output**: `public/` (compiled JS + HTML + CSS — do not edit `.js` files directly)
+- **Client configs**: `clients/*.json` (per-client settings, gitignored)
+- **Runtime**: Node.js v20+, TypeScript ESM (`import`/`export`), compiled via `tsx`
 
 ## Linear Ticket Workflow
 
 This project uses Linear for task management. Team prefix: **INV** (e.g., INV-1, INV-2).
 
 **Commit format**: `{type}(INV-{number}): {description}`
-- Types: `feat`, `fix`, `improve`, `chore`, `docs`, `refactor`, `test`
+- Types: `feat`, `fix`, `improve`, `chore`, `docs`, `refactor`, `test`, `research`
 - Example: `feat(INV-12): add multi-currency support`
 
 **Branch format**: `{type}/INV-{number}-{short-description}`
@@ -31,23 +33,36 @@ For work without a ticket, omit the scope: `chore: update .gitignore`
 
 ## Coding Conventions
 
-- CommonJS (`require` / `module.exports`) — not ES modules
-- Express route handlers in `server.js`, logic in `src/` modules
-- Error handling: try-catch with meaningful error messages
+- TypeScript ESM (`import` / `export`) — not CommonJS
+- All relative imports must use `.js` extension: `import { foo } from './bar.js'`
+- Use `import.meta.url` + `fileURLToPath` instead of `__dirname`/`__filename`
+- Express route handlers in `server.ts`, logic in `src/` modules
+- Type all function parameters and return types using shared types from `src/types/`
+- Error handling: try-catch, cast errors: `(error as Error).message`
 - Config: `.env` for secrets, `config.json` for app settings, `clients/*.json` for client configs
 - Never commit `.env` or `config.json`
+- Path sanitization: always use `sanitize-filename` + `safeJoin` on user input before building file paths
+- Frontend DOM: `createElement`/`textContent`/`appendChild` — never use `innerHTML`
 
 ## File Organization
 
-- `src/` — Core business logic modules
-- `public/` — Static web UI (HTML, JS, CSS)
-- `clients/` — Per-client JSON configuration files
-- `scripts/` — One-off migration/utility scripts
+- `src/` — Core backend business logic modules (TypeScript)
+- `src/types/` — Shared TypeScript type definitions
+- `src/frontend/` — Frontend TypeScript source (compiled to `public/`)
+- `public/` — Compiled frontend output (HTML, JS, CSS) — `.js` files are build artifacts
+- `clients/` — Per-client JSON configuration files (gitignored)
+- `scripts/` — Utility TypeScript scripts (run via `npx tsx`)
+- `tests/` — Jest unit tests + Supertest API tests
 - `docs/` — Developer documentation
+- `dist/` — Compiled backend output (gitignored)
 
 ## Testing Changes
 
-- Server: `npm start` then open `http://localhost:3000`
-- CLI: `node batch-process.js --list` (list clients) or `node batch-process.js` (process)
+- Dev server: `npm run dev` (auto-restarts via `tsx watch`)
+- Build frontend: `npm run build:frontend`
+- CLI: `npx tsx batch-process.ts --list` (list clients) or `npx tsx batch-process.ts` (process)
+- Pre-commit: `npm run typecheck && npm run lint && npm run format:check && npm test && npx knip`
 - Validate JSON config changes against `config.json.example`
 - Do not modify client JSON files without explicit user request
+
+See `CLAUDE.md` for full architecture, module dependencies, and development guides.

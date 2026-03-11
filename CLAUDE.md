@@ -10,6 +10,15 @@ Local application that analyzes invoice PDFs using Google's Gemini Vision API. S
 - **Backend**: TypeScript with ESM (`import`/`export`), compiled via `tsx`
 - **Frontend**: TypeScript source in `src/frontend/`, compiled to `public/` ES Modules
 
+## Environment Variables
+
+| Variable         | Required | Description                                |
+| ---------------- | -------- | ------------------------------------------ |
+| `GEMINI_API_KEY` | Yes      | Google AI Studio API key for Gemini Vision |
+| `PORT`           | No       | Server port (default: 3000)                |
+
+Per-client API keys: set `apiKeyEnvVar` in client config to use a different env var (e.g., `"apiKeyEnvVar": "CLIENT_GEMINI_KEY"`).
+
 ## Tech Stack
 
 - `typescript` — Type-safe development across backend, frontend, and scripts

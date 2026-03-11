@@ -71,3 +71,42 @@ export function discardMyChanges(): void {
     /* revert edits */
 }
 ```
+
+## Path Sanitization
+
+All functions that build file paths from user input (clientId, backupId, label) must use two layers:
+
+```ts
+import sanitize from 'sanitize-filename'; // Layer 1: CodeQL-recognized sanitizer
+import { safeJoin } from './constants.js'; // Layer 2: path.resolve + startsWith check
+
+const filePath = safeJoin(baseDir, `${sanitize(userInput)}.json`);
+```
+
+Apply both layers whenever constructing a path from any user-controlled value (URL params, query strings, request body).
+
+## SSE Streaming
+
+SSE endpoints follow this pattern:
+
+```ts
+res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive'
+});
+
+// Send events
+res.write(`data: ${JSON.stringify(payload)}\n\n`);
+
+// Track active processing via Map to prevent duplicate runs
+activeProcessing.set(key, true);
+
+// Clean up on completion
+activeProcessing.delete(key);
+res.end();
+```
+
+## Rate Limiting
+
+Apply `processingLimiter` middleware (defined in `server.ts`) to routes that do file I/O or heavy processing. Current config: 30 requests per 60 seconds per IP.
