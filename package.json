@@ -29,7 +29,9 @@
                     "useESM": false,
                     "tsconfig": "tsconfig.test.json",
                     "diagnostics": {
-                        "ignoreCodes": [151002]
+                        "ignoreCodes": [
+                            151002
+                        ]
                     }
                 }
             ],
