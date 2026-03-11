@@ -166,7 +166,8 @@ export function parseGeminiResponse(
         return JSON.parse(jsonText) as Record<string, unknown>;
     } catch (error: unknown) {
         throw new Error(
-            `Failed to parse Gemini response as JSON: ${(error as Error).message}\nResponse was: ${jsonText.substring(0, 200)}...`
+            `Failed to parse Gemini response as JSON: ${(error as Error).message}\nResponse was: ${jsonText.substring(0, 200)}...`,
+            { cause: error }
         );
     }
 }

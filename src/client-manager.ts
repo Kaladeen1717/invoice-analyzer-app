@@ -64,7 +64,9 @@ export async function discoverClientFiles(): Promise<ClientsConfig | null> {
                 if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
                     continue;
                 }
-                throw new Error(`Failed to load client config "${file}": ${(error as Error).message}`);
+                throw new Error(`Failed to load client config "${file}": ${(error as Error).message}`, {
+                    cause: error
+                });
             }
         }
 
@@ -171,7 +173,7 @@ export async function loadClientsConfig(): Promise<ClientsConfig | null> {
             // clients.json doesn't exist - return null to signal single-client mode
             return null;
         }
-        throw new Error(`Failed to load clients.json: ${(error as Error).message}`);
+        throw new Error(`Failed to load clients.json: ${(error as Error).message}`, { cause: error });
     }
 }
 
@@ -434,7 +436,7 @@ export async function updateClient(clientId: string, config: Record<string, unkn
         await fs.promises.access(filePath);
     } catch (error: unknown) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            throw new Error(`Client "${clientId}" not found`);
+            throw new Error(`Client "${clientId}" not found`, { cause: error });
         }
         throw error;
     }
@@ -462,7 +464,7 @@ export async function deleteClient(clientId: string): Promise<void> {
         await fs.promises.unlink(filePath);
     } catch (error: unknown) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            throw new Error(`Client "${clientId}" not found`);
+            throw new Error(`Client "${clientId}" not found`, { cause: error });
         }
         throw error;
     }
@@ -699,7 +701,8 @@ export async function saveClientOverrides(clientId: string, section: string, dat
         const content = await fs.promises.readFile(filePath, 'utf-8');
         config = JSON.parse(content) as Record<string, unknown>;
     } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+            throw new Error(`Client "${clientId}" not found`, { cause: error });
         throw error;
     }
 
@@ -744,7 +747,8 @@ export async function removeClientOverrides(clientId: string, section: string): 
         const content = await fs.promises.readFile(filePath, 'utf-8');
         config = JSON.parse(content) as Record<string, unknown>;
     } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+            throw new Error(`Client "${clientId}" not found`, { cause: error });
         throw error;
     }
 

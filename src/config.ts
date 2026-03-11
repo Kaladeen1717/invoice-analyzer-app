@@ -78,7 +78,8 @@ export async function loadConfig(options: { requireFolders?: boolean } = {}): Pr
     } catch (error: unknown) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             throw new Error(
-                `Configuration file not found: ${configPath}\nPlease copy config.json.example to config.json and update the paths.`
+                `Configuration file not found: ${configPath}\nPlease copy config.json.example to config.json and update the paths.`,
+                { cause: error }
             );
         }
         throw error;
@@ -455,7 +456,7 @@ export async function exportConfig(scope: string): Promise<ExportBundle> {
                     data = { clientId, config: JSON.parse(await fs.promises.readFile(clientPath, 'utf-8')) };
                 } catch (err: unknown) {
                     if ((err as NodeJS.ErrnoException).code === 'ENOENT')
-                        throw new Error(`Client "${clientId}" not found`);
+                        throw new Error(`Client "${clientId}" not found`, { cause: err });
                     throw err;
                 }
             } else {
