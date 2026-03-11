@@ -28,7 +28,9 @@
                 {
                     "useESM": false,
                     "tsconfig": "tsconfig.test.json",
-                    "diagnostics": false
+                    "diagnostics": {
+                        "ignoreCodes": [151002]
+                    }
                 }
             ],
             "node_modules/(p-limit|yocto-queue)/.+\\.js$": [

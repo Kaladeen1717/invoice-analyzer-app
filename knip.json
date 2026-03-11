@@ -1,7 +1,6 @@
 {
     "$schema": "https://unpkg.com/knip@5/schema.json",
-    "entry": ["batch-process.ts", "scripts/*.ts", "tests/**/*.test.ts", "server.ts"],
-    "project": ["src/**/*.ts", "tests/**/*.ts"],
-    "ignore": ["src/frontend/**"],
+    "entry": ["batch-process.ts", "scripts/*.ts", "tests/**/*.test.ts"],
+    "project": ["src/**/*.ts", "!src/frontend/**", "tests/**/*.ts"],
     "exclude": ["exports", "types"]
 }
