@@ -3,6 +3,7 @@
 A local application that analyzes invoice PDFs using Google's Gemini Vision API. Supports multi-client management with both a web-based Admin UI and CLI for batch processing.
 
 **Default model:** `gemini-3-flash-preview` (configurable per-client via the Admin UI)
+**Stack:** TypeScript (backend + frontend), Express.js, compiled via tsx/tsc
 
 ## Features
 
@@ -20,7 +21,7 @@ A local application that analyzes invoice PDFs using Google's Gemini Vision API.
 
 ## Prerequisites
 
-- Node.js v18 or higher (tested on 18 and 20)
+- Node.js v20 or higher (tested on 20 and 22)
 - Google AI Studio API Key ([get one here](https://aistudio.google.com/apikey))
 
 ## Setup
@@ -49,6 +50,12 @@ A local application that analyzes invoice PDFs using Google's Gemini Vision API.
     npm start
     ```
 
+    For development (auto-restarts on changes):
+
+    ```bash
+    npm run dev
+    ```
+
 4. **Open Admin UI**
 
     Navigate to http://localhost:3000
@@ -70,13 +77,13 @@ The web interface at `http://localhost:3000` provides:
 
 ```bash
 # List all configured clients
-node batch-process.js --list
+npx tsx batch-process.ts --list
 
 # Process all enabled clients
-node batch-process.js
+npx tsx batch-process.ts
 
 # Process a specific client
-node batch-process.js --client <client-id>
+npx tsx batch-process.ts --client <client-id>
 ```
 
 ## Client Configuration

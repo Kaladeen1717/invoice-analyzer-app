@@ -32,10 +32,11 @@ This folder contains individual configuration files for each client. Each `.json
 | Field | Type | Description |
 |-------|------|-------------|
 | `apiKeyEnvVar` | string | Environment variable name for client-specific Gemini API key. Falls back to `GEMINI_API_KEY` if not set |
+| `model` | string | Override global model selection (e.g., `"gemini-3-flash-preview"`) |
+| `fieldOverrides` | object | Per-field overrides (enable/disable, customize extraction behavior) |
 | `tagOverrides` | object | Per-client overrides for global tag definitions (parameter values and enabled state) |
-| `extraction` | object | Override global extraction settings (replaces entirely, does not merge) |
-| `output` | object | Override global output settings (replaces entirely, does not merge) |
-| `documentTypes` | array | Override global document types |
+| `promptOverride` | object | Override global prompt template (partial override, merged with global) |
+| `outputOverride` | object | Override global output settings (partial override, merged with global) |
 
 ## Example: Basic Client
 
@@ -55,13 +56,15 @@ This folder contains individual configuration files for each client. Each `.json
 }
 ```
 
-## Example: Client with Custom Extraction
+## Example: Client with Overrides
 
 ```json
 {
   "name": "Beta Industries",
   "enabled": true,
   "folderPath": "/Users/john/Documents/Beta/Invoices",
+  "apiKeyEnvVar": "BETA_GEMINI_API_KEY",
+  "model": "gemini-3-flash-preview",
   "tagOverrides": {
     "private": {
       "parameters": {
@@ -69,10 +72,9 @@ This folder contains individual configuration files for each client. Each `.json
       }
     }
   },
-  "apiKeyEnvVar": "BETA_GEMINI_API_KEY",
-  "extraction": {
-    "fields": ["supplierName", "invoiceDate", "totalAmount", "currency"],
-    "includeSummary": false
+  "fieldOverrides": {
+    "totalAmount": { "enabled": true },
+    "vatNumber": { "enabled": false }
   }
 }
 ```
@@ -104,13 +106,13 @@ The easiest way to manage clients is through the Admin UI at `http://localhost:3
 
 ```bash
 # List all configured clients
-node batch-process.js --list
+npx tsx batch-process.ts --list
 
 # Process all enabled clients
-node batch-process.js
+npx tsx batch-process.ts
 
 # Process a specific client
-node batch-process.js --client {client-id}
+npx tsx batch-process.ts --client {client-id}
 ```
 
 ## Migration from Legacy Format
@@ -119,8 +121,8 @@ If you have an existing `clients.json` file, run the migration script:
 
 ```bash
 # Preview changes
-node scripts/migrate-clients.js --dry-run
+npx tsx scripts/migrate-clients.ts --dry-run
 
 # Run migration
-node scripts/migrate-clients.js
+npx tsx scripts/migrate-clients.ts
 ```

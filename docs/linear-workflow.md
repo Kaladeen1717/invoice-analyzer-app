@@ -1,5 +1,7 @@
 # Linear Workflow — Invoice Analyzer App
 
+> **Note:** The authoritative rules are in `.claude/rules/linear-workflow.md`. This file is a human-readable summary.
+
 ## Overview
 
 This project uses [Linear](https://linear.app) for development task management. All planned work is tracked as Linear issues, referenced in commits and branches.
@@ -32,6 +34,7 @@ This project uses [Linear](https://linear.app) for development task management. 
 | `improvement` | Enhancement to an existing feature        |
 | `chore`       | Maintenance, dependencies, config updates |
 | `docs`        | Documentation changes                     |
+| `research`    | Exploration and investigation work        |
 
 ## Priorities
 
@@ -84,15 +87,16 @@ Cursor does not have direct Linear access. When working in Cursor:
 
 Format: `{type}(INV-{number}): {description}`
 
-| Type       | Meaning                                |
-| ---------- | -------------------------------------- |
-| `feat`     | New capability                         |
-| `fix`      | Bug fix                                |
-| `improve`  | Enhancement to existing feature        |
-| `chore`    | Maintenance, dependencies, config      |
-| `docs`     | Documentation changes                  |
-| `refactor` | Code restructuring, no behavior change |
-| `test`     | Adding or updating tests               |
+| Type       | Meaning                                  |
+| ---------- | ---------------------------------------- |
+| `feat`     | New capability                           |
+| `fix`      | Bug fix                                  |
+| `improve`  | Enhancement to existing feature          |
+| `chore`    | Maintenance, dependencies, config        |
+| `docs`     | Documentation changes                    |
+| `refactor` | Code restructuring, no behavior change   |
+| `test`     | Adding or updating tests                 |
+| `research` | Documentation artifacts from exploration |
 
 Examples:
 
