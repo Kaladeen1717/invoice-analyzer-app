@@ -1,41 +1,56 @@
 // Prompt Template Editor module
 // Manages the global prompt template (structured + raw mode, preview, save).
+
 import { showAlert } from './ui-utils.js';
+
 // --- State ---
-let promptTemplate = { preamble: '', generalRules: '', suffix: '' };
-let originalPromptTemplate = { preamble: '', generalRules: '', suffix: '' };
-let rawPrompt = null;
-let originalRawPrompt = null;
+let promptTemplate: { preamble: string; generalRules: string; suffix: string } = {
+    preamble: '',
+    generalRules: '',
+    suffix: ''
+};
+let originalPromptTemplate: { preamble: string; generalRules: string; suffix: string } = {
+    preamble: '',
+    generalRules: '',
+    suffix: ''
+};
+let rawPrompt: string | null = null;
+let originalRawPrompt: string | null = null;
 let promptRawMode = false;
 let promptLoaded = false;
-let promptPreviewDebounceTimer = null;
+let promptPreviewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 // --- DOM refs (set in init) ---
-let promptPreambleInput;
-let promptGeneralRulesInput;
-let promptSuffixInput;
-let promptRawTextInput;
-let promptStructuredMode;
-let promptRawModeEl;
-let rawEditToggleBtn;
-let promptPreviewEl;
-let promptPreviewLength;
-let promptSaveBar;
-let savePromptBtn;
+let promptPreambleInput: HTMLTextAreaElement;
+let promptGeneralRulesInput: HTMLTextAreaElement;
+let promptSuffixInput: HTMLTextAreaElement;
+let promptRawTextInput: HTMLTextAreaElement;
+let promptStructuredMode: HTMLElement;
+let promptRawModeEl: HTMLElement;
+let rawEditToggleBtn: HTMLElement;
+let promptPreviewEl: HTMLElement;
+let promptPreviewLength: HTMLElement;
+let promptSaveBar: HTMLElement;
+let savePromptBtn: HTMLButtonElement;
+
 // --- Public API ---
-export function initPromptEditor() {
-    promptPreambleInput = document.getElementById('promptPreamble');
-    promptGeneralRulesInput = document.getElementById('promptGeneralRules');
-    promptSuffixInput = document.getElementById('promptSuffix');
-    promptRawTextInput = document.getElementById('promptRawText');
-    promptStructuredMode = document.getElementById('promptStructuredMode');
-    promptRawModeEl = document.getElementById('promptRawMode');
-    rawEditToggleBtn = document.getElementById('rawEditToggleBtn');
-    promptPreviewEl = document.getElementById('promptPreview');
-    promptPreviewLength = document.getElementById('promptPreviewLength');
-    promptSaveBar = document.getElementById('promptSaveBar');
-    savePromptBtn = document.getElementById('savePromptBtn');
-    const reloadPromptBtn = document.getElementById('reloadPromptBtn');
-    const discardPromptBtn = document.getElementById('discardPromptBtn');
+
+export function initPromptEditor(): void {
+    promptPreambleInput = document.getElementById('promptPreamble') as HTMLTextAreaElement;
+    promptGeneralRulesInput = document.getElementById('promptGeneralRules') as HTMLTextAreaElement;
+    promptSuffixInput = document.getElementById('promptSuffix') as HTMLTextAreaElement;
+    promptRawTextInput = document.getElementById('promptRawText') as HTMLTextAreaElement;
+    promptStructuredMode = document.getElementById('promptStructuredMode')!;
+    promptRawModeEl = document.getElementById('promptRawMode')!;
+    rawEditToggleBtn = document.getElementById('rawEditToggleBtn')!;
+    promptPreviewEl = document.getElementById('promptPreview')!;
+    promptPreviewLength = document.getElementById('promptPreviewLength')!;
+    promptSaveBar = document.getElementById('promptSaveBar')!;
+    savePromptBtn = document.getElementById('savePromptBtn') as HTMLButtonElement;
+
+    const reloadPromptBtn = document.getElementById('reloadPromptBtn')!;
+    const discardPromptBtn = document.getElementById('discardPromptBtn')!;
+
     // Event listeners
     reloadPromptBtn.addEventListener('click', () => {
         promptLoaded = false;
@@ -44,6 +59,7 @@ export function initPromptEditor() {
     rawEditToggleBtn.addEventListener('click', toggleRawEditMode);
     savePromptBtn.addEventListener('click', savePromptTemplate);
     discardPromptBtn.addEventListener('click', discardPromptChanges);
+
     // Live preview on input
     promptPreambleInput.addEventListener('input', () => {
         updatePromptPreview();
@@ -62,71 +78,78 @@ export function initPromptEditor() {
         updatePromptSaveBar();
     });
 }
-export function isPromptLoaded() {
+
+export function isPromptLoaded(): boolean {
     return promptLoaded;
 }
-export function invalidatePrompt() {
+
+export function invalidatePrompt(): void {
     promptLoaded = false;
 }
-export async function loadPromptTemplate() {
+
+export async function loadPromptTemplate(): Promise<void> {
     try {
         const response = await fetch('/api/config/prompt');
         const data = await response.json();
+
         if (response.ok) {
             promptTemplate = data.promptTemplate || { preamble: '', generalRules: '', suffix: '' };
             originalPromptTemplate = JSON.parse(JSON.stringify(promptTemplate));
             rawPrompt = data.rawPrompt || null;
             originalRawPrompt = rawPrompt;
             promptLoaded = true;
+
             if (rawPrompt) {
                 promptRawMode = true;
                 rawEditToggleBtn.classList.add('active');
-                rawEditToggleBtn.querySelector('span').textContent = 'Structured';
+                rawEditToggleBtn.querySelector('span')!.textContent = 'Structured';
                 promptStructuredMode.style.display = 'none';
                 promptRawModeEl.style.display = 'block';
                 promptRawTextInput.value = rawPrompt;
-            }
-            else {
+            } else {
                 promptRawMode = false;
                 rawEditToggleBtn.classList.remove('active');
-                rawEditToggleBtn.querySelector('span').textContent = 'Raw Edit';
+                rawEditToggleBtn.querySelector('span')!.textContent = 'Raw Edit';
                 promptStructuredMode.style.display = 'block';
                 promptRawModeEl.style.display = 'none';
                 promptPreambleInput.value = promptTemplate.preamble || '';
                 promptGeneralRulesInput.value = promptTemplate.generalRules || '';
                 promptSuffixInput.value = promptTemplate.suffix || '';
             }
+
             updatePromptPreview();
             updatePromptSaveBar();
         }
-    }
-    catch (error) {
-        showAlert('Failed to load prompt template: ' + error.message, 'error');
+    } catch (error) {
+        showAlert('Failed to load prompt template: ' + (error as Error).message, 'error');
     }
 }
-export function hasUnsavedPromptChanges() {
+
+export function hasUnsavedPromptChanges(): boolean {
     if (promptRawMode) {
         const currentRaw = promptRawTextInput.value;
         return currentRaw !== (originalRawPrompt || '');
     }
-    return (promptPreambleInput.value !== (originalPromptTemplate.preamble || '') ||
+    return (
+        promptPreambleInput.value !== (originalPromptTemplate.preamble || '') ||
         promptGeneralRulesInput.value !== (originalPromptTemplate.generalRules || '') ||
-        promptSuffixInput.value !== (originalPromptTemplate.suffix || ''));
+        promptSuffixInput.value !== (originalPromptTemplate.suffix || '')
+    );
 }
-export function discardPromptChanges() {
+
+export function discardPromptChanges(): void {
     if (originalRawPrompt) {
         promptRawMode = true;
         rawEditToggleBtn.classList.add('active');
-        rawEditToggleBtn.querySelector('span').textContent = 'Structured';
+        rawEditToggleBtn.querySelector('span')!.textContent = 'Structured';
         promptStructuredMode.style.display = 'none';
         promptRawModeEl.style.display = 'block';
         promptRawTextInput.value = originalRawPrompt;
         rawPrompt = originalRawPrompt;
-    }
-    else {
+    } else {
         promptRawMode = false;
         rawEditToggleBtn.classList.remove('active');
-        rawEditToggleBtn.querySelector('span').textContent = 'Raw Edit';
+        rawEditToggleBtn.querySelector('span')!.textContent = 'Raw Edit';
         promptStructuredMode.style.display = 'block';
         promptRawModeEl.style.display = 'none';
         promptTemplate = JSON.parse(JSON.stringify(originalPromptTemplate));
@@ -138,44 +161,44 @@ export function discardPromptChanges() {
     updatePromptPreview();
     updatePromptSaveBar();
 }
+
 // --- Internal ---
-function toggleRawEditMode() {
+
+function toggleRawEditMode(): void {
     if (promptRawMode) {
         promptRawMode = false;
         rawEditToggleBtn.classList.remove('active');
-        rawEditToggleBtn.querySelector('span').textContent = 'Raw Edit';
+        rawEditToggleBtn.querySelector('span')!.textContent = 'Raw Edit';
         promptStructuredMode.style.display = 'block';
         promptRawModeEl.style.display = 'none';
         promptPreambleInput.value = promptTemplate.preamble || '';
         promptGeneralRulesInput.value = promptTemplate.generalRules || '';
         promptSuffixInput.value = promptTemplate.suffix || '';
-    }
-    else {
+    } else {
         promptRawMode = true;
         rawEditToggleBtn.classList.add('active');
-        rawEditToggleBtn.querySelector('span').textContent = 'Structured';
+        rawEditToggleBtn.querySelector('span')!.textContent = 'Structured';
         promptStructuredMode.style.display = 'none';
         promptRawModeEl.style.display = 'block';
         const previewCode = promptPreviewEl.querySelector('code');
         if (rawPrompt) {
             promptRawTextInput.value = rawPrompt;
-        }
-        else if (previewCode) {
+        } else if (previewCode) {
             promptRawTextInput.value = previewCode.textContent || '';
         }
     }
     updatePromptPreview();
     updatePromptSaveBar();
 }
-function updatePromptPreview() {
-    clearTimeout(promptPreviewDebounceTimer);
+
+function updatePromptPreview(): void {
+    clearTimeout(promptPreviewDebounceTimer!);
     promptPreviewDebounceTimer = setTimeout(async () => {
         try {
-            let previewText;
+            let previewText: string;
             if (promptRawMode) {
                 previewText = promptRawTextInput.value || '(empty)';
-            }
-            else {
+            } else {
                 const templateOverride = {
                     preamble: promptPreambleInput.value,
                     generalRules: promptGeneralRulesInput.value,
@@ -189,25 +212,26 @@ function updatePromptPreview() {
                 const data = await response.json();
                 previewText = data.preview || '(empty)';
             }
+
             const code = promptPreviewEl.querySelector('code');
-            if (code)
-                code.textContent = previewText;
+            if (code) code.textContent = previewText;
             promptPreviewLength.textContent = previewText.length + ' chars';
-        }
-        catch (error) {
+        } catch (error) {
             const code = promptPreviewEl.querySelector('code');
-            if (code)
-                code.textContent = 'Error loading preview: ' + error.message;
+            if (code) code.textContent = 'Error loading preview: ' + (error as Error).message;
         }
     }, 300);
 }
-function updatePromptSaveBar() {
+
+function updatePromptSaveBar(): void {
     promptSaveBar.style.display = hasUnsavedPromptChanges() ? 'flex' : 'none';
 }
-async function savePromptTemplate() {
+
+async function savePromptTemplate(): Promise<void> {
     try {
         savePromptBtn.disabled = true;
         savePromptBtn.textContent = 'Saving...';
+
         if (promptRawMode) {
             const rawText = promptRawTextInput.value.trim();
             if (!rawText) {
@@ -224,12 +248,10 @@ async function savePromptTemplate() {
                 rawPrompt = rawText;
                 originalRawPrompt = rawText;
                 showAlert(result.message || 'Raw prompt saved', 'success');
-            }
-            else {
+            } else {
                 showAlert(result.error || 'Failed to save raw prompt', 'error');
             }
-        }
-        else {
+        } else {
             const template = {
                 preamble: promptPreambleInput.value.trim(),
                 generalRules: promptGeneralRulesInput.value.trim(),
@@ -251,19 +273,15 @@ async function savePromptTemplate() {
                 rawPrompt = null;
                 originalRawPrompt = null;
                 showAlert(result.message || 'Prompt template saved', 'success');
-            }
-            else {
+            } else {
                 showAlert(result.error || result.details || 'Failed to save prompt template', 'error');
             }
         }
         updatePromptSaveBar();
-    }
-    catch (error) {
-        showAlert('Failed to save prompt: ' + error.message, 'error');
-    }
-    finally {
+    } catch (error) {
+        showAlert('Failed to save prompt: ' + (error as Error).message, 'error');
+    } finally {
         savePromptBtn.disabled = false;
         savePromptBtn.textContent = 'Save Changes';
     }
 }
-//# sourceMappingURL=prompt-editor.js.map

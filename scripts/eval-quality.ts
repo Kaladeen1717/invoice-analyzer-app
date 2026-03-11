@@ -7,10 +7,10 @@
  * Calls the real Gemini API (or uses cached responses in --dry-run mode).
  *
  * Usage:
- *   node scripts/eval-quality.js                  # Run full evaluation
- *   node scripts/eval-quality.js --dry-run        # Use cached API responses
- *   node scripts/eval-quality.js --invoice foo.pdf # Evaluate a single invoice
- *   node scripts/eval-quality.js --verbose         # Show per-field details
+ *   npx tsx scripts/eval-quality.ts                  # Run full evaluation
+ *   npx tsx scripts/eval-quality.ts --dry-run        # Use cached API responses
+ *   npx tsx scripts/eval-quality.ts --invoice foo.pdf # Evaluate a single invoice
+ *   npx tsx scripts/eval-quality.ts --verbose         # Show per-field details
  *
  * Ground truth files: tests/fixtures/eval-corpus/<name>.truth.json
  * Invoice PDFs:       tests/fixtures/eval-corpus/<name>.pdf
@@ -18,26 +18,132 @@
  * Results output:     tests/fixtures/eval-results/<timestamp>.json
  */
 
-require('dotenv').config();
-const fs = require('fs').promises;
-const path = require('path');
+import 'dotenv/config';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import type { AppConfig } from '../src/types/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const CORPUS_DIR = path.join(__dirname, '..', 'tests', 'fixtures', 'eval-corpus');
 const RESULTS_DIR = path.join(__dirname, '..', 'tests', 'fixtures', 'eval-results');
 
 // ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ParsedArgs {
+    dryRun: boolean;
+    verbose: boolean;
+    invoice: string | null;
+}
+
+interface CorpusEntry {
+    name: string;
+    pdfPath: string;
+    truthPath: string;
+    cachePath: string;
+}
+
+interface TokenUsage {
+    promptTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+}
+
+interface ExtractionResult {
+    analysis: Record<string, unknown>;
+    tokenUsage: TokenUsage;
+    duration?: number;
+    fromCache: boolean;
+}
+
+interface ScoreResult {
+    match: string;
+    score?: number;
+    reason?: string;
+}
+
+interface EvaluationResult {
+    fields: Record<string, ScoreResult>;
+    tags: Record<string, ScoreResult>;
+    accuracy: number;
+    scoredFields: number;
+    hallucinations: number;
+    hallucinationRate: number;
+}
+
+interface InvoiceResult {
+    name: string;
+    extraction: {
+        analysis: Record<string, unknown>;
+        tokenUsage: TokenUsage;
+        duration?: number;
+        fromCache: boolean;
+    };
+    truth: Record<string, unknown>;
+    evaluation: EvaluationResult;
+}
+
+interface FieldAccuracyData {
+    scores: number[];
+    total: number;
+    correct: number;
+    wrong: number;
+    missing: number;
+    accuracy?: number;
+}
+
+interface TagAccuracyData {
+    scores: number[];
+    total: number;
+    correct: number;
+    wrong: number;
+    accuracy?: number;
+}
+
+interface AggregateResult {
+    overallAccuracy: number;
+    invoiceCount: number;
+    totalScoredFields: number;
+    totalHallucinations: number;
+    hallucinationRate: number;
+    fieldAccuracy: Record<string, FieldAccuracyData>;
+    tagAccuracy: Record<string, TagAccuracyData>;
+}
+
+interface FieldDefinition {
+    key: string;
+    type: string;
+    enabled: boolean;
+}
+
+interface TagDefinition {
+    id: string;
+    enabled: boolean;
+}
+
+interface Config {
+    model?: string;
+    fieldDefinitions: FieldDefinition[];
+    tagDefinitions?: TagDefinition[];
+}
+
+// ---------------------------------------------------------------------------
 // Argument parsing
 // ---------------------------------------------------------------------------
 
-function parseArgs() {
+function parseArgs(): ParsedArgs {
     const args = process.argv.slice(2);
-    const opts = { dryRun: false, verbose: false, invoice: null };
+    const opts: ParsedArgs = { dryRun: false, verbose: false, invoice: null };
     for (let i = 0; i < args.length; i++) {
         if (args[i] === '--dry-run') opts.dryRun = true;
         else if (args[i] === '--verbose') opts.verbose = true;
         else if (args[i] === '--invoice' && args[i + 1]) opts.invoice = args[++i];
         else if (args[i] === '--help') {
-            console.log('Usage: node scripts/eval-quality.js [--dry-run] [--verbose] [--invoice <name.pdf>]');
+            console.log('Usage: npx tsx scripts/eval-quality.ts [--dry-run] [--verbose] [--invoice <name.pdf>]');
             process.exit(0);
         }
     }
@@ -48,11 +154,11 @@ function parseArgs() {
 // Corpus discovery
 // ---------------------------------------------------------------------------
 
-async function discoverCorpus(invoiceFilter) {
+async function discoverCorpus(invoiceFilter: string | null): Promise<CorpusEntry[]> {
     const files = await fs.readdir(CORPUS_DIR);
     const pdfFiles = files.filter((f) => f.endsWith('.pdf'));
 
-    const corpus = [];
+    const corpus: CorpusEntry[] = [];
     for (const pdf of pdfFiles) {
         const baseName = pdf.replace(/\.pdf$/, '');
         const truthFile = `${baseName}.truth.json`;
@@ -81,13 +187,16 @@ async function discoverCorpus(invoiceFilter) {
 // Extraction (real API or cached)
 // ---------------------------------------------------------------------------
 
-async function extractInvoice(entry, config, dryRun) {
+async function extractInvoice(entry: CorpusEntry, config: Config, dryRun: boolean): Promise<ExtractionResult | null> {
     if (dryRun) {
         try {
-            const cached = JSON.parse(await fs.readFile(entry.cachePath, 'utf-8'));
-            return { analysis: cached.analysis, tokenUsage: cached.tokenUsage || {}, fromCache: true };
+            const cached = JSON.parse(await fs.readFile(entry.cachePath, 'utf-8')) as {
+                analysis: Record<string, unknown>;
+                tokenUsage?: TokenUsage;
+            };
+            return { analysis: cached.analysis, tokenUsage: cached.tokenUsage || ({} as TokenUsage), fromCache: true };
         } catch (err) {
-            if (err.code === 'ENOENT') {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
                 console.error(`  No cache for ${entry.name} — skipping (run without --dry-run first)`);
                 return null;
             }
@@ -96,14 +205,14 @@ async function extractInvoice(entry, config, dryRun) {
     }
 
     // Real API call
-    const { analyzeInvoice } = require('../src/processor');
+    const { analyzeInvoice } = await import('../src/processor.js');
     const startTime = Date.now();
-    const result = await analyzeInvoice(entry.pdfPath, config);
+    const result = await analyzeInvoice(entry.pdfPath, config as unknown as AppConfig);
     const duration = Date.now() - startTime;
 
     // Separate token usage from analysis
-    const { _tokenUsage, ...analysis } = result;
-    const tokenUsage = _tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const { _tokenUsage, ...analysis } = result as Record<string, unknown>;
+    const tokenUsage = (_tokenUsage as TokenUsage) || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
 
     // Cache the response for future --dry-run
     const cacheData = { analysis, tokenUsage, duration, cachedAt: new Date().toISOString() };
@@ -116,7 +225,7 @@ async function extractInvoice(entry, config, dryRun) {
 // Scoring functions
 // ---------------------------------------------------------------------------
 
-function scoreTextField(extracted, expected) {
+function scoreTextField(extracted: unknown, expected: unknown): ScoreResult {
     if (expected === 'Unknown' || expected === undefined || expected === null) {
         return { match: 'skip', reason: 'no ground truth' };
     }
@@ -140,12 +249,12 @@ function scoreTextField(extracted, expected) {
     return { match: 'wrong', score: 0.0, reason: `got "${extracted}", expected "${expected}"` };
 }
 
-function scoreNumberField(extracted, expected) {
+function scoreNumberField(extracted: unknown, expected: unknown): ScoreResult {
     if (expected === 0 || expected === undefined || expected === null) {
         return { match: 'skip', reason: 'no ground truth' };
     }
-    const ext = typeof extracted === 'number' ? extracted : parseFloat(extracted);
-    const exp = typeof expected === 'number' ? expected : parseFloat(expected);
+    const ext = typeof extracted === 'number' ? extracted : parseFloat(extracted as string);
+    const exp = typeof expected === 'number' ? expected : parseFloat(expected as string);
     if (isNaN(ext) || isNaN(exp)) {
         return { match: 'wrong', score: 0.0, reason: `parse error` };
     }
@@ -153,12 +262,12 @@ function scoreNumberField(extracted, expected) {
         return { match: 'exact', score: 1.0 };
     }
     if (Math.abs(ext - exp) <= 0.01) {
-        return { match: 'tolerance', score: 0.95, reason: `within ±0.01` };
+        return { match: 'tolerance', score: 0.95, reason: `within \u00b10.01` };
     }
     return { match: 'wrong', score: 0.0, reason: `got ${ext}, expected ${exp}` };
 }
 
-function scoreDateField(extracted, expected) {
+function scoreDateField(extracted: unknown, expected: unknown): ScoreResult {
     if (expected === 'Unknown' || expected === undefined || expected === null) {
         return { match: 'skip', reason: 'no ground truth' };
     }
@@ -171,7 +280,7 @@ function scoreDateField(extracted, expected) {
     return { match: 'wrong', score: 0.0, reason: `got "${extracted}", expected "${expected}"` };
 }
 
-function scoreBooleanField(extracted, expected) {
+function scoreBooleanField(extracted: unknown, expected: unknown): ScoreResult {
     if (expected === undefined || expected === null) {
         return { match: 'skip', reason: 'no ground truth' };
     }
@@ -181,7 +290,7 @@ function scoreBooleanField(extracted, expected) {
     return { match: 'wrong', score: 0.0, reason: `got ${extracted}, expected ${expected}` };
 }
 
-function scoreField(extracted, expected, fieldDef) {
+function scoreField(extracted: unknown, expected: unknown, fieldDef: FieldDefinition): ScoreResult {
     switch (fieldDef.type) {
         case 'number':
             return scoreNumberField(extracted, expected);
@@ -197,7 +306,7 @@ function scoreField(extracted, expected, fieldDef) {
     }
 }
 
-function scoreTag(extracted, expected) {
+function scoreTag(extracted: unknown, expected: unknown): ScoreResult {
     if (expected === undefined || expected === null) {
         return { match: 'skip', reason: 'no ground truth' };
     }
@@ -208,8 +317,12 @@ function scoreTag(extracted, expected) {
 // Evaluate a single invoice
 // ---------------------------------------------------------------------------
 
-function evaluateInvoice(analysis, truth, config) {
-    const fieldResults = {};
+function evaluateInvoice(
+    analysis: Record<string, unknown>,
+    truth: Record<string, unknown>,
+    config: Config
+): EvaluationResult {
+    const fieldResults: Record<string, ScoreResult> = {};
     const enabledFields = config.fieldDefinitions.filter((f) => f.enabled);
 
     for (const field of enabledFields) {
@@ -218,12 +331,14 @@ function evaluateInvoice(analysis, truth, config) {
         }
     }
 
-    const tagResults = {};
+    const tagResults: Record<string, ScoreResult> = {};
     if (truth.tags && analysis.tags) {
         const enabledTags = (config.tagDefinitions || []).filter((t) => t.enabled);
         for (const tag of enabledTags) {
-            if (truth.tags[tag.id] !== undefined) {
-                tagResults[tag.id] = scoreTag(analysis.tags[tag.id], truth.tags[tag.id]);
+            const truthTags = truth.tags as Record<string, unknown>;
+            const analysisTags = analysis.tags as Record<string, unknown>;
+            if (truthTags[tag.id] !== undefined) {
+                tagResults[tag.id] = scoreTag(analysisTags[tag.id], truthTags[tag.id]);
             }
         }
     }
@@ -231,7 +346,7 @@ function evaluateInvoice(analysis, truth, config) {
     // Compute aggregate score
     const allScores = [...Object.values(fieldResults), ...Object.values(tagResults)].filter((r) => r.match !== 'skip');
 
-    const totalScore = allScores.reduce((sum, r) => sum + r.score, 0);
+    const totalScore = allScores.reduce((sum, r) => sum + (r.score || 0), 0);
     const accuracy = allScores.length > 0 ? totalScore / allScores.length : 0;
 
     // Hallucination rate: confident wrong answers (not "Unknown" or 0, but wrong)
@@ -253,17 +368,17 @@ function evaluateInvoice(analysis, truth, config) {
 // Aggregation
 // ---------------------------------------------------------------------------
 
-function aggregateResults(invoiceResults) {
-    const fieldAccuracy = {};
-    const tagAccuracy = {};
+function aggregateResults(invoiceResults: InvoiceResult[]): AggregateResult {
+    const fieldAccuracy: Record<string, FieldAccuracyData> = {};
+    const tagAccuracy: Record<string, TagAccuracyData> = {};
 
     for (const result of invoiceResults) {
         for (const [key, score] of Object.entries(result.evaluation.fields)) {
             if (!fieldAccuracy[key]) fieldAccuracy[key] = { scores: [], total: 0, correct: 0, wrong: 0, missing: 0 };
             if (score.match === 'skip') continue;
             fieldAccuracy[key].total++;
-            fieldAccuracy[key].scores.push(score.score);
-            if (score.score >= 0.9) fieldAccuracy[key].correct++;
+            fieldAccuracy[key].scores.push(score.score || 0);
+            if ((score.score || 0) >= 0.9) fieldAccuracy[key].correct++;
             else if (score.match === 'missing') fieldAccuracy[key].missing++;
             else fieldAccuracy[key].wrong++;
         }
@@ -272,8 +387,8 @@ function aggregateResults(invoiceResults) {
             if (!tagAccuracy[key]) tagAccuracy[key] = { scores: [], total: 0, correct: 0, wrong: 0 };
             if (score.match === 'skip') continue;
             tagAccuracy[key].total++;
-            tagAccuracy[key].scores.push(score.score);
-            if (score.score >= 0.9) tagAccuracy[key].correct++;
+            tagAccuracy[key].scores.push(score.score || 0);
+            if ((score.score || 0) >= 0.9) tagAccuracy[key].correct++;
             else tagAccuracy[key].wrong++;
         }
     }
@@ -282,12 +397,12 @@ function aggregateResults(invoiceResults) {
     for (const field of Object.values(fieldAccuracy)) {
         field.accuracy =
             field.total > 0 ? Math.round((field.scores.reduce((a, b) => a + b, 0) / field.total) * 1000) / 1000 : 0;
-        delete field.scores;
+        delete (field as Partial<FieldAccuracyData>).scores;
     }
     for (const tag of Object.values(tagAccuracy)) {
         tag.accuracy =
             tag.total > 0 ? Math.round((tag.scores.reduce((a, b) => a + b, 0) / tag.total) * 1000) / 1000 : 0;
-        delete tag.scores;
+        delete (tag as Partial<TagAccuracyData>).scores;
     }
 
     const overallScores = invoiceResults.map((r) => r.evaluation.accuracy);
@@ -314,7 +429,7 @@ function aggregateResults(invoiceResults) {
 // Display
 // ---------------------------------------------------------------------------
 
-function displayResults(invoiceResults, aggregate, verbose) {
+function displayResults(invoiceResults: InvoiceResult[], aggregate: AggregateResult, verbose: boolean): void {
     console.log('\n' + '='.repeat(70));
     console.log('EXTRACTION QUALITY EVALUATION');
     console.log('='.repeat(70));
@@ -326,22 +441,26 @@ function displayResults(invoiceResults, aggregate, verbose) {
 
     // Per-field accuracy table
     console.log('\n--- Field Accuracy ---');
-    const fields = Object.entries(aggregate.fieldAccuracy).sort(([, a], [, b]) => a.accuracy - b.accuracy);
+    const fields = Object.entries(aggregate.fieldAccuracy).sort(
+        ([, a], [, b]) => (a.accuracy || 0) - (b.accuracy || 0)
+    );
     for (const [key, data] of fields) {
-        const bar = '█'.repeat(Math.round(data.accuracy * 20)).padEnd(20, '░');
+        const bar = '\u2588'.repeat(Math.round((data.accuracy || 0) * 20)).padEnd(20, '\u2591');
         console.log(
-            `  ${key.padEnd(25)} ${bar} ${(data.accuracy * 100).toFixed(0).padStart(4)}%  (${data.correct}/${data.total} correct, ${data.wrong} wrong, ${data.missing} missing)`
+            `  ${key.padEnd(25)} ${bar} ${((data.accuracy || 0) * 100).toFixed(0).padStart(4)}%  (${data.correct}/${data.total} correct, ${data.wrong} wrong, ${data.missing} missing)`
         );
     }
 
     // Per-tag accuracy table
     if (Object.keys(aggregate.tagAccuracy).length > 0) {
         console.log('\n--- Tag Accuracy ---');
-        const tags = Object.entries(aggregate.tagAccuracy).sort(([, a], [, b]) => a.accuracy - b.accuracy);
+        const tags = Object.entries(aggregate.tagAccuracy).sort(
+            ([, a], [, b]) => (a.accuracy || 0) - (b.accuracy || 0)
+        );
         for (const [key, data] of tags) {
-            const bar = '█'.repeat(Math.round(data.accuracy * 20)).padEnd(20, '░');
+            const bar = '\u2588'.repeat(Math.round((data.accuracy || 0) * 20)).padEnd(20, '\u2591');
             console.log(
-                `  ${key.padEnd(25)} ${bar} ${(data.accuracy * 100).toFixed(0).padStart(4)}%  (${data.correct}/${data.total} correct, ${data.wrong} wrong)`
+                `  ${key.padEnd(25)} ${bar} ${((data.accuracy || 0) * 100).toFixed(0).padStart(4)}%  (${data.correct}/${data.total} correct, ${data.wrong} wrong)`
             );
         }
     }
@@ -353,13 +472,13 @@ function displayResults(invoiceResults, aggregate, verbose) {
             console.log(`\n  ${result.name} — accuracy: ${(result.evaluation.accuracy * 100).toFixed(1)}%`);
             for (const [key, score] of Object.entries(result.evaluation.fields)) {
                 if (score.match === 'skip') continue;
-                const icon = score.score >= 0.9 ? '✓' : score.match === 'missing' ? '?' : '✗';
+                const icon = (score.score || 0) >= 0.9 ? '\u2713' : score.match === 'missing' ? '?' : '\u2717';
                 const detail = score.reason ? ` (${score.reason})` : '';
                 console.log(`    ${icon} ${key}: ${score.match}${detail}`);
             }
             for (const [key, score] of Object.entries(result.evaluation.tags)) {
                 if (score.match === 'skip') continue;
-                const icon = score.score >= 0.9 ? '✓' : '✗';
+                const icon = (score.score || 0) >= 0.9 ? '\u2713' : '\u2717';
                 const detail = score.reason ? ` (${score.reason})` : '';
                 console.log(`    ${icon} tags.${key}: ${score.match}${detail}`);
             }
@@ -373,15 +492,15 @@ function displayResults(invoiceResults, aggregate, verbose) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+async function main(): Promise<void> {
     const opts = parseArgs();
 
     console.log('Extraction Quality Evaluation');
     console.log(`Mode: ${opts.dryRun ? 'dry-run (cached responses)' : 'live (calling Gemini API)'}`);
 
     // Load config
-    const { loadConfig } = require('../src/config');
-    const config = await loadConfig({ requireFolders: false });
+    const { loadConfig } = await import('../src/config.js');
+    const config = (await loadConfig({ requireFolders: false })) as unknown as Config;
 
     // Discover corpus
     const corpus = await discoverCorpus(opts.invoice);
@@ -407,11 +526,11 @@ async function main() {
     console.log(`\nFound ${corpus.length} invoice(s) with ground truth\n`);
 
     // Process each invoice
-    const invoiceResults = [];
+    const invoiceResults: InvoiceResult[] = [];
     for (const entry of corpus) {
         process.stdout.write(`  Processing ${entry.name}...`);
 
-        const truth = JSON.parse(await fs.readFile(entry.truthPath, 'utf-8'));
+        const truth = JSON.parse(await fs.readFile(entry.truthPath, 'utf-8')) as Record<string, unknown>;
         const extraction = await extractInvoice(entry, config, opts.dryRun);
 
         if (!extraction) {
@@ -462,7 +581,7 @@ async function main() {
     console.log(`\nResults saved to: ${resultPath}`);
 }
 
-main().catch((err) => {
+main().catch((err: Error) => {
     console.error('Evaluation failed:', err.message);
     process.exit(1);
 });

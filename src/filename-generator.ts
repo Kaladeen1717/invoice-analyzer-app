@@ -2,8 +2,10 @@
  * Template-based filename generation for processed invoices
  */
 
-const path = require('path');
-const fs = require('fs').promises;
+import path from 'node:path';
+import fs from 'node:fs';
+
+import type { AppConfig, TagDefinition } from './types/index.js';
 
 // Characters that are illegal in filenames across different operating systems
 // eslint-disable-next-line no-control-regex
@@ -15,15 +17,15 @@ const MAX_FILENAME_LENGTH = 200;
 /**
  * Sanitize a string for use in a filename
  * Keeps spaces and common punctuation, removes only illegal characters
- * @param {string} str - The string to sanitize
- * @returns {string} The sanitized string
+ * @param str - The string to sanitize
+ * @returns The sanitized string
  */
-function sanitizeForFilename(str) {
+export function sanitizeForFilename(str: unknown): string {
     if (str === undefined || str === null) {
         return 'Unknown';
     }
 
-    let sanitized = String(str)
+    const sanitized = String(str)
         .replace(ILLEGAL_CHARS, '') // Remove illegal characters
         .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
         .trim();
@@ -39,10 +41,10 @@ function sanitizeForFilename(str) {
 /**
  * Convert date to ISO 8601 (YYYY-MM-DD) format
  * Accepts both YYYYMMDD (legacy) and YYYY-MM-DD (ISO) input
- * @param {string} dateStr - Date in YYYYMMDD or YYYY-MM-DD format
- * @returns {string} Date in YYYY-MM-DD format
+ * @param dateStr - Date in YYYYMMDD or YYYY-MM-DD format
+ * @returns Date in YYYY-MM-DD format
  */
-function formatDateForDisplay(dateStr) {
+export function formatDateForDisplay(dateStr: unknown): string {
     if (!dateStr || dateStr === 'Unknown') {
         return 'Unknown';
     }
@@ -64,21 +66,21 @@ function formatDateForDisplay(dateStr) {
         return `${year}-${month}-${day}`;
     }
 
-    return dateStr;
+    return str;
 }
 
 /**
  * Generate a filename from a template and analysis data
- * @param {string} template - The filename template (e.g., "{supplierName} - {paymentDate}.pdf")
- * @param {Object} analysis - The extracted invoice data
- * @returns {string} The generated filename
+ * @param template - The filename template (e.g., "{supplierName} - {paymentDate}.pdf")
+ * @param analysis - The extracted invoice data
+ * @returns The generated filename
  */
-function generateFilename(template, analysis) {
+export function generateFilename(template: string, analysis: Record<string, unknown>): string {
     let filename = template;
 
     // Replace all placeholders with their values
     const placeholderRegex = /\{(\w+)\}/g;
-    filename = filename.replace(placeholderRegex, (match, fieldName) => {
+    filename = filename.replace(placeholderRegex, (_match: string, fieldName: string) => {
         const value = analysis[fieldName];
         return sanitizeForFilename(value);
     });
@@ -100,11 +102,11 @@ function generateFilename(template, analysis) {
 
 /**
  * Handle duplicate filenames by appending (1), (2), etc.
- * @param {string} outputDir - The output directory
- * @param {string} filename - The desired filename
- * @returns {Promise<string>} The unique filename
+ * @param outputDir - The output directory
+ * @param filename - The desired filename
+ * @returns The unique filename
  */
-async function getUniqueFilename(outputDir, filename) {
+export async function getUniqueFilename(outputDir: string, filename: string): Promise<string> {
     const ext = path.extname(filename);
     const baseName = path.basename(filename, ext);
 
@@ -114,7 +116,7 @@ async function getUniqueFilename(outputDir, filename) {
     while (true) {
         try {
             const fullPath = path.join(outputDir, uniqueFilename);
-            await fs.access(fullPath);
+            await fs.promises.access(fullPath);
             // File exists, try next number
             uniqueFilename = `${baseName} (${counter})${ext}`;
             counter++;
@@ -129,11 +131,11 @@ async function getUniqueFilename(outputDir, filename) {
 
 /**
  * Apply format-driven formatting to a value
- * @param {string} format - The format key (e.g., 'iso4217', 'iso8601')
- * @param {*} value - The value to format
- * @returns {string|null} The formatted value, or null if no format-specific logic applies
+ * @param format - The format key (e.g., 'iso4217', 'iso8601')
+ * @param value - The value to format
+ * @returns The formatted value, or null if no format-specific logic applies
  */
-function applyFormatForFilename(format, value) {
+export function applyFormatForFilename(format: string, value: unknown): string | null {
     if (!format || !value || value === 'Unknown') return null;
     const str = String(value);
     switch (format) {
@@ -151,13 +153,18 @@ function applyFormatForFilename(format, value) {
 /**
  * Format a value for display in the filename
  * Handles special formatting for different field types
- * @param {string} fieldName - The name of the field
- * @param {*} value - The value to format
- * @param {Object} analysis - Full analysis object for context
- * @param {string} [format] - Optional format key from field definition
- * @returns {string} The formatted value
+ * @param fieldName - The name of the field
+ * @param value - The value to format
+ * @param analysis - Full analysis object for context
+ * @param format - Optional format key from field definition
+ * @returns The formatted value
  */
-function formatFieldValue(fieldName, value, analysis = {}, format) {
+export function formatFieldValue(
+    fieldName: string,
+    value: unknown,
+    analysis: Record<string, unknown> = {},
+    format?: string
+): string {
     // Try format-driven logic first (if format is provided and field has a value)
     if (format) {
         const fieldValue = analysis[fieldName] !== undefined ? analysis[fieldName] : value;
@@ -168,46 +175,47 @@ function formatFieldValue(fieldName, value, analysis = {}, format) {
     switch (fieldName) {
         case 'totalAmount': {
             const numValue = analysis.totalAmount !== undefined ? analysis.totalAmount : value;
-            const num = parseFloat(numValue);
+            const num = parseFloat(numValue as string);
             if (isNaN(num)) return '0';
             return Number.isInteger(num) ? String(num) : num.toFixed(2);
         }
 
         case 'invoiceDate':
         case 'paymentDate': {
-            const rawDateValue = analysis[fieldName] || value;
+            const rawDateValue = (analysis[fieldName] || value) as string;
             if (!rawDateValue || rawDateValue === 'Unknown') return 'Unknown';
             return formatDateForDisplay(rawDateValue);
         }
 
         case 'paymentDateFormatted': {
-            const paymentDateRaw = analysis.paymentDate;
+            const paymentDateRaw = analysis.paymentDate as string;
             if (!paymentDateRaw || paymentDateRaw === 'Unknown') return 'Unknown';
             return formatDateForDisplay(paymentDateRaw);
         }
 
         case 'invoiceDateFormatted': {
-            const invoiceDateRaw = analysis.invoiceDate;
+            const invoiceDateRaw = analysis.invoiceDate as string;
             if (!invoiceDateRaw || invoiceDateRaw === 'Unknown') return 'Unknown';
             return formatDateForDisplay(invoiceDateRaw);
         }
 
         case 'invoiceDateIfDifferent': {
-            const payDate = analysis.paymentDate;
-            const invDate = analysis.invoiceDate;
+            const payDate = analysis.paymentDate as string;
+            const invDate = analysis.invoiceDate as string;
             if (!invDate || invDate === 'Unknown') return '';
             if (payDate === invDate) return '';
             return ' - ' + formatDateForDisplay(invDate);
         }
 
         case 'currency': {
-            const currencyValue = analysis.currency || value;
+            const currencyValue = (analysis.currency || value) as string;
             if (!currencyValue || currencyValue === 'Unknown') return 'Unknown';
             return String(currencyValue).toUpperCase();
         }
 
         case 'privateTag': {
-            const isPrivate = (analysis.tags && analysis.tags.private) || analysis.isPrivate;
+            const tags = analysis.tags as Record<string, boolean> | undefined;
+            const isPrivate = (tags && tags.private) || analysis.isPrivate;
             return isPrivate ? ' - PRIVATE' : '';
         }
 
@@ -231,22 +239,26 @@ function formatFieldValue(fieldName, value, analysis = {}, format) {
 
 /**
  * Generate filename with formatted field values
- * @param {string} template - The filename template
- * @param {Object} analysis - The extracted invoice data
- * @param {Object} [config] - Optional config for tag definitions
- * @returns {string} The generated filename
+ * @param template - The filename template
+ * @param analysis - The extracted invoice data
+ * @param config - Optional config for tag definitions
+ * @returns The generated filename
  */
-function generateFormattedFilename(template, analysis, config) {
+export function generateFormattedFilename(
+    template: string,
+    analysis: Record<string, unknown>,
+    config?: Partial<Pick<AppConfig, 'tagDefinitions' | 'fieldDefinitions'>>
+): string {
     let filename = template;
 
     // Replace all placeholders with their formatted values
     const placeholderRegex = /\{(\w+)\}/g;
 
     // Fields that include their own separators and should not be sanitized
-    const separatorFields = ['invoiceDateIfDifferent', 'privateTag'];
+    const separatorFields: string[] = ['invoiceDateIfDifferent', 'privateTag'];
 
     // Build dynamic tag placeholder map from tagDefinitions
-    const tagPlaceholders = {};
+    const tagPlaceholders: Record<string, TagDefinition> = {};
     if (config && config.tagDefinitions) {
         for (const tag of config.tagDefinitions) {
             if (tag.enabled && tag.filenamePlaceholder) {
@@ -258,7 +270,7 @@ function generateFormattedFilename(template, analysis, config) {
     }
 
     // Build field format lookup from config
-    const fieldFormatMap = {};
+    const fieldFormatMap: Record<string, string> = {};
     if (config && config.fieldDefinitions) {
         for (const field of config.fieldDefinitions) {
             if (field.format) {
@@ -267,11 +279,12 @@ function generateFormattedFilename(template, analysis, config) {
         }
     }
 
-    filename = filename.replace(placeholderRegex, (match, fieldName) => {
+    filename = filename.replace(placeholderRegex, (_match: string, fieldName: string) => {
         // Check if this is a dynamic tag placeholder
         if (tagPlaceholders[fieldName]) {
             const tag = tagPlaceholders[fieldName];
-            const isActive = analysis.tags && analysis.tags[tag.id];
+            const tags = analysis.tags as Record<string, boolean> | undefined;
+            const isActive = tags && tags[tag.id];
             return isActive ? tag.filenameFormat || '' : '';
         }
 
@@ -314,12 +327,3 @@ function generateFormattedFilename(template, analysis, config) {
 
     return filename;
 }
-
-module.exports = {
-    sanitizeForFilename,
-    generateFilename,
-    generateFormattedFilename,
-    getUniqueFilename,
-    formatFieldValue,
-    formatDateForDisplay
-};

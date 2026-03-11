@@ -14,10 +14,12 @@
  *   node batch-process.js              Process invoices in config.json folders
  */
 
-require('dotenv').config();
-const { loadConfig, ensureDirectories } = require('./src/config');
-const { processAllInvoices, processAllClients, processSingleClient } = require('./src/parallel-processor');
-const { isMultiClientMode, getAllClients } = require('./src/client-manager');
+import 'dotenv/config';
+import { loadConfig, ensureDirectories } from './src/config.js';
+import { processAllInvoices, processAllClients, processSingleClient } from './src/parallel-processor.js';
+import { isMultiClientMode, getAllClients } from './src/client-manager.js';
+
+import type { AppConfig, BatchResult, MultiClientResult, ProcessingResult, TokenUsage } from './src/types/index.js';
 // csv-logger imported by parallel-processor internally
 
 // ANSI color codes for terminal output
@@ -33,11 +35,11 @@ const colors = {
     dim: '\x1b[2m'
 };
 
-function log(message, color = '') {
+function log(message: string, color: string = ''): void {
     console.log(`${color}${message}${colors.reset}`);
 }
 
-function formatTokenCount(count) {
+function formatTokenCount(count: number): string {
     if (count >= 1000000) {
         return (count / 1000000).toFixed(2) + 'M';
     } else if (count >= 1000) {
@@ -46,7 +48,7 @@ function formatTokenCount(count) {
     return count.toString();
 }
 
-function printTokenUsage(tokenUsage) {
+function printTokenUsage(tokenUsage: TokenUsage): void {
     if (!tokenUsage || tokenUsage.totalTokens === 0) return;
 
     // Calculate media/PDF tokens (total - prompt - output)
@@ -62,9 +64,15 @@ function printTokenUsage(tokenUsage) {
     log(`    Total tokens:  ${formatTokenCount(tokenUsage.totalTokens)}`, colors.cyan);
 }
 
-function parseArgs() {
+interface ParsedOptions {
+    all: boolean;
+    client: string | null;
+    list: boolean;
+}
+
+function parseArgs(): ParsedOptions {
     const args = process.argv.slice(2);
-    const options = {
+    const options: ParsedOptions = {
         all: false,
         client: null,
         list: false
@@ -97,7 +105,7 @@ function parseArgs() {
     return options;
 }
 
-function showHelp() {
+function showHelp(): void {
     console.log(`
 ${colors.bright}Invoice Batch Processor${colors.reset}
 
@@ -119,7 +127,7 @@ ${colors.dim}Without clients.json, operates in single-client mode using config.j
 `);
 }
 
-async function listClients() {
+async function listClients(): Promise<void> {
     const clients = await getAllClients();
 
     if (!clients) {
@@ -147,7 +155,7 @@ async function listClients() {
     }
 }
 
-async function runSingleClientMode(config) {
+async function runSingleClientMode(config: AppConfig): Promise<BatchResult> {
     console.log('\n' + '='.repeat(60));
     log('  INVOICE BATCH PROCESSOR', colors.bright + colors.cyan);
     console.log('='.repeat(60) + '\n');
@@ -155,9 +163,9 @@ async function runSingleClientMode(config) {
     log('Running in single-client mode (no clients.json found)', colors.yellow);
     console.log('');
 
-    log(`Input folder:    ${config.folders.input}`, colors.dim);
-    log(`Output folder:   ${config.folders.output}`, colors.dim);
-    log(`Analyzed folder: ${config.folders.analyzed}`, colors.dim);
+    log(`Input folder:    ${config.folders!.input}`, colors.dim);
+    log(`Output folder:   ${config.folders!.output}`, colors.dim);
+    log(`Analyzed folder: ${config.folders!.analyzed}`, colors.dim);
     log(`Concurrency:     ${config.processing.concurrency} parallel tasks`, colors.dim);
     console.log('');
 
@@ -204,12 +212,15 @@ async function runSingleClientMode(config) {
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    printSummary(results, duration, config.folders.output);
+    printSummary(results, duration, config.folders!.output);
 
     return results;
 }
 
-async function runMultiClientMode(config, clientId = null) {
+async function runMultiClientMode(
+    config: AppConfig,
+    clientId: string | null = null
+): Promise<MultiClientResult | { totalFailed: number; tokenUsage?: TokenUsage }> {
     console.log('\n' + '='.repeat(60));
     log('  INVOICE BATCH PROCESSOR - MULTI-CLIENT MODE', colors.bright + colors.cyan);
     console.log('='.repeat(60) + '\n');
@@ -284,8 +295,8 @@ async function runMultiClientMode(config, clientId = null) {
 
             console.log('\n');
             return { totalFailed: results.failed, tokenUsage: results.tokenUsage };
-        } catch (error) {
-            log(`\nError processing client "${clientId}": ${error.message}`, colors.red);
+        } catch (error: unknown) {
+            log(`\nError processing client "${clientId}": ${(error as Error).message}`, colors.red);
             console.log('\n');
             return { totalFailed: 1 };
         }
@@ -295,9 +306,9 @@ async function runMultiClientMode(config, clientId = null) {
         console.log('');
 
         const allResults = await processAllClients(config, {
-            onClientStart: ({ clientId, name, folderPath }) => {
+            onClientStart: ({ clientId: cId, name, folderPath }) => {
                 console.log('\n' + '-'.repeat(60));
-                log(`  Client: ${name} (${clientId})`, colors.bright + colors.magenta);
+                log(`  Client: ${name} (${cId})`, colors.bright + colors.magenta);
                 log(`  Folder: ${folderPath}`, colors.dim);
                 console.log('-'.repeat(60) + '\n');
             },
@@ -310,7 +321,7 @@ async function runMultiClientMode(config, clientId = null) {
 
                     case 'analyzing':
                         process.stdout.write(
-                            `${colors.dim}[${progress.completed + 1}/${progress.total}] Analyzing: ${progress.filename}...${colors.reset}`
+                            `${colors.dim}[${(progress.completed ?? 0) + 1}/${progress.total}] Analyzing: ${progress.filename}...${colors.reset}`
                         );
                         break;
 
@@ -331,14 +342,17 @@ async function runMultiClientMode(config, clientId = null) {
                         break;
                 }
             },
-            onClientComplete: ({ success, failed, csvRowsAdded, skipped, error }) => {
+            onClientComplete: ({ success, failed, csvRowsAdded, skipped, error }: Record<string, unknown>) => {
                 if (skipped) {
                     log(`\n  Skipped: ${error}`, colors.yellow);
                     return;
                 }
 
-                log(`\n  Results: ${success} successful, ${failed} failed`, success > 0 ? colors.green : colors.dim);
-                if (csvRowsAdded > 0) {
+                log(
+                    `\n  Results: ${success} successful, ${failed} failed`,
+                    (success as number) > 0 ? colors.green : colors.dim
+                );
+                if ((csvRowsAdded as number) > 0) {
                     log(`  CSV: ${csvRowsAdded} rows added`, colors.blue);
                 }
             }
@@ -384,7 +398,7 @@ async function runMultiClientMode(config, clientId = null) {
     }
 }
 
-function printSummary(results, duration, outputFolder) {
+function printSummary(results: BatchResult, duration: string, outputFolder: string): void {
     console.log('\n' + '='.repeat(60));
     log('  PROCESSING COMPLETE', colors.bright + colors.cyan);
     console.log('='.repeat(60));
@@ -404,17 +418,17 @@ function printSummary(results, duration, outputFolder) {
     console.log('\n');
 }
 
-function printFailures(results) {
+function printFailures(results: ProcessingResult[]): void {
     const failures = results.filter((r) => !r.success);
     if (failures.length > 0) {
         log('\n  Failed files:', colors.yellow);
         for (const f of failures) {
-            log(`    - ${f.originalFilename}: ${f.error}`, colors.red);
+            log(`    - ${f.originalFilename}: ${(f as { error?: string }).error}`, colors.red);
         }
     }
 }
 
-async function main() {
+async function main(): Promise<void> {
     const options = parseArgs();
 
     try {
@@ -448,13 +462,13 @@ async function main() {
         }
 
         process.exit(exitCode);
-    } catch (error) {
-        log(`\nError: ${error.message}`, colors.red);
-        if (error.message.includes('config.json')) {
+    } catch (error: unknown) {
+        log(`\nError: ${(error as Error).message}`, colors.red);
+        if ((error as Error).message.includes('config.json')) {
             log('\nPlease ensure config.json exists with valid settings.', colors.yellow);
             log('You can copy config.json.example as a starting point.', colors.dim);
         }
-        if (error.message.includes('clients.json')) {
+        if ((error as Error).message.includes('clients.json')) {
             log('\nFor multi-client mode, create clients.json with client configurations.', colors.yellow);
             log('You can copy clients.json.example as a starting point.', colors.dim);
         }

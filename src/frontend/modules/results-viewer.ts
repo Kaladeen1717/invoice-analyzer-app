@@ -1,59 +1,72 @@
 // Processing Results Viewer module
 // Shows processing history for a client with filtering, pagination, expandable detail rows, and retry.
+
 import { showAlert } from './ui-utils.js';
+
 const PAGE_SIZE = 25;
-let resultsViewerEl;
-let resultsCountEl;
-let resultsFiltersEl;
-let retryAllBtn;
-let currentClientId = null;
+
+let resultsViewerEl: HTMLElement;
+let resultsCountEl: HTMLElement;
+let resultsFiltersEl: HTMLElement;
+let retryAllBtn: HTMLButtonElement;
+let currentClientId: string | null = null;
 let currentFilter = 'all';
 let currentOffset = 0;
 let currentTotal = 0;
-let loadedResults = [];
+let loadedResults: Record<string, unknown>[] = [];
 let isRetrying = false;
-export function initResultsViewer() {
-    resultsViewerEl = document.getElementById('resultsViewer');
-    resultsCountEl = document.getElementById('resultsCount');
-    resultsFiltersEl = document.getElementById('resultsFilters');
-    retryAllBtn = document.getElementById('retryAllFailedBtn');
-    resultsFiltersEl.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-filter]');
-        if (!btn)
-            return;
-        currentFilter = btn.dataset.filter;
+
+export function initResultsViewer(): void {
+    resultsViewerEl = document.getElementById('resultsViewer')!;
+    resultsCountEl = document.getElementById('resultsCount')!;
+    resultsFiltersEl = document.getElementById('resultsFilters')!;
+    retryAllBtn = document.getElementById('retryAllFailedBtn') as HTMLButtonElement;
+
+    resultsFiltersEl.addEventListener('click', (e: MouseEvent) => {
+        const btn = (e.target as HTMLElement).closest('[data-filter]') as HTMLElement | null;
+        if (!btn) return;
+
+        currentFilter = btn.dataset.filter!;
         resultsFiltersEl.querySelectorAll('.btn-filter').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
+
         currentOffset = 0;
         loadedResults = [];
         loadResults();
     });
+
     retryAllBtn.addEventListener('click', () => retryAllFailed());
 }
-export async function loadClientResults(clientId) {
+
+export async function loadClientResults(clientId: string): Promise<void> {
     currentClientId = clientId;
     currentFilter = 'all';
     currentOffset = 0;
     loadedResults = [];
+
     resultsFiltersEl.querySelectorAll('.btn-filter').forEach((b) => b.classList.remove('active'));
-    resultsFiltersEl.querySelector('[data-filter="all"]').classList.add('active');
+    resultsFiltersEl.querySelector('[data-filter="all"]')!.classList.add('active');
+
     await loadResults();
 }
-export function clearResults() {
+
+export function clearResults(): void {
     currentClientId = null;
     loadedResults = [];
     resultsCountEl.textContent = '';
     resultsViewerEl.textContent = '';
     retryAllBtn.style.display = 'none';
 }
-async function loadResults() {
-    if (!currentClientId)
-        return;
+
+async function loadResults(): Promise<void> {
+    if (!currentClientId) return;
+
     resultsViewerEl.textContent = '';
     const loading = document.createElement('div');
     loading.className = 'loading-placeholder';
     loading.textContent = 'Loading results...';
     resultsViewerEl.appendChild(loading);
+
     try {
         const params = new URLSearchParams({
             limit: String(PAGE_SIZE),
@@ -62,35 +75,41 @@ async function loadResults() {
         if (currentFilter !== 'all') {
             params.set('status', currentFilter);
         }
+
         const response = await fetch(`/api/clients/${currentClientId}/results?${params}`);
         if (!response.ok) {
             const err = await response.json();
             throw new Error(err.error || 'Failed to load results');
         }
+
         const data = await response.json();
+
         if (currentOffset === 0) {
             loadedResults = data.results;
-        }
-        else {
+        } else {
             loadedResults = loadedResults.concat(data.results);
         }
+
         currentTotal = data.total;
         resultsCountEl.textContent = data.total > 0 ? `(${data.total})` : '';
+
         // Show/hide Retry All Failed button
         const hasFailed = loadedResults.some((r) => r.status === 'failed');
         retryAllBtn.style.display = hasFailed ? 'inline-flex' : 'none';
+
         renderResults(data.hasMore);
-    }
-    catch (error) {
+    } catch (error) {
         resultsViewerEl.textContent = '';
         const errDiv = document.createElement('div');
         errDiv.className = 'error-placeholder';
-        errDiv.textContent = 'Failed to load results: ' + error.message;
+        errDiv.textContent = 'Failed to load results: ' + (error as Error).message;
         resultsViewerEl.appendChild(errDiv);
     }
 }
-function renderResults(hasMore) {
+
+function renderResults(hasMore: boolean): void {
     resultsViewerEl.textContent = '';
+
     if (loadedResults.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-placeholder';
@@ -98,8 +117,10 @@ function renderResults(hasMore) {
         resultsViewerEl.appendChild(empty);
         return;
     }
+
     const table = document.createElement('table');
     table.className = 'results-table';
+
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     ['Filename', 'Date', 'Status', 'Model', 'Tokens'].forEach((text) => {
@@ -109,50 +130,62 @@ function renderResults(hasMore) {
     });
     thead.appendChild(headerRow);
     table.appendChild(thead);
+
     const tbody = document.createElement('tbody');
     loadedResults.forEach((result) => {
         const tr = document.createElement('tr');
         tr.className = 'results-row';
-        tr.dataset.resultId = result.id;
+        tr.dataset.resultId = result.id as string;
+
         // Filename
         const tdFile = document.createElement('td');
         tdFile.className = 'results-filename';
-        tdFile.textContent = result.originalFilename;
-        tdFile.title = result.originalFilename;
+        tdFile.textContent = result.originalFilename as string;
+        tdFile.title = result.originalFilename as string;
         tr.appendChild(tdFile);
+
         // Date
         const tdDate = document.createElement('td');
         tdDate.className = 'results-date';
-        tdDate.textContent = formatTimestamp(result.timestamp);
+        tdDate.textContent = formatTimestamp(result.timestamp as string);
         tr.appendChild(tdDate);
+
         // Status
         const tdStatus = document.createElement('td');
         const badge = document.createElement('span');
-        const statusClass = result.status === 'success'
-            ? 'status-success'
-            : result.status === 'dry-run'
-                ? 'status-dry-run'
-                : 'status-failed';
-        const statusLabel = result.status === 'success' ? 'Success' : result.status === 'dry-run' ? 'Dry Run' : 'Failed';
+        const statusClass =
+            result.status === 'success'
+                ? 'status-success'
+                : result.status === 'dry-run'
+                  ? 'status-dry-run'
+                  : 'status-failed';
+        const statusLabel =
+            result.status === 'success' ? 'Success' : result.status === 'dry-run' ? 'Dry Run' : 'Failed';
         badge.className = 'status-badge ' + statusClass;
         badge.textContent = statusLabel;
         tdStatus.appendChild(badge);
         tr.appendChild(tdStatus);
+
         // Model
         const tdModel = document.createElement('td');
         tdModel.className = 'results-model';
-        tdModel.textContent = result.model || '-';
+        tdModel.textContent = (result.model as string) || '-';
         tr.appendChild(tdModel);
+
         // Tokens
         const tdTokens = document.createElement('td');
         tdTokens.className = 'results-tokens';
-        tdTokens.textContent = formatTokens((result.tokenUsage?.totalTokens || 0));
+        tdTokens.textContent = formatTokens((result.tokenUsage as Record<string, number>)?.totalTokens || 0);
         tr.appendChild(tdTokens);
+
         tr.addEventListener('click', () => toggleDetail(tr, result));
+
         tbody.appendChild(tr);
     });
+
     table.appendChild(tbody);
     resultsViewerEl.appendChild(table);
+
     if (hasMore) {
         const loadMoreBtn = document.createElement('button');
         loadMoreBtn.className = 'btn btn-secondary btn-load-more';
@@ -164,44 +197,51 @@ function renderResults(hasMore) {
         resultsViewerEl.appendChild(loadMoreBtn);
     }
 }
-function toggleDetail(tr, result) {
+
+function toggleDetail(tr: HTMLTableRowElement, result: Record<string, unknown>): void {
     const existing = tr.nextElementSibling;
     if (existing && existing.classList.contains('results-detail-row')) {
         existing.remove();
         tr.classList.remove('expanded');
         return;
     }
-    const table = tr.closest('table');
+
+    const table = tr.closest('table')!;
     table.querySelectorAll('.results-detail-row').forEach((r) => r.remove());
     table.querySelectorAll('.results-row.expanded').forEach((r) => r.classList.remove('expanded'));
+
     tr.classList.add('expanded');
+
     const detailTr = document.createElement('tr');
     detailTr.className = 'results-detail-row';
     const detailTd = document.createElement('td');
     detailTd.colSpan = 5;
+
     const content = document.createElement('div');
     content.className = 'results-detail-content';
+
     if (result.status === 'success' || result.status === 'dry-run') {
         renderSuccessDetail(content, result);
-    }
-    else {
+    } else {
         renderFailedDetail(content, result);
     }
+
     detailTd.appendChild(content);
     detailTr.appendChild(detailTd);
     tr.after(detailTr);
 }
-function renderSuccessDetail(content, result) {
+
+function renderSuccessDetail(content: HTMLElement, result: Record<string, unknown>): void {
     if (result.outputFilename) {
-        appendDetailField(content, 'Output File:', result.outputFilename);
+        appendDetailField(content, 'Output File:', result.outputFilename as string);
     }
     if (result.duration) {
-        appendDetailField(content, 'Duration:', (result.duration / 1000).toFixed(1) + 's');
+        appendDetailField(content, 'Duration:', ((result.duration as number) / 1000).toFixed(1) + 's');
     }
     if (result.tokenUsage) {
-        const tokenUsage = result.tokenUsage;
+        const tokenUsage = result.tokenUsage as Record<string, number>;
         let tokenText = `${tokenUsage.promptTokens} prompt + ${tokenUsage.outputTokens} output = ${tokenUsage.totalTokens} total`;
-        const extras = [];
+        const extras: string[] = [];
         if (tokenUsage.cachedTokens > 0) {
             extras.push(`${tokenUsage.cachedTokens} cached`);
         }
@@ -213,13 +253,15 @@ function renderSuccessDetail(content, result) {
         }
         appendDetailField(content, 'Tokens:', tokenText);
     }
+
     // Extracted fields
-    const fields = (result.extractedFields || {});
+    const fields = (result.extractedFields || {}) as Record<string, unknown>;
     const fieldEntries = Object.entries(fields).filter(([k]) => k !== 'tags');
     if (fieldEntries.length > 0) {
         const h4 = document.createElement('h4');
         h4.textContent = 'Extracted Fields';
         content.appendChild(h4);
+
         const fieldTable = document.createElement('table');
         fieldTable.className = 'results-fields-table';
         fieldEntries.forEach(([key, value]) => {
@@ -235,13 +277,15 @@ function renderSuccessDetail(content, result) {
         });
         content.appendChild(fieldTable);
     }
+
     // Tags
-    const tags = (result.tags || {});
+    const tags = (result.tags || {}) as Record<string, boolean>;
     const tagEntries = Object.entries(tags);
     if (tagEntries.length > 0) {
         const h4 = document.createElement('h4');
         h4.textContent = 'Tags';
         content.appendChild(h4);
+
         const tagList = document.createElement('div');
         tagList.className = 'results-tag-list';
         tagEntries.forEach(([key, value]) => {
@@ -253,7 +297,8 @@ function renderSuccessDetail(content, result) {
         content.appendChild(tagList);
     }
 }
-function renderFailedDetail(content, result) {
+
+function renderFailedDetail(content: HTMLElement, result: Record<string, unknown>): void {
     const errDiv = document.createElement('div');
     errDiv.className = 'results-error';
     const errLabel = document.createElement('span');
@@ -261,44 +306,51 @@ function renderFailedDetail(content, result) {
     errLabel.textContent = 'Error:';
     const errValue = document.createElement('span');
     errValue.className = 'results-error-message';
-    errValue.textContent = result.error || 'Unknown error';
+    errValue.textContent = (result.error as string) || 'Unknown error';
     errDiv.appendChild(errLabel);
     errDiv.appendChild(errValue);
     content.appendChild(errDiv);
+
     if (result.duration) {
-        appendDetailField(content, 'Duration:', (result.duration / 1000).toFixed(1) + 's');
+        appendDetailField(content, 'Duration:', ((result.duration as number) / 1000).toFixed(1) + 's');
     }
+
     // Raw response (expandable)
     if (result.rawResponse) {
         const rawToggle = document.createElement('button');
         rawToggle.className = 'btn btn-small btn-secondary';
         rawToggle.textContent = 'Show Raw Response';
         rawToggle.style.marginTop = '0.75rem';
+
         const rawPre = document.createElement('pre');
         rawPre.className = 'raw-response';
         rawPre.style.display = 'none';
-        rawPre.textContent = result.rawResponse;
-        rawToggle.addEventListener('click', (e) => {
+        rawPre.textContent = result.rawResponse as string;
+
+        rawToggle.addEventListener('click', (e: MouseEvent) => {
             e.stopPropagation();
             const visible = rawPre.style.display !== 'none';
             rawPre.style.display = visible ? 'none' : 'block';
             rawToggle.textContent = visible ? 'Show Raw Response' : 'Hide Raw Response';
         });
+
         content.appendChild(rawToggle);
         content.appendChild(rawPre);
     }
+
     // Retry button
     const retryBtn = document.createElement('button');
     retryBtn.className = 'btn btn-small btn-primary retry-btn';
     retryBtn.textContent = 'Retry';
     retryBtn.style.marginTop = '0.75rem';
-    retryBtn.addEventListener('click', (e) => {
+    retryBtn.addEventListener('click', (e: MouseEvent) => {
         e.stopPropagation();
-        retrySingle(result.id, retryBtn);
+        retrySingle(result.id as string, retryBtn);
     });
     content.appendChild(retryBtn);
 }
-function appendDetailField(container, label, value) {
+
+function appendDetailField(container: HTMLElement, label: string, value: string): void {
     const div = document.createElement('div');
     div.className = 'results-detail-field';
     const lbl = document.createElement('span');
@@ -310,8 +362,10 @@ function appendDetailField(container, label, value) {
     div.appendChild(val);
     container.appendChild(div);
 }
+
 // --- Retry Logic ---
-async function retrySingle(resultId, btn) {
+
+async function retrySingle(resultId: string, btn: HTMLButtonElement): Promise<void> {
     if (isRetrying) {
         showAlert('A retry is already in progress', 'warning');
         return;
@@ -319,14 +373,13 @@ async function retrySingle(resultId, btn) {
     isRetrying = true;
     btn.disabled = true;
     btn.textContent = 'Retrying...';
+
     try {
         await executeRetry({ resultIds: [resultId] });
         showAlert('Retry complete', 'success');
-    }
-    catch (error) {
-        showAlert('Retry failed: ' + error.message, 'error');
-    }
-    finally {
+    } catch (error) {
+        showAlert('Retry failed: ' + (error as Error).message, 'error');
+    } finally {
         isRetrying = false;
         // Reload results to reflect changes
         currentOffset = 0;
@@ -334,7 +387,8 @@ async function retrySingle(resultId, btn) {
         await loadResults();
     }
 }
-async function retryAllFailed() {
+
+async function retryAllFailed(): Promise<void> {
     if (isRetrying) {
         showAlert('A retry is already in progress', 'warning');
         return;
@@ -342,14 +396,13 @@ async function retryAllFailed() {
     isRetrying = true;
     retryAllBtn.disabled = true;
     retryAllBtn.textContent = 'Retrying...';
+
     try {
         await executeRetry({ all: true });
         showAlert('Retry all complete', 'success');
-    }
-    catch (error) {
-        showAlert('Retry failed: ' + error.message, 'error');
-    }
-    finally {
+    } catch (error) {
+        showAlert('Retry failed: ' + (error as Error).message, 'error');
+    } finally {
         isRetrying = false;
         retryAllBtn.disabled = false;
         retryAllBtn.textContent = 'Retry All Failed';
@@ -359,7 +412,8 @@ async function retryAllFailed() {
         await loadResults();
     }
 }
-async function executeRetry(body) {
+
+async function executeRetry(body: Record<string, unknown>): Promise<unknown> {
     return new Promise((resolve, reject) => {
         fetch(`/api/clients/${currentClientId}/results/retry`, {
             method: 'POST',
@@ -367,42 +421,45 @@ async function executeRetry(body) {
             body: JSON.stringify(body)
         })
             .then(async (response) => {
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done)
-                    break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            handleRetryUpdate(data);
-                            if (data.status === 'retry-done') {
-                                resolve(data);
-                                return;
+                const reader = response.body!.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop()!;
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                handleRetryUpdate(data);
+
+                                if (data.status === 'retry-done') {
+                                    resolve(data);
+                                    return;
+                                }
+                                if (data.status === 'error') {
+                                    reject(new Error(data.error));
+                                    return;
+                                }
+                            } catch {
+                                // Ignore parse errors
                             }
-                            if (data.status === 'error') {
-                                reject(new Error(data.error));
-                                return;
-                            }
-                        }
-                        catch {
-                            // Ignore parse errors
                         }
                     }
                 }
-            }
-            resolve(undefined);
-        })
+                resolve(undefined);
+            })
             .catch(reject);
     });
 }
-function handleRetryUpdate(data) {
+
+function handleRetryUpdate(data: Record<string, unknown>): void {
     switch (data.status) {
         case 'retry-starting':
             retryAllBtn.textContent = `Retrying 0/${data.total}...`;
@@ -417,28 +474,26 @@ function handleRetryUpdate(data) {
         case 'retry-done':
             if (data.failed === 0) {
                 showAlert(`Retried ${data.total}: all succeeded`, 'success');
-            }
-            else {
+            } else {
                 showAlert(`Retried ${data.total}: ${data.success} succeeded, ${data.failed} failed`, 'warning');
             }
             break;
     }
 }
-function formatTimestamp(ts) {
-    if (!ts)
-        return '-';
+
+function formatTimestamp(ts: string): string {
+    if (!ts) return '-';
     const d = new Date(ts);
-    return (d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+    return (
+        d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
         ' ' +
-        d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }));
+        d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+    );
 }
-function formatTokens(total) {
-    if (!total || total === 0)
-        return '-';
-    if (total >= 1000000)
-        return (total / 1000000).toFixed(1) + 'M';
-    if (total >= 1000)
-        return (total / 1000).toFixed(1) + 'K';
+
+function formatTokens(total: number): string {
+    if (!total || total === 0) return '-';
+    if (total >= 1000000) return (total / 1000000).toFixed(1) + 'M';
+    if (total >= 1000) return (total / 1000).toFixed(1) + 'K';
     return String(total);
 }
-//# sourceMappingURL=results-viewer.js.map

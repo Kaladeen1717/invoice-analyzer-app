@@ -5,7 +5,7 @@
 Run all checks locally:
 
 ```bash
-npm run lint && npm run format:check && npm test && npx knip
+npm run typecheck && npm run lint && npm run format:check && npm test && npx knip
 ```
 
 If any check fails, fix the issue before committing.
@@ -14,11 +14,13 @@ If any check fails, fix the issue before committing.
 
 Verify all CI checks would pass locally using the same command above. The CI pipeline runs:
 
-1. **Lint** — `npm run lint`
-2. **Format** — `npm run format:check`
-3. **Test** — `npm test` (on Node 18 and 20)
-4. **Audit** — `npm audit --audit-level=moderate`
-5. **Knip** — `npx knip` (dead code detection)
+1. **Build** — `npm run build:frontend` (compile frontend TypeScript)
+2. **Typecheck** — `npm run typecheck` (verify all TypeScript types)
+3. **Lint** — `npm run lint`
+4. **Format** — `npm run format:check`
+5. **Test** — `npm test` (on Node 18 and 20)
+6. **Audit** — `npm audit --audit-level=moderate`
+7. **Knip** — `npx knip` (dead code detection)
 
 ## If CI Fails
 

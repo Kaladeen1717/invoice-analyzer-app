@@ -7,12 +7,12 @@
  * Uses the eval-quality scoring functions to measure each strategy.
  *
  * Usage:
- *   node scripts/research-multi-agent.js                     # Run all strategies
- *   node scripts/research-multi-agent.js --strategy baseline  # Run one strategy
- *   node scripts/research-multi-agent.js --dry-run            # Use cached responses
- *   node scripts/research-multi-agent.js --invoice foo.pdf    # Single invoice
- *   node scripts/research-multi-agent.js --concurrency 10     # Parallel invoices (default: 10)
- *   node scripts/research-multi-agent.js --limit 50           # Only first N invoices
+ *   npx tsx scripts/research-multi-agent.ts                     # Run all strategies
+ *   npx tsx scripts/research-multi-agent.ts --strategy baseline  # Run one strategy
+ *   npx tsx scripts/research-multi-agent.ts --dry-run            # Use cached responses
+ *   npx tsx scripts/research-multi-agent.ts --invoice foo.pdf    # Single invoice
+ *   npx tsx scripts/research-multi-agent.ts --concurrency 10     # Parallel invoices (default: 10)
+ *   npx tsx scripts/research-multi-agent.ts --limit 50           # Only first N invoices
  *
  * Strategies:
  *   baseline    — Single API call with all fields + tags (current system)
@@ -21,18 +21,158 @@
  *   twoPass     — 2 calls: full extraction, then re-extract "Unknown"/0 fields
  */
 
-require('dotenv').config();
-const fs = require('fs').promises;
-const path = require('path');
+import 'dotenv/config';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import pLimit from 'p-limit';
+import type { AppConfig } from '../src/types/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const CORPUS_DIR = path.join(__dirname, '..', 'tests', 'fixtures', 'eval-corpus');
 const RESULTS_DIR = path.join(__dirname, '..', 'tests', 'fixtures', 'eval-results');
 
 // ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface FieldFilter {
+    fields?: string[];
+    tags?: string[];
+    includeSummary?: boolean;
+}
+
+interface StrategyCall {
+    name: string;
+    fieldFilter: FieldFilter | null | 'dynamic';
+}
+
+interface Strategy {
+    label: string;
+    calls: StrategyCall[];
+}
+
+interface ParsedArgs {
+    dryRun: boolean;
+    strategy: string | null;
+    invoice: string | null;
+    concurrency: number;
+    limit: number;
+}
+
+interface CorpusEntry {
+    name: string;
+    pdfPath: string;
+    truthPath: string;
+}
+
+interface TokenUsage {
+    promptTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+}
+
+interface CallResult {
+    analysis: Record<string, unknown>;
+    tokenUsage: TokenUsage;
+    duration: number;
+    fromCache: boolean;
+}
+
+interface CallSummary {
+    name: string;
+    tokenUsage: TokenUsage | null;
+    duration: number;
+    fromCache: boolean;
+    skipped: boolean;
+}
+
+interface StrategyResult {
+    analysis: Record<string, unknown>;
+    tokenUsage: TokenUsage;
+    duration: number;
+    callCount: number;
+    callResults: CallSummary[];
+}
+
+interface ScoreResult {
+    match: string;
+    score?: number;
+}
+
+interface EvalResult {
+    accuracy: number;
+    scoredFields: number;
+    hallucinations: number;
+    hallucinationRate: number;
+    fieldScores: Record<string, ScoreResult>;
+    tagScores: Record<string, ScoreResult>;
+}
+
+interface InvoiceResult {
+    name: string;
+    evaluation: EvalResult;
+    tokenUsage: TokenUsage;
+    duration: number;
+    callCount: number;
+    callResults: CallSummary[];
+}
+
+interface FieldAccData {
+    total: number;
+    correct: number;
+    wrong: number;
+    missing: number;
+    accuracy?: number;
+}
+
+interface TagAccData {
+    total: number;
+    correct: number;
+    wrong: number;
+    accuracy?: number;
+}
+
+interface StrategyAggregate {
+    label: string;
+    accuracy: number;
+    totalTokens: number;
+    avgTokensPerInvoice: number;
+    totalDuration: number;
+    avgDurationPerInvoice: number;
+    wallTime: number;
+    hallucinations: number;
+    errors: number;
+    invoiceCount: number;
+    fieldAccuracy: Record<string, FieldAccData>;
+    tagAccuracy: Record<string, TagAccData>;
+    invoices: InvoiceResult[];
+}
+
+interface FieldDefinition {
+    key: string;
+    type: string;
+    enabled: boolean;
+}
+
+interface TagDefinition {
+    id: string;
+    enabled: boolean;
+}
+
+interface Config {
+    model?: string;
+    fieldDefinitions: FieldDefinition[];
+    tagDefinitions?: TagDefinition[];
+}
+
+// ---------------------------------------------------------------------------
 // Strategy definitions — which fields/tags go into each call
 // ---------------------------------------------------------------------------
 
-const STRATEGIES = {
+const STRATEGIES: Record<string, Strategy> = {
     baseline: {
         label: 'Baseline (single call)',
         calls: [{ name: 'full', fieldFilter: null }]
@@ -115,9 +255,9 @@ const STRATEGIES = {
 // Argument parsing
 // ---------------------------------------------------------------------------
 
-function parseArgs() {
+function parseArgs(): ParsedArgs {
     const args = process.argv.slice(2);
-    const opts = { dryRun: false, strategy: null, invoice: null, concurrency: 10, limit: 0 };
+    const opts: ParsedArgs = { dryRun: false, strategy: null, invoice: null, concurrency: 10, limit: 0 };
     for (let i = 0; i < args.length; i++) {
         if (args[i] === '--dry-run') opts.dryRun = true;
         else if (args[i] === '--strategy' && args[i + 1]) opts.strategy = args[++i];
@@ -126,7 +266,7 @@ function parseArgs() {
         else if (args[i] === '--limit' && args[i + 1]) opts.limit = parseInt(args[++i], 10);
         else if (args[i] === '--help') {
             console.log(
-                'Usage: node scripts/research-multi-agent.js [--dry-run] [--strategy <name>] [--invoice <name.pdf>] [--concurrency N] [--limit N]'
+                'Usage: npx tsx scripts/research-multi-agent.ts [--dry-run] [--strategy <name>] [--invoice <name.pdf>] [--concurrency N] [--limit N]'
             );
             console.log('Strategies:', Object.keys(STRATEGIES).join(', '));
             process.exit(0);
@@ -139,11 +279,11 @@ function parseArgs() {
 // Corpus discovery
 // ---------------------------------------------------------------------------
 
-async function discoverCorpus(invoiceFilter) {
+async function discoverCorpus(invoiceFilter: string | null): Promise<CorpusEntry[]> {
     const files = await fs.readdir(CORPUS_DIR);
     const pdfFiles = files.filter((f) => f.endsWith('.pdf'));
 
-    const corpus = [];
+    const corpus: CorpusEntry[] = [];
     for (const pdf of pdfFiles) {
         const baseName = pdf.replace(/\.pdf$/, '');
         const truthFile = `${baseName}.truth.json`;
@@ -164,15 +304,26 @@ async function discoverCorpus(invoiceFilter) {
 // Single API call with optional fieldFilter + retry logic
 // ---------------------------------------------------------------------------
 
-async function callGeminiWithFilter(pdfPath, config, fieldFilter, cacheKey, dryRun, maxRetries = 3) {
+async function callGeminiWithFilter(
+    pdfPath: string,
+    config: Config,
+    fieldFilter: FieldFilter | null,
+    cacheKey: string,
+    dryRun: boolean,
+    maxRetries = 3
+): Promise<CallResult | null> {
     const cachePath = path.join(CORPUS_DIR, `${cacheKey}.cache.json`);
 
     // Check strategy-specific cache
     try {
-        const cached = JSON.parse(await fs.readFile(cachePath, 'utf-8'));
+        const cached = JSON.parse(await fs.readFile(cachePath, 'utf-8')) as {
+            analysis: Record<string, unknown>;
+            tokenUsage?: TokenUsage;
+            duration?: number;
+        };
         return {
             analysis: cached.analysis,
-            tokenUsage: cached.tokenUsage || {},
+            tokenUsage: cached.tokenUsage || ({} as TokenUsage),
             duration: cached.duration || 0,
             fromCache: true
         };
@@ -185,12 +336,16 @@ async function callGeminiWithFilter(pdfPath, config, fieldFilter, cacheKey, dryR
         const baseName = path.basename(pdfPath, '.pdf');
         const fallbackPath = path.join(CORPUS_DIR, `${baseName}.cache.json`);
         try {
-            const cached = JSON.parse(await fs.readFile(fallbackPath, 'utf-8'));
+            const cached = JSON.parse(await fs.readFile(fallbackPath, 'utf-8')) as {
+                analysis: Record<string, unknown>;
+                tokenUsage?: TokenUsage;
+                duration?: number;
+            };
             // Copy to strategy-specific cache for future runs
             await fs.writeFile(cachePath, JSON.stringify(cached, null, 2));
             return {
                 analysis: cached.analysis,
-                tokenUsage: cached.tokenUsage || {},
+                tokenUsage: cached.tokenUsage || ({} as TokenUsage),
                 duration: cached.duration || 0,
                 fromCache: true
             };
@@ -206,12 +361,12 @@ async function callGeminiWithFilter(pdfPath, config, fieldFilter, cacheKey, dryR
         try {
             if (!fieldFilter) {
                 // Full extraction — use analyzeInvoice
-                const { analyzeInvoice } = require('../src/processor');
+                const { analyzeInvoice } = await import('../src/processor.js');
                 const startTime = Date.now();
-                const result = await analyzeInvoice(pdfPath, config);
+                const result = await analyzeInvoice(pdfPath, config as unknown as AppConfig);
                 const duration = Date.now() - startTime;
-                const { _tokenUsage, ...analysis } = result;
-                const tokenUsage = _tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
+                const { _tokenUsage, ...analysis } = result as Record<string, unknown>;
+                const tokenUsage = (_tokenUsage as TokenUsage) || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
 
                 const cacheData = { analysis, tokenUsage, duration, cachedAt: new Date().toISOString() };
                 await fs.writeFile(cachePath, JSON.stringify(cacheData, null, 2));
@@ -219,16 +374,16 @@ async function callGeminiWithFilter(pdfPath, config, fieldFilter, cacheKey, dryR
             }
 
             // Filtered extraction — build prompt and call API directly
-            const { buildExtractionPrompt, parseGeminiResponse } = require('../src/prompt-builder');
-            const { DEFAULT_MODEL } = require('../src/constants');
-            const { GoogleGenerativeAI } = require('@google/generative-ai');
+            const { buildExtractionPrompt, parseGeminiResponse } = await import('../src/prompt-builder.js');
+            const { DEFAULT_MODEL } = await import('../src/constants.js');
+            const { GoogleGenerativeAI } = await import('@google/generative-ai');
 
             const startTime = Date.now();
-            const prompt = buildExtractionPrompt(config, { fieldFilter });
+            const prompt = buildExtractionPrompt(config as unknown as AppConfig, { fieldFilter });
             const pdfBuffer = await fs.readFile(pdfPath);
             const pdfBase64 = pdfBuffer.toString('base64');
             const modelName = config.model || DEFAULT_MODEL;
-            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
             const model = genAI.getGenerativeModel({ model: modelName });
 
             const result = await model.generateContent([
@@ -239,24 +394,25 @@ async function callGeminiWithFilter(pdfPath, config, fieldFilter, cacheKey, dryR
             const response = await result.response;
             const text = response.text();
             const usageMetadata = response.usageMetadata || {};
-            const tokenUsage = {
-                promptTokens: usageMetadata.promptTokenCount || 0,
-                outputTokens: usageMetadata.candidatesTokenCount || 0,
-                totalTokens: usageMetadata.totalTokenCount || 0
+            const tokenUsage: TokenUsage = {
+                promptTokens: (usageMetadata as Record<string, number>).promptTokenCount || 0,
+                outputTokens: (usageMetadata as Record<string, number>).candidatesTokenCount || 0,
+                totalTokens: (usageMetadata as Record<string, number>).totalTokenCount || 0
             };
             const duration = Date.now() - startTime;
-            const analysis = parseGeminiResponse(text);
+            const analysis = parseGeminiResponse(text) as Record<string, unknown>;
 
             const cacheData = { analysis, tokenUsage, duration, cachedAt: new Date().toISOString() };
             await fs.writeFile(cachePath, JSON.stringify(cacheData, null, 2));
             return { analysis, tokenUsage, duration, fromCache: false };
         } catch (error) {
+            const message = (error as Error).message;
             const isRetryable =
-                error.message &&
-                (error.message.includes('429') ||
-                    error.message.includes('RATE_LIMIT') ||
-                    error.message.includes('500') ||
-                    error.message.includes('503'));
+                message &&
+                (message.includes('429') ||
+                    message.includes('RATE_LIMIT') ||
+                    message.includes('500') ||
+                    message.includes('503'));
 
             if (isRetryable && attempt < maxRetries) {
                 const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
@@ -266,19 +422,25 @@ async function callGeminiWithFilter(pdfPath, config, fieldFilter, cacheKey, dryR
             throw error;
         }
     }
+
+    // TypeScript requires a return — this line is unreachable
+    throw new Error('Exhausted retries');
 }
 
 // ---------------------------------------------------------------------------
 // Merge results from multiple calls into a single analysis object
 // ---------------------------------------------------------------------------
 
-function mergeAnalyses(results) {
-    const merged = {};
+function mergeAnalyses(results: CallResult[]): Record<string, unknown> {
+    const merged: Record<string, unknown> = {};
     for (const result of results) {
         if (!result || !result.analysis) continue;
         for (const [key, value] of Object.entries(result.analysis)) {
             if (key === 'tags') {
-                merged.tags = { ...(merged.tags || {}), ...value };
+                merged.tags = {
+                    ...((merged.tags as Record<string, unknown>) || {}),
+                    ...(value as Record<string, unknown>)
+                };
             } else if (key === '_tokenUsage') {
                 continue;
             } else {
@@ -290,7 +452,7 @@ function mergeAnalyses(results) {
     return merged;
 }
 
-function sumTokenUsage(results) {
+function sumTokenUsage(results: (CallResult | null)[]): TokenUsage {
     return results.reduce(
         (acc, r) => {
             if (!r || !r.tokenUsage) return acc;
@@ -304,7 +466,7 @@ function sumTokenUsage(results) {
     );
 }
 
-function sumDuration(results) {
+function sumDuration(results: (CallResult | null)[]): number {
     return results.reduce((sum, r) => sum + (r ? r.duration || 0 : 0), 0);
 }
 
@@ -312,8 +474,8 @@ function sumDuration(results) {
 // Build dynamic fieldFilter for two-pass strategy
 // ---------------------------------------------------------------------------
 
-function buildReextractFilter(pass1Analysis, config) {
-    const fieldsToRetry = [];
+function buildReextractFilter(pass1Analysis: Record<string, unknown>, config: Config): FieldFilter | null {
+    const fieldsToRetry: string[] = [];
     const enabledFields = config.fieldDefinitions.filter((f) => f.enabled);
 
     for (const field of enabledFields) {
@@ -332,9 +494,14 @@ function buildReextractFilter(pass1Analysis, config) {
 // Execute a strategy for one invoice
 // ---------------------------------------------------------------------------
 
-async function executeStrategy(strategyName, entry, config, dryRun) {
+async function executeStrategy(
+    strategyName: string,
+    entry: CorpusEntry,
+    config: Config,
+    dryRun: boolean
+): Promise<StrategyResult | null> {
     const strategy = STRATEGIES[strategyName];
-    const callResults = [];
+    const callResults: (CallResult | null)[] = [];
 
     for (const call of strategy.calls) {
         const cacheKey = `${entry.name}.${strategyName}.${call.name}`;
@@ -360,12 +527,12 @@ async function executeStrategy(strategyName, entry, config, dryRun) {
     }
 
     // Check if any call failed
-    const validResults = callResults.filter(Boolean);
+    const validResults = callResults.filter(Boolean) as CallResult[];
     if (validResults.length === 0) return null;
 
     const mergedAnalysis = mergeAnalyses(validResults);
-    const totalTokenUsage = sumTokenUsage(validResults);
-    const totalDuration = sumDuration(validResults);
+    const totalTokenUsage = sumTokenUsage(callResults);
+    const totalDuration = sumDuration(callResults);
 
     return {
         analysis: mergedAnalysis,
@@ -386,7 +553,7 @@ async function executeStrategy(strategyName, entry, config, dryRun) {
 // Scoring
 // ---------------------------------------------------------------------------
 
-function scoreTextField(extracted, expected) {
+function scoreTextField(extracted: unknown, expected: unknown): ScoreResult {
     if (expected === 'Unknown' || expected === undefined || expected === null) return { match: 'skip' };
     if (extracted === expected) return { match: 'exact', score: 1.0 };
     if (typeof extracted === 'string' && typeof expected === 'string') {
@@ -401,24 +568,24 @@ function scoreTextField(extracted, expected) {
     return { match: 'wrong', score: 0.0 };
 }
 
-function scoreNumberField(extracted, expected) {
+function scoreNumberField(extracted: unknown, expected: unknown): ScoreResult {
     if (expected === 0 || expected === undefined || expected === null) return { match: 'skip' };
-    const ext = typeof extracted === 'number' ? extracted : parseFloat(extracted);
-    const exp = typeof expected === 'number' ? expected : parseFloat(expected);
+    const ext = typeof extracted === 'number' ? extracted : parseFloat(extracted as string);
+    const exp = typeof expected === 'number' ? expected : parseFloat(expected as string);
     if (isNaN(ext) || isNaN(exp)) return { match: 'wrong', score: 0.0 };
     if (ext === exp) return { match: 'exact', score: 1.0 };
     if (Math.abs(ext - exp) <= 0.01) return { match: 'tolerance', score: 0.95 };
     return { match: 'wrong', score: 0.0 };
 }
 
-function evaluateResult(analysis, truth, config) {
-    const fieldScores = {};
-    const tagScores = {};
+function evaluateResult(analysis: Record<string, unknown>, truth: Record<string, unknown>, config: Config): EvalResult {
+    const fieldScores: Record<string, ScoreResult> = {};
+    const tagScores: Record<string, ScoreResult> = {};
     const enabledFields = config.fieldDefinitions.filter((f) => f.enabled);
 
     for (const field of enabledFields) {
         if (truth[field.key] === undefined) continue;
-        let score;
+        let score: ScoreResult;
         if (field.type === 'number') score = scoreNumberField(analysis[field.key], truth[field.key]);
         else if (field.type === 'boolean') {
             if (truth[field.key] === undefined || truth[field.key] === null) {
@@ -434,17 +601,19 @@ function evaluateResult(analysis, truth, config) {
 
     if (truth.tags && analysis.tags) {
         const enabledTags = (config.tagDefinitions || []).filter((t) => t.enabled);
+        const truthTags = truth.tags as Record<string, unknown>;
+        const analysisTags = analysis.tags as Record<string, unknown>;
         for (const tag of enabledTags) {
-            if (truth.tags[tag.id] === undefined) continue;
+            if (truthTags[tag.id] === undefined) continue;
             tagScores[tag.id] =
-                analysis.tags[tag.id] === truth.tags[tag.id]
+                analysisTags[tag.id] === truthTags[tag.id]
                     ? { match: 'exact', score: 1.0 }
                     : { match: 'wrong', score: 0.0 };
         }
     }
 
     const allScores = [...Object.values(fieldScores), ...Object.values(tagScores)].filter((s) => s.match !== 'skip');
-    const total = allScores.reduce((sum, s) => sum + s.score, 0);
+    const total = allScores.reduce((sum, s) => sum + (s.score || 0), 0);
     const accuracy = allScores.length > 0 ? total / allScores.length : 0;
     const hallucinations = allScores.filter((s) => s.match === 'wrong').length;
 
@@ -462,16 +631,19 @@ function evaluateResult(analysis, truth, config) {
 // Per-field accuracy aggregation
 // ---------------------------------------------------------------------------
 
-function aggregatePerField(invoiceResults) {
-    const fieldAcc = {};
-    const tagAcc = {};
+function aggregatePerField(invoiceResults: InvoiceResult[]): {
+    fieldAcc: Record<string, FieldAccData>;
+    tagAcc: Record<string, TagAccData>;
+} {
+    const fieldAcc: Record<string, FieldAccData> = {};
+    const tagAcc: Record<string, TagAccData> = {};
 
     for (const result of invoiceResults) {
         for (const [key, score] of Object.entries(result.evaluation.fieldScores)) {
             if (score.match === 'skip') continue;
             if (!fieldAcc[key]) fieldAcc[key] = { total: 0, correct: 0, wrong: 0, missing: 0 };
             fieldAcc[key].total++;
-            if (score.score >= 0.9) fieldAcc[key].correct++;
+            if ((score.score || 0) >= 0.9) fieldAcc[key].correct++;
             else if (score.match === 'missing') fieldAcc[key].missing++;
             else fieldAcc[key].wrong++;
         }
@@ -479,7 +651,7 @@ function aggregatePerField(invoiceResults) {
             if (score.match === 'skip') continue;
             if (!tagAcc[key]) tagAcc[key] = { total: 0, correct: 0, wrong: 0 };
             tagAcc[key].total++;
-            if (score.score >= 0.9) tagAcc[key].correct++;
+            if ((score.score || 0) >= 0.9) tagAcc[key].correct++;
             else tagAcc[key].wrong++;
         }
     }
@@ -499,7 +671,7 @@ function aggregatePerField(invoiceResults) {
 // Display helpers
 // ---------------------------------------------------------------------------
 
-function formatDuration(ms) {
+function formatDuration(ms: number): string {
     if (ms < 1000) return `${ms}ms`;
     const seconds = Math.round(ms / 1000);
     if (seconds < 60) return `${seconds}s`;
@@ -512,15 +684,15 @@ function formatDuration(ms) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+async function main(): Promise<void> {
     const opts = parseArgs();
 
     console.log('Multi-Agent Research Harness (INV-56)');
     console.log(`Mode: ${opts.dryRun ? 'dry-run (cached)' : 'live (Gemini API)'}`);
     console.log(`Concurrency: ${opts.concurrency}\n`);
 
-    const { loadConfig } = require('../src/config');
-    const config = await loadConfig({ requireFolders: false });
+    const { loadConfig } = await import('../src/config.js');
+    const config = (await loadConfig({ requireFolders: false })) as unknown as Config;
 
     let corpus = await discoverCorpus(opts.invoice);
     if (corpus.length === 0) {
@@ -536,10 +708,8 @@ async function main() {
     console.log(`Corpus: ${corpus.length} invoices with ground truth`);
 
     const strategiesToRun = opts.strategy ? [opts.strategy] : Object.keys(STRATEGIES);
-    const allResults = {};
+    const allResults: Record<string, StrategyAggregate> = {};
 
-    // Dynamic import for p-limit (ESM module)
-    const pLimit = (await import('p-limit')).default;
     const limit = pLimit(opts.concurrency);
 
     for (const strategyName of strategiesToRun) {
@@ -550,11 +720,11 @@ async function main() {
         }
 
         const strategy = STRATEGIES[strategyName];
-        console.log(`\n${'─'.repeat(70)}`);
+        console.log(`\n${'\u2500'.repeat(70)}`);
         console.log(`Strategy: ${strategy.label}`);
-        console.log('─'.repeat(70));
+        console.log('\u2500'.repeat(70));
 
-        const invoiceResults = [];
+        const invoiceResults: InvoiceResult[] = [];
         const startTime = Date.now();
         let completed = 0;
         let errors = 0;
@@ -563,7 +733,7 @@ async function main() {
             limit(async () => {
                 const index = ++completed;
                 try {
-                    const truth = JSON.parse(await fs.readFile(entry.truthPath, 'utf-8'));
+                    const truth = JSON.parse(await fs.readFile(entry.truthPath, 'utf-8')) as Record<string, unknown>;
                     const result = await executeStrategy(strategyName, entry, config, opts.dryRun);
 
                     if (!result) {
@@ -598,7 +768,7 @@ async function main() {
                 } catch (error) {
                     errors++;
                     console.error(
-                        `  [${String(index).padStart(4)}/${corpus.length}] ${entry.name.substring(0, 50).padEnd(50)} ERROR: ${error.message.substring(0, 50)}`
+                        `  [${String(index).padStart(4)}/${corpus.length}] ${entry.name.substring(0, 50).padEnd(50)} ERROR: ${(error as Error).message.substring(0, 50)}`
                     );
                 }
             })
@@ -634,7 +804,7 @@ async function main() {
         };
 
         console.log(
-            `\n  → ${invoiceResults.length} invoices | ${(avgAccuracy * 100).toFixed(1)}% accuracy | ${Math.round(totalTokens / invoiceResults.length)} tokens/invoice | ${errors} errors | ${formatDuration(totalElapsed)} wall time`
+            `\n  \u2192 ${invoiceResults.length} invoices | ${(avgAccuracy * 100).toFixed(1)}% accuracy | ${Math.round(totalTokens / invoiceResults.length)} tokens/invoice | ${errors} errors | ${formatDuration(totalElapsed)} wall time`
         );
     }
 
@@ -643,15 +813,15 @@ async function main() {
     // -----------------------------------------------------------------------
 
     if (Object.keys(allResults).length > 1) {
-        console.log(`\n${'═'.repeat(80)}`);
+        console.log(`\n${'\u2550'.repeat(80)}`);
         console.log('COMPARISON SUMMARY');
-        console.log('═'.repeat(80));
+        console.log('\u2550'.repeat(80));
 
         const baseline = allResults.baseline;
 
         // Overall accuracy table
         console.log(
-            `\n  ${'Strategy'.padEnd(30)} ${'Accuracy'.padStart(10)} ${'Δ Acc'.padStart(8)} ${'Tok/inv'.padStart(10)} ${'Halluc'.padStart(8)} ${'Errors'.padStart(8)} ${'Wall'.padStart(8)}`
+            `\n  ${'Strategy'.padEnd(30)} ${'Accuracy'.padStart(10)} ${'\u0394 Acc'.padStart(8)} ${'Tok/inv'.padStart(10)} ${'Halluc'.padStart(8)} ${'Errors'.padStart(8)} ${'Wall'.padStart(8)}`
         );
         console.log(
             `  ${'-'.repeat(30)} ${'-'.repeat(10)} ${'-'.repeat(8)} ${'-'.repeat(10)} ${'-'.repeat(8)} ${'-'.repeat(8)} ${'-'.repeat(8)}`
@@ -671,7 +841,7 @@ async function main() {
 
         // Per-field accuracy comparison
         if (baseline) {
-            console.log('\n--- Per-Field Accuracy (Δ vs Baseline) ---');
+            console.log('\n--- Per-Field Accuracy (\u0394 vs Baseline) ---');
             const allFieldKeys = Object.keys(baseline.fieldAccuracy);
             console.log(
                 `  ${'Field'.padEnd(25)} ${'Baseline'.padStart(10)} ${Object.values(allResults)
@@ -688,17 +858,19 @@ async function main() {
 
             for (const key of allFieldKeys) {
                 const baseAcc = baseline.fieldAccuracy[key]
-                    ? (baseline.fieldAccuracy[key].accuracy * 100).toFixed(1) + '%'
+                    ? ((baseline.fieldAccuracy[key].accuracy || 0) * 100).toFixed(1) + '%'
                     : 'N/A';
                 const others = Object.entries(allResults)
                     .filter(([name]) => name !== 'baseline')
                     .map(([, data]) => {
                         if (!data.fieldAccuracy[key]) return 'N/A'.padStart(14);
-                        const acc = data.fieldAccuracy[key].accuracy * 100;
-                        const baseVal = baseline.fieldAccuracy[key] ? baseline.fieldAccuracy[key].accuracy * 100 : 0;
-                        const delta = acc - baseVal;
-                        const sign = delta >= 0 ? '+' : '';
-                        return `${acc.toFixed(1)}% ${sign}${delta.toFixed(1)}`.padStart(14);
+                        const acc = (data.fieldAccuracy[key].accuracy || 0) * 100;
+                        const baseVal = baseline.fieldAccuracy[key]
+                            ? (baseline.fieldAccuracy[key].accuracy || 0) * 100
+                            : 0;
+                        const d = acc - baseVal;
+                        const sign = d >= 0 ? '+' : '';
+                        return `${acc.toFixed(1)}% ${sign}${d.toFixed(1)}`.padStart(14);
                     })
                     .join('');
                 console.log(`  ${key.padEnd(25)} ${baseAcc.padStart(10)} ${others}`);
@@ -707,7 +879,7 @@ async function main() {
             // Per-tag accuracy comparison
             const allTagKeys = Object.keys(baseline.tagAccuracy);
             if (allTagKeys.length > 0) {
-                console.log('\n--- Per-Tag Accuracy (Δ vs Baseline) ---');
+                console.log('\n--- Per-Tag Accuracy (\u0394 vs Baseline) ---');
                 console.log(
                     `  ${'Tag'.padEnd(25)} ${'Baseline'.padStart(10)} ${Object.values(allResults)
                         .filter((d) => d.label !== baseline.label)
@@ -723,17 +895,19 @@ async function main() {
 
                 for (const key of allTagKeys) {
                     const baseAcc = baseline.tagAccuracy[key]
-                        ? (baseline.tagAccuracy[key].accuracy * 100).toFixed(1) + '%'
+                        ? ((baseline.tagAccuracy[key].accuracy || 0) * 100).toFixed(1) + '%'
                         : 'N/A';
                     const others = Object.entries(allResults)
                         .filter(([name]) => name !== 'baseline')
                         .map(([, data]) => {
                             if (!data.tagAccuracy[key]) return 'N/A'.padStart(14);
-                            const acc = data.tagAccuracy[key].accuracy * 100;
-                            const baseVal = baseline.tagAccuracy[key] ? baseline.tagAccuracy[key].accuracy * 100 : 0;
-                            const delta = acc - baseVal;
-                            const sign = delta >= 0 ? '+' : '';
-                            return `${acc.toFixed(1)}% ${sign}${delta.toFixed(1)}`.padStart(14);
+                            const acc = (data.tagAccuracy[key].accuracy || 0) * 100;
+                            const baseVal = baseline.tagAccuracy[key]
+                                ? (baseline.tagAccuracy[key].accuracy || 0) * 100
+                                : 0;
+                            const d = acc - baseVal;
+                            const sign = d >= 0 ? '+' : '';
+                            return `${acc.toFixed(1)}% ${sign}${d.toFixed(1)}`.padStart(14);
                         })
                         .join('');
                     console.log(`  ${key.padEnd(25)} ${baseAcc.padStart(10)} ${others}`);
@@ -748,17 +922,17 @@ async function main() {
                 if (name === 'baseline') continue;
                 const gain = (data.accuracy - baseline.accuracy) * 100;
                 const costMult = (data.avgTokensPerInvoice / baseline.avgTokensPerInvoice).toFixed(1);
-                let recommendation;
-                if (gain < 5) recommendation = 'REJECT — accuracy gain <5%, not worth cost/complexity';
-                else if (gain < 15) recommendation = 'DEFER — accuracy gain 5-15%, expand corpus for more data';
-                else recommendation = 'ADOPT — accuracy gain >15%, create implementation ticket';
+                let recommendation: string;
+                if (gain < 5) recommendation = 'REJECT \u2014 accuracy gain <5%, not worth cost/complexity';
+                else if (gain < 15) recommendation = 'DEFER \u2014 accuracy gain 5-15%, expand corpus for more data';
+                else recommendation = 'ADOPT \u2014 accuracy gain >15%, create implementation ticket';
                 console.log(
-                    `  ${data.label}: ${gain >= 0 ? '+' : ''}${gain.toFixed(1)}% accuracy, ${costMult}x tokens → ${recommendation}`
+                    `  ${data.label}: ${gain >= 0 ? '+' : ''}${gain.toFixed(1)}% accuracy, ${costMult}x tokens \u2192 ${recommendation}`
                 );
             }
         }
 
-        console.log('\n' + '═'.repeat(80));
+        console.log('\n' + '\u2550'.repeat(80));
     }
 
     // Save results (strip per-invoice details for smaller file, keep aggregates)
@@ -782,7 +956,7 @@ async function main() {
     console.log(`\nResults saved to: ${resultPath}`);
 }
 
-main().catch((err) => {
+main().catch((err: Error) => {
     console.error('Research failed:', err.message);
     process.exit(1);
 });

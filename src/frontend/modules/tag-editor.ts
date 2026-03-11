@@ -1,13 +1,24 @@
 // Tag Definitions Editor module
 // Manages the global tag rules (load, render, inline edit, presets, save).
+
 import { showAlert } from './ui-utils.js';
 import { registerTableHandler, activateCellEdit, showInlineDeleteConfirm } from './table-editor.js';
+
 // --- State ---
-let tagDefinitions = [];
-let originalTagDefinitions = [];
+let tagDefinitions: Record<string, unknown>[] = [];
+let originalTagDefinitions: Record<string, unknown>[] = [];
 let tagsLoaded = false;
 let tagEditMode = false;
-const TAG_PRESETS = {
+
+interface TagPreset {
+    label: string;
+    instruction: string;
+    parameters: Array<{ name: string; defaultValue: string }>;
+    filenameFormat?: string;
+    filenamePlaceholder?: string;
+}
+
+const TAG_PRESETS: Record<string, TagPreset> = {
     'address-match': {
         label: 'Private',
         instruction: 'Set to true if the address "{{address}}" appears anywhere in the document.',
@@ -22,7 +33,8 @@ const TAG_PRESETS = {
     },
     'document-classification': {
         label: 'Credit Note',
-        instruction: 'Set to true if this document is a credit note (negative invoice, refund, or credit memo) rather than a standard invoice.',
+        instruction:
+            'Set to true if this document is a credit note (negative invoice, refund, or credit memo) rather than a standard invoice.',
         parameters: [],
         filenameFormat: ' - CREDIT',
         filenamePlaceholder: 'creditTag'
@@ -33,24 +45,29 @@ const TAG_PRESETS = {
         parameters: []
     }
 };
+
 // --- DOM refs (set in init) ---
-let tagListEl;
-let tagsSaveBar;
-let addTagDropdown;
-let addTagMenu;
-let tagEditToggleBtn;
-let saveTagsBtn;
+let tagListEl: HTMLElement;
+let tagsSaveBar: HTMLElement;
+let addTagDropdown: HTMLElement;
+let addTagMenu: HTMLElement;
+let tagEditToggleBtn: HTMLElement;
+let saveTagsBtn: HTMLButtonElement;
+
 // --- Public API ---
-export function initTagEditor() {
-    tagListEl = document.getElementById('tagList');
-    tagsSaveBar = document.getElementById('tagsSaveBar');
-    addTagDropdown = document.getElementById('addTagDropdown');
-    addTagMenu = document.getElementById('addTagMenu');
-    tagEditToggleBtn = document.getElementById('tagEditToggleBtn');
-    saveTagsBtn = document.getElementById('saveTagsBtn');
-    const reloadTagsBtn = document.getElementById('reloadTagsBtn');
-    const discardTagsBtn = document.getElementById('discardTagsBtn');
-    const addTagBtn = document.getElementById('addTagBtn');
+
+export function initTagEditor(): void {
+    tagListEl = document.getElementById('tagList')!;
+    tagsSaveBar = document.getElementById('tagsSaveBar')!;
+    addTagDropdown = document.getElementById('addTagDropdown')!;
+    addTagMenu = document.getElementById('addTagMenu')!;
+    tagEditToggleBtn = document.getElementById('tagEditToggleBtn')!;
+    saveTagsBtn = document.getElementById('saveTagsBtn') as HTMLButtonElement;
+
+    const reloadTagsBtn = document.getElementById('reloadTagsBtn')!;
+    const discardTagsBtn = document.getElementById('discardTagsBtn')!;
+    const addTagBtn = document.getElementById('addTagBtn')!;
+
     // Register with shared table-editor
     registerTableHandler('tags-table', {
         isEditMode: () => tagEditMode,
@@ -59,6 +76,7 @@ export function initTagEditor() {
         render: renderTagList,
         updateSaveBar: updateTagsSaveBar
     });
+
     // Event listeners
     tagEditToggleBtn.addEventListener('click', toggleTagEditMode);
     reloadTagsBtn.addEventListener('click', () => {
@@ -67,16 +85,17 @@ export function initTagEditor() {
     });
     saveTagsBtn.addEventListener('click', saveTagDefinitions);
     discardTagsBtn.addEventListener('click', discardTagChanges);
+
     // Tag add dropdown
-    addTagBtn.addEventListener('click', (e) => {
+    addTagBtn.addEventListener('click', (e: MouseEvent) => {
         e.stopPropagation();
         addTagMenu.classList.toggle('open');
     });
     document.querySelectorAll('#addTagMenu .dropdown-item').forEach((item) => {
-        item.addEventListener('click', (e) => {
+        item.addEventListener('click', (e: Event) => {
             e.stopPropagation();
             addTagMenu.classList.remove('open');
-            addTagFromPreset(item.dataset.preset);
+            addTagFromPreset((item as HTMLElement).dataset.preset!);
         });
     });
     // Close dropdown when clicking outside
@@ -84,101 +103,120 @@ export function initTagEditor() {
         addTagMenu.classList.remove('open');
     });
 }
-export function isTagsLoaded() {
+
+export function isTagsLoaded(): boolean {
     return tagsLoaded;
 }
-export async function loadTagDefinitions() {
+
+export async function loadTagDefinitions(): Promise<void> {
     try {
         tagListEl.textContent = '';
         const loadingDiv = document.createElement('div');
         loadingDiv.className = 'loading-placeholder';
         loadingDiv.textContent = 'Loading tags...';
         tagListEl.appendChild(loadingDiv);
+
         const response = await fetch('/api/config');
         const data = await response.json();
+
         if (response.ok) {
-            tagDefinitions = (data.tagDefinitions || []).map((tag) => ({
+            tagDefinitions = ((data.tagDefinitions || []) as Record<string, unknown>[]).map((tag) => ({
                 ...tag,
-                parameters: Object.entries((tag.parameters || {})).map(([name, param]) => ({
-                    name,
-                    label: param.label || name,
-                    defaultValue: param.default || ''
-                }))
+                parameters: Object.entries((tag.parameters || {}) as Record<string, Record<string, string>>).map(
+                    ([name, param]) => ({
+                        name,
+                        label: param.label || name,
+                        defaultValue: param.default || ''
+                    })
+                )
             }));
             originalTagDefinitions = JSON.parse(JSON.stringify(tagDefinitions));
             tagsLoaded = true;
             renderTagList();
-        }
-        else {
+        } else {
             tagListEl.textContent = '';
             const errDiv = document.createElement('div');
             errDiv.className = 'error-placeholder';
             errDiv.textContent = 'Error: ' + (data.error || 'Unknown error');
             tagListEl.appendChild(errDiv);
         }
-    }
-    catch (error) {
+    } catch (error) {
         tagListEl.textContent = '';
         const errDiv = document.createElement('div');
         errDiv.className = 'error-placeholder';
-        errDiv.textContent = 'Failed to load tags: ' + error.message;
+        errDiv.textContent = 'Failed to load tags: ' + (error as Error).message;
         tagListEl.appendChild(errDiv);
     }
 }
+
 /** Mark tags as needing reload (e.g. after config import/restore). */
-export function invalidateTags() {
+export function invalidateTags(): void {
     tagsLoaded = false;
 }
-export function hasUnsavedTagChanges() {
+
+export function hasUnsavedTagChanges(): boolean {
     return JSON.stringify(tagDefinitions) !== JSON.stringify(originalTagDefinitions);
 }
-export function discardTagChanges() {
+
+export function discardTagChanges(): void {
     tagDefinitions = JSON.parse(JSON.stringify(originalTagDefinitions));
     if (tagEditMode) {
         tagEditMode = false;
         tagEditToggleBtn.classList.remove('active');
-        tagEditToggleBtn.querySelector('span').textContent = 'Locked';
+        tagEditToggleBtn.querySelector('span')!.textContent = 'Locked';
         addTagDropdown.style.display = 'none';
     }
     renderTagList();
 }
+
 /**
  * Get the addTagMenu element (used by app.js for Escape key handling).
  */
-export function getAddTagMenu() {
+export function getAddTagMenu(): HTMLElement {
     return addTagMenu;
 }
+
 // --- Internal ---
-function onCellWrite(index, fieldName, input, tr) {
-    if (index >= tagDefinitions.length || !fieldName)
-        return;
+
+function onCellWrite(
+    index: number,
+    fieldName: string,
+    input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+    tr: HTMLTableRowElement
+): void {
+    if (index >= tagDefinitions.length || !fieldName) return;
+
     tagDefinitions[index][fieldName] = input.value.trim();
+
     // Auto-generate id from label
     if (fieldName === 'label') {
         const idTd = tr.querySelector('td.col-id');
         if (idTd) {
             tagDefinitions[index].id = labelToSnakeCase(input.value);
             const idView = idTd.querySelector('.cell-view code');
-            if (idView)
-                idView.textContent = tagDefinitions[index].id;
+            if (idView) idView.textContent = tagDefinitions[index].id as string;
         }
     }
 }
-function toggleTagEditMode() {
+
+function toggleTagEditMode(): void {
     if (tagEditMode && hasUnsavedTagChanges()) {
         if (!confirm('You have unsaved tag changes. Discard and exit edit mode?')) {
             return;
         }
         tagDefinitions = JSON.parse(JSON.stringify(originalTagDefinitions));
     }
+
     tagEditMode = !tagEditMode;
     tagEditToggleBtn.classList.toggle('active', tagEditMode);
-    tagEditToggleBtn.querySelector('span').textContent = tagEditMode ? 'Editing' : 'Locked';
+    tagEditToggleBtn.querySelector('span')!.textContent = tagEditMode ? 'Editing' : 'Locked';
     addTagDropdown.style.display = tagEditMode ? 'inline-block' : 'none';
     renderTagList();
 }
-function renderTagList() {
+
+function renderTagList(): void {
     tagListEl.textContent = '';
+
     if (tagDefinitions.length === 0) {
         const placeholder = document.createElement('div');
         placeholder.className = 'empty-placeholder';
@@ -192,13 +230,15 @@ function renderTagList() {
         updateTagsSaveBar();
         return;
     }
+
     const table = document.createElement('table');
     table.className = 'tags-table' + (tagEditMode ? ' edit-mode' : '');
     table.id = 'tagsTable';
+
     // Build thead
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    const headers = [
+    const headers: Array<{ text: string; cls: string; tooltip?: string }> = [
         { text: 'On', cls: 'col-enabled' },
         { text: 'Label', cls: 'col-label' },
         { text: 'ID', cls: 'col-id' },
@@ -209,20 +249,21 @@ function renderTagList() {
         const th = document.createElement('th');
         th.className = h.cls;
         th.textContent = h.text;
-        if (h.tooltip)
-            th.title = h.tooltip;
+        if (h.tooltip) th.title = h.tooltip;
         headerRow.appendChild(th);
     });
     thead.appendChild(headerRow);
     table.appendChild(thead);
+
     // Build tbody
     const tbody = document.createElement('tbody');
     tbody.id = 'tagListBody';
+
     tagDefinitions.forEach((tag, index) => {
         const tr = document.createElement('tr');
-        if (tag.enabled === false)
-            tr.classList.add('disabled');
+        if (tag.enabled === false) tr.classList.add('disabled');
         tr.dataset.index = String(index);
+
         // Enabled column — toggle dot
         const tdEnabled = document.createElement('td');
         tdEnabled.className = 'col-enabled';
@@ -237,60 +278,65 @@ function renderTagList() {
         }
         tdEnabled.appendChild(toggleIcon);
         tr.appendChild(tdEnabled);
+
         // Label column — click-to-edit
         const tdLabel = document.createElement('td');
         tdLabel.className = 'col-label cell-editable';
         const labelView = document.createElement('span');
         labelView.className = 'cell-view';
-        labelView.textContent = tag.label || '(untitled)';
+        labelView.textContent = (tag.label as string) || '(untitled)';
         tdLabel.appendChild(labelView);
         const labelEdit = document.createElement('span');
         labelEdit.className = 'cell-edit';
         const labelInput = document.createElement('input');
         labelInput.type = 'text';
         labelInput.dataset.field = 'label';
-        labelInput.value = tag.label || '';
+        labelInput.value = (tag.label as string) || '';
         labelEdit.appendChild(labelInput);
         tdLabel.appendChild(labelEdit);
         tr.appendChild(tdLabel);
+
         // ID column — read-only, auto-generated
         const tdId = document.createElement('td');
         tdId.className = 'col-id';
         const idView = document.createElement('span');
         idView.className = 'cell-view';
         const idCode = document.createElement('code');
-        idCode.textContent = tag.id || '';
+        idCode.textContent = (tag.id as string) || '';
         idView.appendChild(idCode);
         tdId.appendChild(idView);
         tr.appendChild(tdId);
+
         // Instruction column — click-to-edit textarea
         const tdInstr = document.createElement('td');
         tdInstr.className = 'col-instruction cell-editable';
         const instrView = document.createElement('span');
         instrView.className = 'cell-view cell-view-truncate';
-        instrView.title = tag.instruction || '';
-        instrView.textContent = tag.instruction || '(empty)';
+        instrView.title = (tag.instruction as string) || '';
+        instrView.textContent = (tag.instruction as string) || '(empty)';
         tdInstr.appendChild(instrView);
         const instrEdit = document.createElement('span');
         instrEdit.className = 'cell-edit';
         const instrTextarea = document.createElement('textarea');
         instrTextarea.dataset.field = 'instruction';
         instrTextarea.rows = 3;
-        instrTextarea.value = tag.instruction || '';
+        instrTextarea.value = (tag.instruction as string) || '';
         instrEdit.appendChild(instrTextarea);
         tdInstr.appendChild(instrEdit);
         tr.appendChild(tdInstr);
+
         // Actions column
         const tdActions = document.createElement('td');
         tdActions.className = 'col-actions';
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'row-actions';
+
         // Expand/collapse button
         const expandBtn = document.createElement('button');
         expandBtn.className = 'btn-icon';
         expandBtn.title = 'Expand details';
         expandBtn.textContent = '\u25B6';
-        expandBtn.addEventListener('click', (e) => {
+        expandBtn.addEventListener('click', (e: MouseEvent) => {
             e.stopPropagation();
             const detailRow = tbody.querySelector(`tr.tag-detail-row[data-index="${index}"]`);
             if (detailRow) {
@@ -299,19 +345,23 @@ function renderTagList() {
             }
         });
         actionsDiv.appendChild(expandBtn);
+
         // Delete button
         const delBtn = document.createElement('button');
         delBtn.className = 'btn-icon btn-icon-danger';
         delBtn.title = 'Delete tag';
         delBtn.textContent = '\u2715';
-        delBtn.addEventListener('click', (e) => {
+        delBtn.addEventListener('click', (e: MouseEvent) => {
             e.stopPropagation();
             showInlineDeleteConfirm(index, 'tags-table');
         });
         actionsDiv.appendChild(delBtn);
+
         tdActions.appendChild(actionsDiv);
         tr.appendChild(tdActions);
+
         tbody.appendChild(tr);
+
         // Detail row (collapsed by default)
         const detailTr = document.createElement('tr');
         detailTr.className = 'tag-detail-row collapsed';
@@ -322,49 +372,58 @@ function renderTagList() {
         detailTr.appendChild(detailTd);
         tbody.appendChild(detailTr);
     });
+
     table.appendChild(tbody);
     tagListEl.appendChild(table);
+
     // Attach click-to-edit handlers only in tag edit mode
     if (tagEditMode) {
         table.querySelectorAll('td.cell-editable').forEach((td) => {
-            td.addEventListener('click', () => activateCellEdit(td));
+            td.addEventListener('click', () => activateCellEdit(td as HTMLTableCellElement));
         });
     }
+
     updateTagsSaveBar();
 }
-function buildTagDetailContent(container, tag, index) {
+
+function buildTagDetailContent(container: HTMLTableCellElement, tag: Record<string, unknown>, index: number): void {
     const content = document.createElement('div');
     content.className = 'tag-detail-content';
+
     // Parameters section
     const paramsH4 = document.createElement('h4');
     paramsH4.textContent = 'Parameters';
     content.appendChild(paramsH4);
+
     const paramsContainer = document.createElement('div');
     paramsContainer.className = 'tag-params-container';
     paramsContainer.dataset.tagIndex = String(index);
     renderInlineParams(paramsContainer, tag, index);
     content.appendChild(paramsContainer);
+
     if (tagEditMode) {
         const addParamBtn = document.createElement('button');
         addParamBtn.className = 'btn btn-secondary btn-small';
         addParamBtn.textContent = '+ Add Parameter';
         addParamBtn.style.marginTop = '0.5rem';
         addParamBtn.addEventListener('click', () => {
-            if (!tag.parameters)
-                tag.parameters = [];
-            tag.parameters.push({ name: '', defaultValue: '' });
+            if (!tag.parameters) tag.parameters = [];
+            (tag.parameters as Array<{ name: string; defaultValue: string }>).push({ name: '', defaultValue: '' });
             renderInlineParams(paramsContainer, tag, index);
             updateTagsSaveBar();
         });
         content.appendChild(addParamBtn);
     }
+
     // Filename options section
     const fnH4 = document.createElement('h4');
     fnH4.textContent = 'Filename Options';
     fnH4.style.marginTop = '1rem';
     content.appendChild(fnH4);
+
     const fnOpts = document.createElement('div');
     fnOpts.className = 'filename-options';
+
     const fmtGroup = document.createElement('div');
     fmtGroup.className = 'form-group';
     const fmtLabel = document.createElement('label');
@@ -373,7 +432,7 @@ function buildTagDetailContent(container, tag, index) {
     const fmtInput = document.createElement('input');
     fmtInput.type = 'text';
     fmtInput.placeholder = 'e.g., " - PRIVATE"';
-    fmtInput.value = tag.filenameFormat || '';
+    fmtInput.value = (tag.filenameFormat as string) || '';
     fmtInput.disabled = !tagEditMode;
     fmtInput.addEventListener('input', () => {
         tag.filenameFormat = fmtInput.value;
@@ -381,6 +440,7 @@ function buildTagDetailContent(container, tag, index) {
     });
     fmtGroup.appendChild(fmtInput);
     fnOpts.appendChild(fmtGroup);
+
     const phGroup = document.createElement('div');
     phGroup.className = 'form-group';
     const phLabel = document.createElement('label');
@@ -389,7 +449,7 @@ function buildTagDetailContent(container, tag, index) {
     const phInput = document.createElement('input');
     phInput.type = 'text';
     phInput.placeholder = 'e.g., privateTag';
-    phInput.value = tag.filenamePlaceholder || '';
+    phInput.value = (tag.filenamePlaceholder as string) || '';
     phInput.disabled = !tagEditMode;
     phInput.addEventListener('input', () => {
         tag.filenamePlaceholder = phInput.value;
@@ -397,12 +457,15 @@ function buildTagDetailContent(container, tag, index) {
     });
     phGroup.appendChild(phInput);
     fnOpts.appendChild(phGroup);
+
     content.appendChild(fnOpts);
     container.appendChild(content);
 }
-function renderInlineParams(container, tag, _tagIndex) {
+
+function renderInlineParams(container: HTMLElement, tag: Record<string, unknown>, _tagIndex: number): void {
     container.textContent = '';
-    const params = (tag.parameters || []);
+    const params = (tag.parameters || []) as Array<{ name: string; defaultValue: string }>;
+
     if (params.length === 0 && !tagEditMode) {
         const hint = document.createElement('p');
         hint.className = 'section-description';
@@ -411,6 +474,7 @@ function renderInlineParams(container, tag, _tagIndex) {
         container.appendChild(hint);
         return;
     }
+
     if (params.length === 0) {
         const hint = document.createElement('p');
         hint.className = 'section-description';
@@ -419,8 +483,10 @@ function renderInlineParams(container, tag, _tagIndex) {
         container.appendChild(hint);
         return;
     }
+
     const miniTable = document.createElement('table');
     miniTable.className = 'params-mini-table';
+
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
     ['Name', 'Default Value', ''].forEach((text) => {
@@ -430,9 +496,11 @@ function renderInlineParams(container, tag, _tagIndex) {
     });
     thead.appendChild(headRow);
     miniTable.appendChild(thead);
+
     const tbody = document.createElement('tbody');
     params.forEach((param, pIndex) => {
         const row = document.createElement('tr');
+
         const nameTd = document.createElement('td');
         if (tagEditMode) {
             const nameInput = document.createElement('input');
@@ -440,15 +508,15 @@ function renderInlineParams(container, tag, _tagIndex) {
             nameInput.placeholder = 'param name';
             nameInput.value = param.name || '';
             nameInput.addEventListener('input', () => {
-                tag.parameters[pIndex].name = nameInput.value;
+                (tag.parameters as Array<{ name: string; defaultValue: string }>)[pIndex].name = nameInput.value;
                 updateTagsSaveBar();
             });
             nameTd.appendChild(nameInput);
-        }
-        else {
+        } else {
             nameTd.textContent = param.name || '';
         }
         row.appendChild(nameTd);
+
         const valTd = document.createElement('td');
         if (tagEditMode) {
             const valInput = document.createElement('input');
@@ -456,15 +524,15 @@ function renderInlineParams(container, tag, _tagIndex) {
             valInput.placeholder = 'default value';
             valInput.value = param.defaultValue || '';
             valInput.addEventListener('input', () => {
-                tag.parameters[pIndex].defaultValue = valInput.value;
+                (tag.parameters as Array<{ name: string; defaultValue: string }>)[pIndex].defaultValue = valInput.value;
                 updateTagsSaveBar();
             });
             valTd.appendChild(valInput);
-        }
-        else {
+        } else {
             valTd.textContent = param.defaultValue || '';
         }
         row.appendChild(valTd);
+
         const actionTd = document.createElement('td');
         if (tagEditMode) {
             const removeBtn = document.createElement('button');
@@ -472,52 +540,57 @@ function renderInlineParams(container, tag, _tagIndex) {
             removeBtn.title = 'Remove';
             removeBtn.textContent = '\u2715';
             removeBtn.addEventListener('click', () => {
-                tag.parameters.splice(pIndex, 1);
+                (tag.parameters as Array<{ name: string; defaultValue: string }>).splice(pIndex, 1);
                 renderInlineParams(container, tag, _tagIndex);
                 updateTagsSaveBar();
             });
             actionTd.appendChild(removeBtn);
         }
         row.appendChild(actionTd);
+
         tbody.appendChild(row);
     });
+
     miniTable.appendChild(tbody);
     container.appendChild(miniTable);
 }
-function addTagFromPreset(presetKey) {
+
+function addTagFromPreset(presetKey: string): void {
     const preset = TAG_PRESETS[presetKey];
-    if (!preset)
-        return;
-    const newTag = {
+    if (!preset) return;
+
+    const newTag: Record<string, unknown> = {
         id: preset.label ? labelToSnakeCase(preset.label) : '',
         label: preset.label,
         instruction: preset.instruction,
         enabled: true,
         parameters: (preset.parameters || []).map((p) => ({ ...p }))
     };
-    if (preset.filenamePlaceholder)
-        newTag.filenamePlaceholder = preset.filenamePlaceholder;
-    if (preset.filenameFormat)
-        newTag.filenameFormat = preset.filenameFormat;
+    if (preset.filenamePlaceholder) newTag.filenamePlaceholder = preset.filenamePlaceholder;
+    if (preset.filenameFormat) newTag.filenameFormat = preset.filenameFormat;
+
     tagDefinitions.push(newTag);
     renderTagList();
+
     if (presetKey === 'custom') {
         const lastMainRow = tagListEl.querySelector('#tagListBody tr[data-index]:not(.tag-detail-row):last-of-type');
         if (lastMainRow) {
-            const labelTd = lastMainRow.querySelector('td.col-label');
-            if (labelTd)
-                activateCellEdit(labelTd);
+            const labelTd = lastMainRow.querySelector('td.col-label') as HTMLTableCellElement | null;
+            if (labelTd) activateCellEdit(labelTd);
         }
     }
 }
-function updateTagsSaveBar() {
+
+function updateTagsSaveBar(): void {
     tagsSaveBar.style.display = hasUnsavedTagChanges() ? 'flex' : 'none';
 }
-async function saveTagDefinitions() {
+
+async function saveTagDefinitions(): Promise<void> {
     if (tagDefinitions.length === 0 && originalTagDefinitions.length === 0) {
         showAlert('No tag changes to save', 'info');
         return;
     }
+
     for (let i = 0; i < tagDefinitions.length; i++) {
         const tag = tagDefinitions[i];
         const rowNum = i + 1;
@@ -539,6 +612,7 @@ async function saveTagDefinitions() {
             return;
         }
     }
+
     try {
         saveTagsBtn.disabled = true;
         saveTagsBtn.textContent = '';
@@ -546,9 +620,12 @@ async function saveTagDefinitions() {
         spinner.className = 'spinner';
         saveTagsBtn.appendChild(spinner);
         saveTagsBtn.appendChild(document.createTextNode(' Saving...'));
+
         const apiTagDefs = tagDefinitions.map((tag) => ({
             ...tag,
-            parameters: (tag.parameters || []).reduce((obj, p) => {
+            parameters: (
+                (tag.parameters || []) as Array<{ name: string; label?: string; defaultValue: string }>
+            ).reduce((obj: Record<string, { label: string; default: string }>, p) => {
                 if (p.name.trim()) {
                     obj[p.name.trim()] = {
                         label: p.label || p.name.trim(),
@@ -558,40 +635,40 @@ async function saveTagDefinitions() {
                 return obj;
             }, {})
         }));
+
         const response = await fetch('/api/config/tags', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tagDefinitions: apiTagDefs })
         });
+
         const result = await response.json();
+
         if (response.ok) {
             originalTagDefinitions = JSON.parse(JSON.stringify(tagDefinitions));
             if (tagEditMode) {
                 tagEditMode = false;
                 tagEditToggleBtn.classList.remove('active');
-                tagEditToggleBtn.querySelector('span').textContent = 'Locked';
+                tagEditToggleBtn.querySelector('span')!.textContent = 'Locked';
                 addTagDropdown.style.display = 'none';
             }
             renderTagList();
             showAlert(result.message || 'Tag definitions saved', 'success');
-        }
-        else {
+        } else {
             showAlert(result.error || result.details || 'Failed to save tags', 'error');
         }
-    }
-    catch (error) {
-        showAlert('Failed to save tags: ' + error.message, 'error');
-    }
-    finally {
+    } catch (error) {
+        showAlert('Failed to save tags: ' + (error as Error).message, 'error');
+    } finally {
         saveTagsBtn.disabled = false;
         saveTagsBtn.textContent = 'Save Changes';
     }
 }
-function labelToSnakeCase(label) {
+
+function labelToSnakeCase(label: string): string {
     return label
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_|_$/g, '');
 }
-//# sourceMappingURL=tag-editor.js.map

@@ -1,57 +1,76 @@
-const fs = require('fs').promises;
-const path = require('path');
-const sanitize = require('sanitize-filename');
-const {
+import fs from 'node:fs';
+import path from 'node:path';
+import sanitize from 'sanitize-filename';
+import {
     VALID_OVERRIDE_SECTIONS,
     DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
     DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
     DEFAULT_CSV_FILENAME,
     safeJoin
-} = require('./constants');
+} from './constants.js';
 
-let cachedClientsConfig = null;
+import type {
+    AppConfig,
+    ClientFile,
+    MergedClientConfig,
+    AnnotatedClientConfig,
+    ClientFolders,
+    FolderStatus,
+    AnnotatedField,
+    AnnotatedTag,
+    FieldDefinition,
+    TagDefinition,
+    PromptTemplate,
+    OutputConfig
+} from './types/index.js';
+
+interface ClientsConfig {
+    clients: Record<string, ClientFile>;
+}
+
+let cachedClientsConfig: ClientsConfig | null = null;
 let usingLegacyConfig = false;
 
 /**
  * Discover client config files from clients/ folder
- * @returns {Promise<Object|null>} Object with clientId -> client config, or null if folder doesn't exist/is empty
+ * @returns Object with clientId -> client config, or null if folder doesn't exist/is empty
  */
-async function discoverClientFiles() {
+export async function discoverClientFiles(): Promise<ClientsConfig | null> {
     const clientsDir = path.join(process.cwd(), 'clients');
 
     try {
-        const files = await fs.readdir(clientsDir);
+        const files = await fs.promises.readdir(clientsDir);
         const jsonFiles = files.filter((f) => f.endsWith('.json'));
 
         if (jsonFiles.length === 0) {
             return null;
         }
 
-        const clients = {};
+        const clients: Record<string, ClientFile> = {};
 
         for (const file of jsonFiles) {
             const clientId = path.basename(file, '.json');
             const filePath = path.join(clientsDir, file);
 
             try {
-                const content = await fs.readFile(filePath, 'utf-8');
-                const config = JSON.parse(content);
+                const content = await fs.promises.readFile(filePath, 'utf-8');
+                const config = JSON.parse(content) as ClientFile;
 
                 // Validate the client config
-                validateClientConfig(clientId, config);
+                validateClientConfig(clientId, config as unknown as Record<string, unknown>);
 
                 clients[clientId] = config;
-            } catch (error) {
-                if (error.code === 'ENOENT') {
+            } catch (error: unknown) {
+                if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
                     continue;
                 }
-                throw new Error(`Failed to load client config "${file}": ${error.message}`);
+                throw new Error(`Failed to load client config "${file}": ${(error as Error).message}`);
             }
         }
 
         return Object.keys(clients).length > 0 ? { clients } : null;
-    } catch (error) {
-        if (error.code === 'ENOENT') {
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             // clients/ folder doesn't exist
             return null;
         }
@@ -61,10 +80,10 @@ async function discoverClientFiles() {
 
 /**
  * Validate a client configuration
- * @param {string} clientId - The client identifier
- * @param {Object} config - The client configuration object
+ * @param clientId - The client identifier
+ * @param config - The client configuration object
  */
-function validateClientConfig(clientId, config) {
+export function validateClientConfig(clientId: string, config: Record<string, unknown>): void {
     if (!config.name || typeof config.name !== 'string') {
         throw new Error(`Client "${clientId}": must have a "name" string`);
     }
@@ -89,14 +108,14 @@ function validateClientConfig(clientId, config) {
 
 /**
  * Validate legacy clients.json structure (allows extraction.privateAddressMarker)
- * @param {Object} config - Clients configuration to validate
+ * @param config - Clients configuration to validate
  */
-function validateLegacyClientsConfig(config) {
+function validateLegacyClientsConfig(config: Record<string, unknown>): void {
     if (!config.clients || typeof config.clients !== 'object') {
         throw new Error('clients.json must contain a "clients" object');
     }
 
-    for (const [clientId, client] of Object.entries(config.clients)) {
+    for (const [clientId, client] of Object.entries(config.clients as Record<string, Record<string, unknown>>)) {
         if (!client.name || typeof client.name !== 'string') {
             throw new Error(`Client "${clientId}" must have a "name" string`);
         }
@@ -114,9 +133,9 @@ function validateLegacyClientsConfig(config) {
 /**
  * Load and validate clients configuration
  * Tries clients/ folder first, then falls back to legacy clients.json
- * @returns {Promise<Object|null>} Clients configuration object or null if not found
+ * @returns Clients configuration object or null if not found
  */
-async function loadClientsConfig() {
+export async function loadClientsConfig(): Promise<ClientsConfig | null> {
     if (cachedClientsConfig) {
         return cachedClientsConfig;
     }
@@ -133,8 +152,8 @@ async function loadClientsConfig() {
     const clientsPath = path.join(process.cwd(), 'clients.json');
 
     try {
-        const fileContent = await fs.readFile(clientsPath, 'utf-8');
-        const clientsConfig = JSON.parse(fileContent);
+        const fileContent = await fs.promises.readFile(clientsPath, 'utf-8');
+        const clientsConfig = JSON.parse(fileContent) as Record<string, unknown>;
 
         validateLegacyClientsConfig(clientsConfig);
 
@@ -143,31 +162,31 @@ async function loadClientsConfig() {
         console.warn('   Please migrate to individual client files in clients/ folder.');
         console.warn('   Run: node scripts/migrate-clients.js\n');
 
-        cachedClientsConfig = clientsConfig;
+        cachedClientsConfig = clientsConfig as unknown as ClientsConfig;
         usingLegacyConfig = true;
 
         return cachedClientsConfig;
-    } catch (error) {
-        if (error.code === 'ENOENT') {
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             // clients.json doesn't exist - return null to signal single-client mode
             return null;
         }
-        throw new Error(`Failed to load clients.json: ${error.message}`);
+        throw new Error(`Failed to load clients.json: ${(error as Error).message}`);
     }
 }
 
 /**
  * Get all enabled clients
- * @returns {Promise<Object|null>} Object with clientId -> client config, or null for single-client mode
+ * @returns Object with clientId -> client config, or null for single-client mode
  */
-async function getEnabledClients() {
+export async function getEnabledClients(): Promise<Record<string, ClientFile> | null> {
     const clientsConfig = await loadClientsConfig();
 
     if (!clientsConfig) {
         return null; // Signal single-client mode
     }
 
-    const enabledClients = {};
+    const enabledClients: Record<string, ClientFile> = {};
     for (const [clientId, client] of Object.entries(clientsConfig.clients)) {
         if (client.enabled) {
             enabledClients[clientId] = client;
@@ -179,9 +198,9 @@ async function getEnabledClients() {
 
 /**
  * Get all clients (including disabled)
- * @returns {Promise<Object|null>} Object with clientId -> client config, or null for single-client mode
+ * @returns Object with clientId -> client config, or null for single-client mode
  */
-async function getAllClients() {
+export async function getAllClients(): Promise<Record<string, ClientFile> | null> {
     const clientsConfig = await loadClientsConfig();
 
     if (!clientsConfig) {
@@ -194,11 +213,11 @@ async function getAllClients() {
 /**
  * Get merged configuration for a specific client
  * Merges global config with client-specific overrides (full override, not merge)
- * @param {string} clientId - Client identifier
- * @param {Object} globalConfig - The global configuration object
- * @returns {Promise<Object>} Merged configuration object
+ * @param clientId - Client identifier
+ * @param globalConfig - The global configuration object
+ * @returns Merged configuration object
  */
-async function getClientConfig(clientId, globalConfig) {
+export async function getClientConfig(clientId: string, globalConfig: AppConfig): Promise<MergedClientConfig> {
     const clientsConfig = await loadClientsConfig();
 
     if (!clientsConfig) {
@@ -217,7 +236,7 @@ async function getClientConfig(clientId, globalConfig) {
         globalConfig.output?.processedEnrichedSubfolder || DEFAULT_PROCESSED_ENRICHED_SUBFOLDER;
     const csvFilename = globalConfig.output?.csvFilename || DEFAULT_CSV_FILENAME;
 
-    const folders = {
+    const folders: ClientFolders = {
         base: client.folderPath,
         input: client.folderPath, // New PDFs are placed directly in the base folder
         processedOriginal: path.join(client.folderPath, processedOriginalSubfolder),
@@ -226,15 +245,15 @@ async function getClientConfig(clientId, globalConfig) {
     };
 
     // Output config: outputOverride merges into global, legacy output replaces entirely
-    let output = globalConfig.output;
+    let output: OutputConfig = globalConfig.output;
     if (client.outputOverride) {
-        output = { ...globalConfig.output, ...client.outputOverride };
+        output = { ...globalConfig.output, ...client.outputOverride } as OutputConfig;
     } else if (client.output) {
-        output = client.output;
+        output = client.output as OutputConfig;
     }
 
     // Field definitions: toggle-only model with custom field support
-    let fieldDefinitions = globalConfig.fieldDefinitions || [];
+    let fieldDefinitions: FieldDefinition[] = globalConfig.fieldDefinitions || [];
     if (client.fieldDefinitions) {
         // Backward compat: full replacement for unmigrated configs
         console.warn(`Client "${clientId}": fieldDefinitions is deprecated, migrate to fieldOverrides`);
@@ -243,40 +262,41 @@ async function getClientConfig(clientId, globalConfig) {
         const globalFieldKeys = new Set(fieldDefinitions.map((f) => f.key));
         // Apply enabled toggles to global fields
         fieldDefinitions = fieldDefinitions.map((field) => {
-            const override = client.fieldOverrides[field.key];
+            const override = client.fieldOverrides![field.key];
             if (!override) return field;
             return { ...field, enabled: typeof override.enabled === 'boolean' ? override.enabled : field.enabled };
         });
         // Add custom fields (keys not in global)
         for (const [key, def] of Object.entries(client.fieldOverrides)) {
             if (!globalFieldKeys.has(key)) {
-                fieldDefinitions.push({ ...def, key });
+                fieldDefinitions.push({ ...(def as unknown as FieldDefinition), key });
             }
         }
     }
 
     // Tag definitions: toggle-only model with custom tag support
-    let tagDefinitions = globalConfig.tagDefinitions || null;
+    let tagDefinitions: TagDefinition[] | null = globalConfig.tagDefinitions || null;
     if (tagDefinitions && client.tagOverrides) {
         const globalTagIds = new Set(tagDefinitions.map((t) => t.id));
         // Apply enabled toggles to global tags
         tagDefinitions = tagDefinitions.map((tag) => {
-            const override = client.tagOverrides[tag.id];
+            const override = client.tagOverrides![tag.id];
             if (!override) return tag;
             return { ...tag, enabled: typeof override.enabled === 'boolean' ? override.enabled : tag.enabled };
         });
         // Add custom tags (ids not in global)
         for (const [id, def] of Object.entries(client.tagOverrides)) {
             if (!globalTagIds.has(id)) {
-                tagDefinitions.push({ ...def, id });
+                tagDefinitions.push({ ...(def as unknown as TagDefinition), id });
             }
         }
     }
 
     // Prompt template: promptOverride merges section-by-section into global
-    let promptTemplate = globalConfig.promptTemplate || {};
+    let promptTemplate: PromptTemplate | Record<string, never> =
+        globalConfig.promptTemplate || ({} as Record<string, never>);
     if (client.promptOverride) {
-        promptTemplate = { ...promptTemplate, ...client.promptOverride };
+        promptTemplate = { ...promptTemplate, ...client.promptOverride } as PromptTemplate;
     } else if (client.promptTemplate) {
         promptTemplate = client.promptTemplate;
     }
@@ -302,13 +322,13 @@ async function getClientConfig(clientId, globalConfig) {
 /**
  * Resolve API key for a client
  * Checks client-specific env var first, then falls back to default
- * @param {Object} clientConfig - Client configuration object
- * @returns {string} API key
+ * @param clientConfig - Client configuration object
+ * @returns API key
  */
-function resolveApiKey(clientConfig) {
+export function resolveApiKey(clientConfig: MergedClientConfig): string {
     // 1. Check client-specific env var
     if (clientConfig.apiKeyEnvVar && process.env[clientConfig.apiKeyEnvVar]) {
-        return process.env[clientConfig.apiKeyEnvVar];
+        return process.env[clientConfig.apiKeyEnvVar]!;
     }
 
     // 2. Fall back to default
@@ -324,31 +344,31 @@ function resolveApiKey(clientConfig) {
 
 /**
  * Ensure client directories exist (create if missing)
- * @param {Object} clientConfig - Client configuration object
+ * @param clientConfig - Client configuration object
  */
-async function ensureClientDirectories(clientConfig) {
+export async function ensureClientDirectories(clientConfig: MergedClientConfig): Promise<void> {
     const { folders } = clientConfig;
 
     // Check if base folder exists
     try {
-        await fs.access(folders.base);
+        await fs.promises.access(folders.base);
     } catch {
         throw new Error(`Client folder does not exist: ${folders.base}`);
     }
 
     // Create subfolders if they don't exist
-    await fs.mkdir(folders.processedOriginal, { recursive: true });
-    await fs.mkdir(folders.processedEnriched, { recursive: true });
+    await fs.promises.mkdir(folders.processedOriginal, { recursive: true });
+    await fs.promises.mkdir(folders.processedEnriched, { recursive: true });
 }
 
 /**
  * Check if a client folder exists
- * @param {Object} clientConfig - Client configuration object
- * @returns {Promise<boolean>}
+ * @param clientConfig - Client configuration object
+ * @returns Whether the folder exists
  */
-async function clientFolderExists(clientConfig) {
+export async function clientFolderExists(clientConfig: MergedClientConfig): Promise<boolean> {
     try {
-        await fs.access(clientConfig.folders.base);
+        await fs.promises.access(clientConfig.folders.base);
         return true;
     } catch {
         return false;
@@ -358,18 +378,17 @@ async function clientFolderExists(clientConfig) {
 /**
  * Clear the cached clients configuration (mainly for testing)
  */
-function clearClientsCache() {
+export function clearClientsCache(): void {
     cachedClientsConfig = null;
     usingLegacyConfig = false;
 }
 
 /**
  * Create a new client configuration file
- * @param {string} clientId - The client identifier (used as filename)
- * @param {Object} config - The client configuration object
- * @returns {Promise<void>}
+ * @param clientId - The client identifier (used as filename)
+ * @param config - The client configuration object
  */
-async function createClient(clientId, config) {
+export async function createClient(clientId: string, config: Record<string, unknown>): Promise<void> {
     // Validate clientId format (lowercase, alphanumeric with hyphens)
     if (!/^[a-z0-9-]+$/.test(clientId)) {
         throw new Error('Client ID must be lowercase alphanumeric with hyphens only');
@@ -379,14 +398,14 @@ async function createClient(clientId, config) {
     const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
     // Ensure clients directory exists
-    await fs.mkdir(clientsDir, { recursive: true });
+    await fs.promises.mkdir(clientsDir, { recursive: true });
 
     // Check if client already exists
     try {
-        await fs.access(filePath);
+        await fs.promises.access(filePath);
         throw new Error(`Client "${clientId}" already exists`);
-    } catch (error) {
-        if (error.code !== 'ENOENT') {
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
             throw error;
         }
     }
@@ -395,7 +414,7 @@ async function createClient(clientId, config) {
     validateClientConfig(clientId, config);
 
     // Write the config file
-    await fs.writeFile(filePath, JSON.stringify(config, null, 2));
+    await fs.promises.writeFile(filePath, JSON.stringify(config, null, 2));
 
     // Clear cache so changes are reflected
     clearClientsCache();
@@ -403,19 +422,18 @@ async function createClient(clientId, config) {
 
 /**
  * Update an existing client configuration
- * @param {string} clientId - The client identifier
- * @param {Object} config - The updated client configuration object
- * @returns {Promise<void>}
+ * @param clientId - The client identifier
+ * @param config - The updated client configuration object
  */
-async function updateClient(clientId, config) {
+export async function updateClient(clientId: string, config: Record<string, unknown>): Promise<void> {
     const clientsDir = path.join(process.cwd(), 'clients');
     const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
     // Check if client exists
     try {
-        await fs.access(filePath);
-    } catch (error) {
-        if (error.code === 'ENOENT') {
+        await fs.promises.access(filePath);
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             throw new Error(`Client "${clientId}" not found`);
         }
         throw error;
@@ -425,7 +443,7 @@ async function updateClient(clientId, config) {
     validateClientConfig(clientId, config);
 
     // Write the updated config file
-    await fs.writeFile(filePath, JSON.stringify(config, null, 2));
+    await fs.promises.writeFile(filePath, JSON.stringify(config, null, 2));
 
     // Clear cache so changes are reflected
     clearClientsCache();
@@ -433,18 +451,17 @@ async function updateClient(clientId, config) {
 
 /**
  * Delete a client configuration file
- * @param {string} clientId - The client identifier
- * @returns {Promise<void>}
+ * @param clientId - The client identifier
  */
-async function deleteClient(clientId) {
+export async function deleteClient(clientId: string): Promise<void> {
     const clientsDir = path.join(process.cwd(), 'clients');
     const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
     // Check if client exists and delete
     try {
-        await fs.unlink(filePath);
-    } catch (error) {
-        if (error.code === 'ENOENT') {
+        await fs.promises.unlink(filePath);
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             throw new Error(`Client "${clientId}" not found`);
         }
         throw error;
@@ -456,10 +473,10 @@ async function deleteClient(clientId) {
 
 /**
  * Get a single client's raw configuration (not merged with global config)
- * @param {string} clientId - The client identifier
- * @returns {Promise<Object>} The client configuration
+ * @param clientId - The client identifier
+ * @returns The client configuration
  */
-async function getClient(clientId) {
+export async function getClient(clientId: string): Promise<ClientFile> {
     const clientsConfig = await loadClientsConfig();
 
     if (!clientsConfig) {
@@ -476,28 +493,32 @@ async function getClient(clientId) {
 
 /**
  * Get folder status for a client (PDF counts)
- * @param {string} folderPath - The client's folder path
- * @returns {Promise<Object>} Folder status with PDF counts
+ * @param folderPath - The client's folder path
+ * @param processedOriginalSubfolder - Subfolder name for processed originals
+ * @returns Folder status with PDF counts
  */
-async function getClientFolderStatus(folderPath, processedOriginalSubfolder = DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER) {
-    const result = {
+export async function getClientFolderStatus(
+    folderPath: string,
+    processedOriginalSubfolder: string = DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER
+): Promise<FolderStatus> {
+    const result: FolderStatus = {
         exists: false,
         inputPdfCount: 0,
         processedCount: 0
     };
 
     try {
-        await fs.access(folderPath);
+        await fs.promises.access(folderPath);
         result.exists = true;
 
         // Count PDFs in input folder (base folder, excluding subfolders)
-        const files = await fs.readdir(folderPath);
+        const files = await fs.promises.readdir(folderPath);
         result.inputPdfCount = files.filter((f) => f.toLowerCase().endsWith('.pdf')).length;
 
         // Count PDFs in processed-original subfolder
         const processedPath = path.join(folderPath, processedOriginalSubfolder);
         try {
-            const processedFiles = await fs.readdir(processedPath);
+            const processedFiles = await fs.promises.readdir(processedPath);
             result.processedCount = processedFiles.filter((f) => f.toLowerCase().endsWith('.pdf')).length;
         } catch {
             // Subfolder doesn't exist yet
@@ -511,28 +532,31 @@ async function getClientFolderStatus(folderPath, processedOriginalSubfolder = DE
 
 /**
  * Check if multi-client mode is available (clients/ folder or clients.json exists)
- * @returns {Promise<boolean>}
+ * @returns Whether multi-client mode is available
  */
-async function isMultiClientMode() {
+export async function isMultiClientMode(): Promise<boolean> {
     const clientsConfig = await loadClientsConfig();
     return clientsConfig !== null;
 }
 
 /**
  * Check if using legacy clients.json configuration
- * @returns {boolean}
+ * @returns Whether using legacy config
  */
-function isUsingLegacyConfig() {
+export function isUsingLegacyConfig(): boolean {
     return usingLegacyConfig;
 }
 
 /**
  * Get annotated effective config for a client, marking each setting's source
- * @param {string} clientId - Client identifier
- * @param {Object} globalConfig - The global configuration object
- * @returns {Promise<Object>} Annotated config with _source markers
+ * @param clientId - Client identifier
+ * @param globalConfig - The global configuration object
+ * @returns Annotated config with _source markers
  */
-async function getAnnotatedClientConfig(clientId, globalConfig) {
+export async function getAnnotatedClientConfig(
+    clientId: string,
+    globalConfig: AppConfig
+): Promise<AnnotatedClientConfig> {
     const clientsConfig = await loadClientsConfig();
     if (!clientsConfig) throw new Error('No client configuration found');
 
@@ -541,85 +565,89 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
 
     // Field definitions: toggle-only model with custom field support
     const globalFields = globalConfig.fieldDefinitions || [];
-    let effectiveFields;
+    let effectiveFields: AnnotatedField[];
     if (client.fieldDefinitions) {
         // Backward compat: full replacement for unmigrated configs
         const globalFieldMap = new Map(globalFields.map((f) => [f.key, f]));
         effectiveFields = client.fieldDefinitions.map((f) => {
             const isGlobal = globalFieldMap.has(f.key);
-            return { ...f, _source: isGlobal ? 'override' : 'custom' };
+            return { ...f, _source: (isGlobal ? 'override' : 'custom') as AnnotatedField['_source'] };
         });
     } else if (client.fieldOverrides) {
         const globalFieldKeys = new Set(globalFields.map((f) => f.key));
         effectiveFields = globalFields.map((f) => {
-            const override = client.fieldOverrides[f.key];
-            if (!override) return { ...f, _source: 'global' };
+            const override = client.fieldOverrides![f.key];
+            if (!override) return { ...f, _source: 'global' as const };
             return {
                 ...f,
                 enabled: typeof override.enabled === 'boolean' ? override.enabled : f.enabled,
-                _source: 'override'
+                _source: 'override' as const
             };
         });
         // Add custom fields (keys not in global)
         for (const [key, def] of Object.entries(client.fieldOverrides)) {
             if (!globalFieldKeys.has(key)) {
-                effectiveFields.push({ ...def, key, _source: 'custom' });
+                effectiveFields.push({ ...(def as unknown as FieldDefinition), key, _source: 'custom' as const });
             }
         }
     } else {
-        effectiveFields = globalFields.map((f) => ({ ...f, _source: 'global' }));
+        effectiveFields = globalFields.map((f) => ({ ...f, _source: 'global' as const }));
     }
 
     // Tag definitions: toggle-only model with custom tag support
     const globalTags = globalConfig.tagDefinitions || [];
     const globalTagIds = new Set(globalTags.map((t) => t.id));
-    const effectiveTags = globalTags.map((tag) => {
+    const effectiveTags: AnnotatedTag[] = globalTags.map((tag) => {
         const override = client.tagOverrides?.[tag.id];
         if (!override) {
-            return { ...tag, _source: 'global' };
+            return { ...tag, _source: 'global' as const };
         }
         return {
             ...tag,
             enabled: typeof override.enabled === 'boolean' ? override.enabled : tag.enabled,
-            _source: 'override'
+            _source: 'override' as const
         };
     });
     // Add custom tags from overrides
     if (client.tagOverrides) {
         for (const [id, def] of Object.entries(client.tagOverrides)) {
             if (!globalTagIds.has(id)) {
-                effectiveTags.push({ ...def, id, _source: 'custom' });
+                effectiveTags.push({ ...(def as unknown as TagDefinition), id, _source: 'custom' as const });
             }
         }
     }
 
     // Prompt template: section-level overrides or full override
-    const globalPrompt = globalConfig.promptTemplate || {};
-    let effectivePrompt;
+    const globalPrompt = globalConfig.promptTemplate || ({} as PromptTemplate);
+    let effectivePrompt: PromptTemplate & { _source: 'global' | 'override' };
     if (client.promptOverride) {
-        effectivePrompt = { ...globalPrompt, ...client.promptOverride, _source: 'override' };
+        effectivePrompt = { ...globalPrompt, ...client.promptOverride, _source: 'override' } as PromptTemplate & {
+            _source: 'override';
+        };
     } else if (client.promptTemplate) {
-        effectivePrompt = { ...client.promptTemplate, _source: 'override' };
+        effectivePrompt = { ...client.promptTemplate, _source: 'override' } as PromptTemplate & {
+            _source: 'override';
+        };
     } else {
-        effectivePrompt = { ...globalPrompt, _source: 'global' };
+        effectivePrompt = { ...globalPrompt, _source: 'global' } as PromptTemplate & { _source: 'global' };
     }
 
     // Filename template: outputOverride or legacy output
     const hasOutputOverride = !!(client.outputOverride && client.outputOverride.filenameTemplate);
-    const hasLegacyOutput = !!(client.output && client.output.filenameTemplate);
+    const hasLegacyOutput = !!(client.output && (client.output as Partial<OutputConfig>).filenameTemplate);
     const effectiveFilename = {
         template: hasOutputOverride
-            ? client.outputOverride.filenameTemplate
+            ? client.outputOverride!.filenameTemplate!
             : hasLegacyOutput
-              ? client.output.filenameTemplate
+              ? (client.output as Partial<OutputConfig>).filenameTemplate!
               : globalConfig.output?.filenameTemplate || '',
-        _source: hasOutputOverride || hasLegacyOutput ? 'override' : 'global'
+        _source: (hasOutputOverride || hasLegacyOutput ? 'override' : 'global') as 'global' | 'override'
     };
 
     // Model: client overrides global
     const effectiveModel = {
         value: client.model || globalConfig.model || null,
-        _source: client.model ? 'override' : 'global'
+        _source: (client.model ? 'override' : 'global') as 'global' | 'override'
     };
 
     // Folder status
@@ -627,6 +655,16 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
         client.folderPath,
         globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER
     );
+
+    // Build output with _source
+    const effectiveOutput = {
+        ...(client.outputOverride
+            ? { ...globalConfig.output, ...client.outputOverride }
+            : client.output
+              ? (client.output as OutputConfig)
+              : globalConfig.output),
+        _source: (client.outputOverride || client.output ? 'override' : 'global') as 'global' | 'override'
+    } as OutputConfig & { _source: 'global' | 'override' };
 
     return {
         client: {
@@ -641,27 +679,27 @@ async function getAnnotatedClientConfig(clientId, globalConfig) {
         fieldDefinitions: effectiveFields,
         tagDefinitions: effectiveTags,
         promptTemplate: effectivePrompt,
-        filenameTemplate: effectiveFilename
+        filenameTemplate: effectiveFilename,
+        output: effectiveOutput
     };
 }
 
 /**
  * Save per-section overrides to a client's config file (partial update)
- * @param {string} clientId - Client identifier
- * @param {string} section - Override section: 'fields', 'tags', 'prompt', 'output'
- * @param {Object} data - The override data
- * @returns {Promise<void>}
+ * @param clientId - Client identifier
+ * @param section - Override section: 'fields', 'tags', 'prompt', 'output', 'model'
+ * @param data - The override data
  */
-async function saveClientOverrides(clientId, section, data) {
+export async function saveClientOverrides(clientId: string, section: string, data: unknown): Promise<void> {
     const clientsDir = path.join(process.cwd(), 'clients');
     const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
-    let config;
+    let config: Record<string, unknown>;
     try {
-        const content = await fs.readFile(filePath, 'utf-8');
-        config = JSON.parse(content);
-    } catch (error) {
-        if (error.code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
+        const content = await fs.promises.readFile(filePath, 'utf-8');
+        config = JSON.parse(content) as Record<string, unknown>;
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
         throw error;
     }
 
@@ -688,26 +726,25 @@ async function saveClientOverrides(clientId, section, data) {
             );
     }
 
-    await fs.writeFile(filePath, JSON.stringify(config, null, 2));
+    await fs.promises.writeFile(filePath, JSON.stringify(config, null, 2));
     clearClientsCache();
 }
 
 /**
  * Remove a per-section override from a client's config file
- * @param {string} clientId - Client identifier
- * @param {string} section - Override section: 'fields', 'tags', 'prompt', 'output'
- * @returns {Promise<void>}
+ * @param clientId - Client identifier
+ * @param section - Override section: 'fields', 'tags', 'prompt', 'output', 'model'
  */
-async function removeClientOverrides(clientId, section) {
+export async function removeClientOverrides(clientId: string, section: string): Promise<void> {
     const clientsDir = path.join(process.cwd(), 'clients');
     const filePath = safeJoin(clientsDir, `${sanitize(clientId)}.json`);
 
-    let config;
+    let config: Record<string, unknown>;
     try {
-        const content = await fs.readFile(filePath, 'utf-8');
-        config = JSON.parse(content);
-    } catch (error) {
-        if (error.code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
+        const content = await fs.promises.readFile(filePath, 'utf-8');
+        config = JSON.parse(content) as Record<string, unknown>;
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
         throw error;
     }
 
@@ -735,29 +772,6 @@ async function removeClientOverrides(clientId, section) {
             );
     }
 
-    await fs.writeFile(filePath, JSON.stringify(config, null, 2));
+    await fs.promises.writeFile(filePath, JSON.stringify(config, null, 2));
     clearClientsCache();
 }
-
-module.exports = {
-    loadClientsConfig,
-    getEnabledClients,
-    getAllClients,
-    getClientConfig,
-    getAnnotatedClientConfig,
-    getClient,
-    createClient,
-    updateClient,
-    deleteClient,
-    getClientFolderStatus,
-    resolveApiKey,
-    ensureClientDirectories,
-    clientFolderExists,
-    clearClientsCache,
-    isMultiClientMode,
-    isUsingLegacyConfig,
-    saveClientOverrides,
-    removeClientOverrides,
-    discoverClientFiles,
-    validateClientConfig
-};

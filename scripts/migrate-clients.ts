@@ -4,19 +4,45 @@
  * Migration script to convert legacy clients.json to individual client files
  * in the clients/ folder.
  *
- * Usage: node scripts/migrate-clients.js [--dry-run]
+ * Usage: npx tsx scripts/migrate-clients.ts [--dry-run]
  *
  * Options:
  *   --dry-run  Show what would be created without actually creating files
  */
 
-const fs = require('fs').promises;
-const path = require('path');
+import fs from 'fs/promises';
+import path from 'path';
+
+interface LegacyClient {
+    name: string;
+    enabled: boolean;
+    folderPath: string;
+    apiKeyEnvVar?: string;
+    privateAddressMarker?: string;
+    extraction?: Record<string, unknown> & { privateAddressMarker?: string };
+    output?: Record<string, unknown>;
+    documentTypes?: Record<string, unknown>;
+}
+
+interface LegacyClientsConfig {
+    clients: Record<string, LegacyClient>;
+}
+
+interface NewClientConfig {
+    name: string;
+    enabled: boolean;
+    folderPath: string;
+    apiKeyEnvVar: string | null;
+    tagOverrides?: Record<string, { parameters: Record<string, string> }>;
+    extraction?: Record<string, unknown>;
+    output?: Record<string, unknown>;
+    documentTypes?: Record<string, unknown>;
+}
 
 const CLIENTS_JSON = path.join(process.cwd(), 'clients.json');
 const CLIENTS_DIR = path.join(process.cwd(), 'clients');
 
-async function main() {
+async function main(): Promise<void> {
     const dryRun = process.argv.includes('--dry-run');
 
     console.log('Client Configuration Migration Tool');
@@ -48,12 +74,12 @@ async function main() {
     }
 
     // Read clients.json
-    let clientsConfig;
+    let clientsConfig: LegacyClientsConfig;
     try {
         const content = await fs.readFile(CLIENTS_JSON, 'utf-8');
-        clientsConfig = JSON.parse(content);
+        clientsConfig = JSON.parse(content) as LegacyClientsConfig;
     } catch (error) {
-        console.error(`Failed to read clients.json: ${error.message}`);
+        console.error(`Failed to read clients.json: ${(error as Error).message}`);
         process.exit(1);
     }
 
@@ -96,7 +122,7 @@ async function main() {
             client.privateAddressMarker || (client.extraction && client.extraction.privateAddressMarker);
 
         // Build new client config structure
-        const newConfig = {
+        const newConfig: NewClientConfig = {
             name: client.name,
             enabled: client.enabled,
             folderPath: client.folderPath,
@@ -159,7 +185,7 @@ async function main() {
     }
 }
 
-main().catch((error) => {
+main().catch((error: Error) => {
     console.error('Migration failed:', error.message);
     process.exit(1);
 });

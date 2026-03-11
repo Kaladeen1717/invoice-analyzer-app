@@ -2,24 +2,34 @@
  * Shared processing logic for invoice analysis
  */
 
-require('dotenv').config();
-const fs = require('fs').promises;
-const path = require('path');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-const { buildExtractionPrompt, parseGeminiResponse, validateAnalysis } = require('./prompt-builder');
-const { generateFormattedFilename, getUniqueFilename, formatDateForDisplay } = require('./filename-generator');
-const { DEFAULT_MODEL } = require('./constants');
+import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { buildExtractionPrompt, parseGeminiResponse, validateAnalysis } from './prompt-builder.js';
+import { generateFormattedFilename, getUniqueFilename, formatDateForDisplay } from './filename-generator.js';
+import { DEFAULT_MODEL } from './constants.js';
+
+import type {
+    AppConfig,
+    InvoiceAnalysis,
+    ProcessingResult,
+    ProcessingSuccess,
+    ProcessingFailure,
+    TokenUsage,
+    OnProgressCallback
+} from './types/index.js';
 
 // Cache for Gemini AI instances per API key
-const genAICache = new Map();
+const genAICache = new Map<string, GoogleGenerativeAI>();
 
 /**
  * Get or create a Gemini AI instance for the given API key
- * @param {string} apiKey - The API key to use
- * @returns {GoogleGenerativeAI} The Gemini AI instance
+ * @param apiKey - The API key to use
+ * @returns The Gemini AI instance
  */
-function getGenAI(apiKey = null) {
+function getGenAI(apiKey: string | null = null): GoogleGenerativeAI {
     const key = apiKey || process.env.GEMINI_API_KEY;
 
     if (!key) {
@@ -30,43 +40,53 @@ function getGenAI(apiKey = null) {
         genAICache.set(key, new GoogleGenerativeAI(key));
     }
 
-    return genAICache.get(key);
+    return genAICache.get(key)!;
 }
 
 /**
  * Clear the Gemini AI cache (useful for testing)
  */
-function clearGenAICache() {
+export function clearGenAICache(): void {
     genAICache.clear();
 }
 
 /**
  * Convert PDF file to base64
- * @param {string} filePath - Path to the PDF file
- * @returns {Promise<string>} Base64 encoded PDF
+ * @param filePath - Path to the PDF file
+ * @returns Base64 encoded PDF
  */
-async function pdfToBase64(filePath) {
-    const buffer = await fs.readFile(filePath);
+export async function pdfToBase64(filePath: string): Promise<string> {
+    const buffer = await fs.promises.readFile(filePath);
     return buffer.toString('base64');
+}
+
+interface AnalyzeOptions {
+    apiKey?: string;
+    model?: string;
 }
 
 /**
  * Analyze an invoice using Gemini Vision API
- * @param {string} pdfPath - Path to the PDF file
- * @param {Object} config - Configuration object
- * @param {Object} options - Additional options
- * @param {string} options.apiKey - Optional API key (uses default if not provided)
- * @param {string} options.model - Optional model name (uses config.model or default if not provided)
- * @returns {Promise<Object>} The analysis result with token usage
+ * @param pdfPath - Path to the PDF file
+ * @param config - Configuration object
+ * @param options - Additional options
+ * @returns The analysis result with token usage
  */
-async function analyzeInvoice(pdfPath, config, options = {}) {
+export async function analyzeInvoice(
+    pdfPath: string,
+    config: AppConfig,
+    options: AnalyzeOptions = {}
+): Promise<InvoiceAnalysis> {
     const { apiKey } = options;
     const modelName = options.model || config.model || DEFAULT_MODEL;
-    const model = getGenAI(apiKey).getGenerativeModel({ model: modelName });
+    const model = getGenAI(apiKey || null).getGenerativeModel({ model: modelName });
     const pdfBase64 = await pdfToBase64(pdfPath);
 
     const prompt = buildExtractionPrompt(config);
-    const useJsonMode = config.extraction?.useJsonMode && !config.rawPrompt;
+    const extraction = (config as unknown as Record<string, unknown>).extraction as
+        | { useJsonMode?: boolean }
+        | undefined;
+    const useJsonMode = extraction?.useJsonMode && !config.rawPrompt;
 
     const result = await model.generateContent({
         systemInstruction: prompt,
@@ -89,7 +109,7 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
             // Gemini 3 uses thinkingLevel (not thinkingBudget). 'low' balances cost/speed
             // with safety margin for complex extractions. See INV-69 for analysis.
             thinkingConfig: { thinkingLevel: 'low' }
-        }
+        } as Record<string, unknown>
     });
 
     const response = await result.response;
@@ -97,27 +117,28 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
 
     // Extract token usage from response
     const usageMetadata = response.usageMetadata || {};
-    const tokenUsage = {
-        promptTokens: usageMetadata.promptTokenCount || 0,
-        outputTokens: usageMetadata.candidatesTokenCount || 0,
-        totalTokens: usageMetadata.totalTokenCount || 0,
-        cachedTokens: usageMetadata.cachedContentTokenCount || 0,
-        thoughtsTokens: usageMetadata.thoughtsTokenCount || 0
+    const tokenUsage: TokenUsage = {
+        promptTokens: (usageMetadata as Record<string, number>).promptTokenCount || 0,
+        outputTokens: (usageMetadata as Record<string, number>).candidatesTokenCount || 0,
+        totalTokens: (usageMetadata as Record<string, number>).totalTokenCount || 0,
+        cachedTokens: (usageMetadata as Record<string, number>).cachedContentTokenCount || 0,
+        thoughtsTokens: (usageMetadata as Record<string, number>).thoughtsTokenCount || 0
     };
 
     try {
-        const analysis = parseGeminiResponse(text, { useJsonMode });
+        const analysis = parseGeminiResponse(text, { useJsonMode: useJsonMode || false });
         const validatedAnalysis = validateAnalysis(analysis, config);
 
         return {
             ...validatedAnalysis,
             _tokenUsage: tokenUsage
         };
-    } catch (parseError) {
+    } catch (parseError: unknown) {
         // Attach raw response to parsing errors for debugging
         const MAX_RAW_RESPONSE_LENGTH = 5120;
-        parseError._rawResponse = text.length > MAX_RAW_RESPONSE_LENGTH ? text.slice(0, MAX_RAW_RESPONSE_LENGTH) : text;
-        parseError._tokenUsage = tokenUsage;
+        (parseError as Record<string, unknown>)._rawResponse =
+            text.length > MAX_RAW_RESPONSE_LENGTH ? text.slice(0, MAX_RAW_RESPONSE_LENGTH) : text;
+        (parseError as Record<string, unknown>)._tokenUsage = tokenUsage;
         throw parseError;
     }
 }
@@ -125,10 +146,10 @@ async function analyzeInvoice(pdfPath, config, options = {}) {
 /**
  * Sanitize text for PDF rendering (WinAnsi encoding)
  * Replaces characters that cannot be encoded in WinAnsi with ASCII equivalents
- * @param {string} text - The text to sanitize
- * @returns {string} Sanitized text
+ * @param text - The text to sanitize
+ * @returns Sanitized text
  */
-function sanitizeTextForPdf(text) {
+function sanitizeTextForPdf(text: unknown): string {
     if (!text) return '';
 
     // Replace common problematic characters
@@ -150,13 +171,18 @@ function sanitizeTextForPdf(text) {
 
 /**
  * Add a summary page to a PDF document
- * @param {string} inputPath - Path to the input PDF
- * @param {string} outputPath - Path to save the output PDF
- * @param {Object} analysis - The analysis data to include
- * @param {Object} config - Configuration object
+ * @param inputPath - Path to the input PDF
+ * @param outputPath - Path to save the output PDF
+ * @param analysis - The analysis data to include
+ * @param config - Configuration object
  */
-async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
-    const existingPdfBytes = await fs.readFile(inputPath);
+export async function addSummaryToPdf(
+    inputPath: string,
+    outputPath: string,
+    analysis: InvoiceAnalysis,
+    config: AppConfig
+): Promise<void> {
+    const existingPdfBytes = await fs.promises.readFile(inputPath);
     const pdfDoc = await PDFDocument.load(existingPdfBytes, { ignoreEncryption: true });
 
     const page = pdfDoc.addPage();
@@ -185,7 +211,7 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     // Tags section
     const tagDefinitions = config.tagDefinitions;
     if (tagDefinitions && analysis.tags) {
-        const pdfTags = tagDefinitions.filter((t) => t.enabled && analysis.tags[t.id]);
+        const pdfTags = tagDefinitions.filter((t) => t.enabled && analysis.tags![t.id]);
         if (pdfTags.length > 0) {
             page.drawText('Tags:', {
                 x: margin,
@@ -212,13 +238,13 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     // Types handled separately (rendered above or in title)
     const skipTypes = ['array', 'boolean'];
 
-    const fieldDefinitions = config.fieldDefinitions;
+    const fieldDefinitions = config.fieldDefinitions!;
     const fieldEntries = fieldDefinitions.filter((f) => f.enabled && !skipTypes.includes(f.type));
 
     for (const field of fieldEntries) {
         const key = field.key;
         const label = `${field.label}:`;
-        let value;
+        let value: string;
 
         // Format dates for display
         if (field.type === 'date') {
@@ -296,22 +322,40 @@ async function addSummaryToPdf(inputPath, outputPath, analysis, config) {
     }
 
     const pdfBytes = await pdfDoc.save();
-    await fs.writeFile(outputPath, pdfBytes);
+    await fs.promises.writeFile(outputPath, pdfBytes);
+}
+
+interface ProcessInvoiceOptions {
+    onProgress?: OnProgressCallback;
+    apiKey?: string;
+    dryRun?: boolean;
+}
+
+interface ProcessingConfigFolders {
+    base?: string;
+    input?: string;
+    output?: string;
+    analyzed?: string;
+    processedOriginal?: string;
+    processedEnriched?: string;
+    csvPath?: string;
 }
 
 /**
  * Process a single invoice: analyze, add summary, save to output, move original
- * @param {string} inputPath - Path to the input PDF
- * @param {Object} config - Configuration object
- * @param {Object} options - Additional options
- * @param {Function} options.onProgress - Progress callback
- * @param {string} options.apiKey - Optional API key (uses default if not provided)
- * @param {boolean} options.dryRun - If true, skip file moves and PDF enrichment
- * @returns {Promise<Object>} Processing result
+ * @param inputPath - Path to the input PDF
+ * @param config - Configuration object
+ * @param options - Additional options
+ * @returns Processing result
  */
-async function processInvoice(inputPath, config, options = {}) {
+export async function processInvoice(
+    inputPath: string,
+    config: AppConfig,
+    options: ProcessInvoiceOptions = {}
+): Promise<ProcessingResult> {
     const { onProgress, apiKey, dryRun } = options;
     const filename = path.basename(inputPath);
+    const folders = config.folders as unknown as ProcessingConfigFolders;
 
     try {
         if (onProgress) {
@@ -322,7 +366,7 @@ async function processInvoice(inputPath, config, options = {}) {
         const analysisWithTokens = await analyzeInvoice(inputPath, config, { apiKey });
 
         // Extract token usage and remove from analysis object
-        const tokenUsage = analysisWithTokens._tokenUsage || {
+        const tokenUsage: TokenUsage = analysisWithTokens._tokenUsage || {
             promptTokens: 0,
             outputTokens: 0,
             totalTokens: 0,
@@ -339,7 +383,7 @@ async function processInvoice(inputPath, config, options = {}) {
         const outputFilename = generateFormattedFilename(config.output.filenameTemplate, analysis, config);
 
         // Determine output folder (multi-client uses processedEnriched, single-client uses output)
-        const outputFolder = config.folders.processedEnriched || config.folders.output;
+        const outputFolder = folders.processedEnriched || folders.output!;
 
         // Ensure unique filename
         const uniqueFilename = await getUniqueFilename(outputFolder, outputFilename);
@@ -355,7 +399,7 @@ async function processInvoice(inputPath, config, options = {}) {
                 outputFilename: uniqueFilename,
                 analysis,
                 tokenUsage
-            };
+            } as ProcessingSuccess;
         }
 
         if (onProgress) {
@@ -363,12 +407,12 @@ async function processInvoice(inputPath, config, options = {}) {
         }
 
         // Add summary page and save to output
-        await addSummaryToPdf(inputPath, outputPath, analysis, config);
+        await addSummaryToPdf(inputPath, outputPath, analysis as InvoiceAnalysis, config);
 
         // Move original (multi-client uses processedOriginal, single-client uses analyzed)
-        const originalDestFolder = config.folders.processedOriginal || config.folders.analyzed;
+        const originalDestFolder = folders.processedOriginal || folders.analyzed!;
         const originalDestPath = path.join(originalDestFolder, filename);
-        await fs.rename(inputPath, originalDestPath);
+        await fs.promises.rename(inputPath, originalDestPath);
 
         return {
             success: true,
@@ -380,52 +424,45 @@ async function processInvoice(inputPath, config, options = {}) {
             analyzedPath: originalDestPath,
             analysis,
             tokenUsage
-        };
-    } catch (error) {
+        } as ProcessingSuccess;
+    } catch (error: unknown) {
+        const err = error as Error & { isRateLimited?: boolean; _rawResponse?: string; _tokenUsage?: TokenUsage };
         // Tag rate-limit errors so parallel-processor can use longer backoff
         if (
-            error.message &&
-            (error.message.includes('429') ||
-                error.message.includes('RATE_LIMIT') ||
-                error.message.includes('Resource has been exhausted'))
+            err.message &&
+            (err.message.includes('429') ||
+                err.message.includes('RATE_LIMIT') ||
+                err.message.includes('Resource has been exhausted'))
         ) {
-            error.isRateLimited = true;
+            err.isRateLimited = true;
         }
 
         return {
             success: false,
             originalFilename: filename,
-            error: error.message,
-            isRateLimited: error.isRateLimited || false,
-            rawResponse: error._rawResponse || null,
-            tokenUsage: error._tokenUsage || {
+            error: err.message,
+            isRateLimited: err.isRateLimited || false,
+            rawResponse: err._rawResponse || null,
+            tokenUsage: err._tokenUsage || {
                 promptTokens: 0,
                 outputTokens: 0,
                 totalTokens: 0,
                 cachedTokens: 0,
                 thoughtsTokens: 0
             }
-        };
+        } as ProcessingFailure;
     }
 }
 
 /**
  * Get all PDF files from the input directory
- * @param {Object} config - Configuration object
- * @returns {Promise<string[]>} Array of PDF file paths
+ * @param config - Configuration object
+ * @returns Array of PDF file paths
  */
-async function getPdfFiles(config) {
+export async function getPdfFiles(config: AppConfig): Promise<string[]> {
+    const folders = config.folders as unknown as ProcessingConfigFolders;
     // Multi-client uses base folder, single-client uses input folder
-    const inputFolder = config.folders.base || config.folders.input;
-    const files = await fs.readdir(inputFolder);
+    const inputFolder = folders.base || folders.input!;
+    const files = await fs.promises.readdir(inputFolder);
     return files.filter((f) => f.toLowerCase().endsWith('.pdf')).map((f) => path.join(inputFolder, f));
 }
-
-module.exports = {
-    pdfToBase64,
-    analyzeInvoice,
-    addSummaryToPdf,
-    processInvoice,
-    getPdfFiles,
-    clearGenAICache
-};

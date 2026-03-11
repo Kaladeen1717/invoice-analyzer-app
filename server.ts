@@ -1,11 +1,12 @@
-require('dotenv').config();
-const express = require('express');
-const fs = require('fs').promises;
-const path = require('path');
+import 'dotenv/config';
+import express, { Request, Response } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Import modules
-const { VALID_OVERRIDE_SECTIONS, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER } = require('./src/constants');
-const {
+import { VALID_OVERRIDE_SECTIONS, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER } from './src/constants.js';
+import {
     loadConfig,
     saveConfig,
     updateFieldDefinitions,
@@ -17,11 +18,11 @@ const {
     importConfig,
     listBackups,
     restoreBackup
-} = require('./src/config');
-const { buildPromptPreview } = require('./src/prompt-builder');
-const { processAllInvoices, processWithRetry } = require('./src/parallel-processor');
-const { getResults, getSummary, getResult, getFailedResults, updateResult } = require('./src/result-manager');
-const {
+} from './src/config.js';
+import { buildPromptPreview } from './src/prompt-builder.js';
+import { processAllInvoices, processWithRetry } from './src/parallel-processor.js';
+import { getResults, getSummary, getResult, getFailedResults, updateResult } from './src/result-manager.js';
+import {
     getAllClients,
     getClient,
     createClient,
@@ -35,9 +36,11 @@ const {
     saveClientOverrides,
     removeClientOverrides,
     resolveApiKey
-} = require('./src/client-manager');
+} from './src/client-manager.js';
 
-const rateLimit = require('express-rate-limit');
+import rateLimit from 'express-rate-limit';
+
+import type { AppConfig } from './src/types/index.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -54,7 +57,7 @@ const processingLimiter = rateLimit({
 });
 
 // Store active SSE connections for processing
-const activeProcessing = new Map();
+const activeProcessing = new Map<string, boolean>();
 
 // ============================================================================
 // CLIENT MANAGEMENT API ENDPOINTS
@@ -63,7 +66,7 @@ const activeProcessing = new Map();
 /**
  * GET /api/clients - List all clients with folder status
  */
-app.get('/api/clients', async (req, res) => {
+app.get('/api/clients', async (req: Request, res: Response) => {
     try {
         const clients = await getAllClients();
         const globalConfig = await loadConfig();
@@ -99,10 +102,10 @@ app.get('/api/clients', async (req, res) => {
             clients: enrichedClients,
             mode: 'multi-client'
         });
-    } catch (error) {
+    } catch (error: unknown) {
         res.status(500).json({
             error: 'Failed to load clients',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -110,9 +113,9 @@ app.get('/api/clients', async (req, res) => {
 /**
  * GET /api/clients/:id - Get single client config
  */
-app.get('/api/clients/:id', async (req, res) => {
+app.get('/api/clients/:id', async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         const client = await getClient(clientId);
         const globalConfig = await loadConfig();
         const folderStatus = await getClientFolderStatus(
@@ -125,13 +128,13 @@ app.get('/api/clients/:id', async (req, res) => {
             ...client,
             folderStatus
         });
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('not found')) {
+            return res.status(404).json({ error: (error as Error).message });
         }
         res.status(500).json({
             error: 'Failed to get client',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -139,7 +142,7 @@ app.get('/api/clients/:id', async (req, res) => {
 /**
  * POST /api/clients - Create new client
  */
-app.post('/api/clients', async (req, res) => {
+app.post('/api/clients', async (req: Request, res: Response) => {
     try {
         const { clientId, name, enabled, folderPath, apiKeyEnvVar, tagOverrides } = req.body;
 
@@ -147,7 +150,7 @@ app.post('/api/clients', async (req, res) => {
             return res.status(400).json({ error: 'clientId is required' });
         }
 
-        const config = {
+        const config: Record<string, unknown> = {
             name,
             enabled: enabled !== false,
             folderPath
@@ -168,13 +171,13 @@ app.post('/api/clients', async (req, res) => {
             clientId,
             message: `Client "${clientId}" created successfully`
         });
-    } catch (error) {
-        if (error.message.includes('already exists')) {
-            return res.status(409).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('already exists')) {
+            return res.status(409).json({ error: (error as Error).message });
         }
         res.status(400).json({
             error: 'Failed to create client',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -182,12 +185,12 @@ app.post('/api/clients', async (req, res) => {
 /**
  * PUT /api/clients/:id - Update client config
  */
-app.put('/api/clients/:id', async (req, res) => {
+app.put('/api/clients/:id', async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         const { name, enabled, folderPath, apiKeyEnvVar, tagOverrides } = req.body;
 
-        const config = {
+        const config: Record<string, unknown> = {
             name,
             enabled: enabled !== false,
             folderPath
@@ -208,13 +211,13 @@ app.put('/api/clients/:id', async (req, res) => {
             clientId,
             message: `Client "${clientId}" updated successfully`
         });
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('not found')) {
+            return res.status(404).json({ error: (error as Error).message });
         }
         res.status(400).json({
             error: 'Failed to update client',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -222,9 +225,9 @@ app.put('/api/clients/:id', async (req, res) => {
 /**
  * DELETE /api/clients/:id - Delete client
  */
-app.delete('/api/clients/:id', async (req, res) => {
+app.delete('/api/clients/:id', async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         await deleteClient(clientId);
 
         res.json({
@@ -232,13 +235,13 @@ app.delete('/api/clients/:id', async (req, res) => {
             clientId,
             message: `Client "${clientId}" deleted successfully`
         });
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('not found')) {
+            return res.status(404).json({ error: (error as Error).message });
         }
         res.status(500).json({
             error: 'Failed to delete client',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -246,9 +249,9 @@ app.delete('/api/clients/:id', async (req, res) => {
 /**
  * GET /api/clients/:id/status - Get folder PDF counts for client
  */
-app.get('/api/clients/:id/status', async (req, res) => {
+app.get('/api/clients/:id/status', async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         const client = await getClient(clientId);
         const globalConfig = await loadConfig();
         const folderStatus = await getClientFolderStatus(
@@ -261,13 +264,13 @@ app.get('/api/clients/:id/status', async (req, res) => {
             folderPath: client.folderPath,
             ...folderStatus
         });
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('not found')) {
+            return res.status(404).json({ error: (error as Error).message });
         }
         res.status(500).json({
             error: 'Failed to get client status',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -275,19 +278,19 @@ app.get('/api/clients/:id/status', async (req, res) => {
 /**
  * GET /api/clients/:id/config - Get annotated effective config for client
  */
-app.get('/api/clients/:id/config', async (req, res) => {
+app.get('/api/clients/:id/config', async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         const globalConfig = await loadConfig({ requireFolders: false });
         const annotated = await getAnnotatedClientConfig(clientId, globalConfig);
         res.json(annotated);
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('not found')) {
+            return res.status(404).json({ error: (error as Error).message });
         }
         res.status(500).json({
             error: 'Failed to get client config',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -295,16 +298,16 @@ app.get('/api/clients/:id/config', async (req, res) => {
 /**
  * PUT /api/clients/:id/overrides - Save per-section config overrides
  */
-app.put('/api/clients/:id/overrides', async (req, res) => {
+app.put('/api/clients/:id/overrides', async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         const { section, data } = req.body;
 
         if (!section || !data) {
             return res.status(400).json({ error: 'section and data are required' });
         }
 
-        if (!VALID_OVERRIDE_SECTIONS.includes(section)) {
+        if (!(VALID_OVERRIDE_SECTIONS as readonly string[]).includes(section)) {
             return res
                 .status(400)
                 .json({ error: `Invalid section. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}` });
@@ -317,13 +320,13 @@ app.put('/api/clients/:id/overrides', async (req, res) => {
         const annotated = await getAnnotatedClientConfig(clientId, globalConfig);
 
         res.json({ success: true, ...annotated });
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('not found')) {
+            return res.status(404).json({ error: (error as Error).message });
         }
         res.status(400).json({
             error: 'Failed to save overrides',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -331,11 +334,12 @@ app.put('/api/clients/:id/overrides', async (req, res) => {
 /**
  * DELETE /api/clients/:id/overrides/:section - Remove per-section config overrides
  */
-app.delete('/api/clients/:id/overrides/:section', async (req, res) => {
+app.delete('/api/clients/:id/overrides/:section', async (req: Request, res: Response) => {
     try {
-        const { id: clientId, section } = req.params;
+        const clientId = req.params.id as string;
+        const section = req.params.section as string;
 
-        if (!VALID_OVERRIDE_SECTIONS.includes(section)) {
+        if (!(VALID_OVERRIDE_SECTIONS as readonly string[]).includes(section)) {
             return res
                 .status(400)
                 .json({ error: `Invalid section. Must be one of: ${VALID_OVERRIDE_SECTIONS.join(', ')}` });
@@ -348,13 +352,13 @@ app.delete('/api/clients/:id/overrides/:section', async (req, res) => {
         const annotated = await getAnnotatedClientConfig(clientId, globalConfig);
 
         res.json({ success: true, ...annotated });
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('not found')) {
+            return res.status(404).json({ error: (error as Error).message });
         }
         res.status(400).json({
             error: 'Failed to remove overrides',
-            details: error.message
+            details: (error as Error).message
         });
     }
 });
@@ -362,18 +366,18 @@ app.delete('/api/clients/:id/overrides/:section', async (req, res) => {
 /**
  * POST /api/clients/:id/prompt/preview - Build prompt preview for client's merged config
  */
-app.post('/api/clients/:id/prompt/preview', processingLimiter, async (req, res) => {
+app.post('/api/clients/:id/prompt/preview', processingLimiter, async (req: Request, res: Response) => {
     try {
         const config = await loadConfig({ requireFolders: false });
-        const mergedConfig = await getClientConfig(req.params.id, config);
+        const mergedConfig = await getClientConfig(req.params.id as string, config);
         const templateOverride = req.body.promptTemplate || {};
-        const preview = buildPromptPreview(mergedConfig, templateOverride);
+        const preview = buildPromptPreview(mergedConfig as unknown as AppConfig, templateOverride);
         res.json({ preview });
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+        if ((error as Error).message.includes('not found')) {
+            return res.status(404).json({ error: (error as Error).message });
         }
-        res.status(500).json({ error: 'Failed to build client prompt preview', details: error.message });
+        res.status(500).json({ error: 'Failed to build client prompt preview', details: (error as Error).message });
     }
 });
 
@@ -384,7 +388,7 @@ app.post('/api/clients/:id/prompt/preview', processingLimiter, async (req, res) 
 /**
  * GET /api/config - Get global configuration
  */
-app.get('/api/config', async (req, res) => {
+app.get('/api/config', async (req: Request, res: Response) => {
     try {
         const config = await loadConfig({ requireFolders: false });
         res.json({
@@ -394,15 +398,15 @@ app.get('/api/config', async (req, res) => {
             output: config.output,
             processing: config.processing
         });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to load config', details: error.message });
+    } catch (error: unknown) {
+        res.status(500).json({ error: 'Failed to load config', details: (error as Error).message });
     }
 });
 
 /**
  * PUT /api/config/fields - Update field definitions
  */
-app.put('/api/config/fields', async (req, res) => {
+app.put('/api/config/fields', async (req: Request, res: Response) => {
     try {
         const { fieldDefinitions } = req.body;
         if (!fieldDefinitions) {
@@ -410,27 +414,27 @@ app.put('/api/config/fields', async (req, res) => {
         }
         await updateFieldDefinitions(fieldDefinitions);
         res.json({ success: true, message: 'Field definitions updated' });
-    } catch (error) {
-        res.status(400).json({ error: 'Failed to update field definitions', details: error.message });
+    } catch (error: unknown) {
+        res.status(400).json({ error: 'Failed to update field definitions', details: (error as Error).message });
     }
 });
 
 /**
  * GET /api/config/tags - Get tag definitions
  */
-app.get('/api/config/tags', async (req, res) => {
+app.get('/api/config/tags', async (req: Request, res: Response) => {
     try {
         const config = await loadConfig({ requireFolders: false });
         res.json({ tagDefinitions: config.tagDefinitions || null });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to load tag definitions', details: error.message });
+    } catch (error: unknown) {
+        res.status(500).json({ error: 'Failed to load tag definitions', details: (error as Error).message });
     }
 });
 
 /**
  * PUT /api/config/tags - Update tag definitions
  */
-app.put('/api/config/tags', async (req, res) => {
+app.put('/api/config/tags', async (req: Request, res: Response) => {
     try {
         const { tagDefinitions } = req.body;
         if (!tagDefinitions) {
@@ -438,30 +442,30 @@ app.put('/api/config/tags', async (req, res) => {
         }
         await updateTagDefinitions(tagDefinitions);
         res.json({ success: true, message: 'Tag definitions updated' });
-    } catch (error) {
-        res.status(400).json({ error: 'Failed to update tag definitions', details: error.message });
+    } catch (error: unknown) {
+        res.status(400).json({ error: 'Failed to update tag definitions', details: (error as Error).message });
     }
 });
 
 /**
  * GET /api/config/prompt - Get prompt template
  */
-app.get('/api/config/prompt', async (req, res) => {
+app.get('/api/config/prompt', async (req: Request, res: Response) => {
     try {
         const config = await loadConfig({ requireFolders: false });
         res.json({
             promptTemplate: config.promptTemplate || null,
             rawPrompt: config.rawPrompt || null
         });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to load prompt config', details: error.message });
+    } catch (error: unknown) {
+        res.status(500).json({ error: 'Failed to load prompt config', details: (error as Error).message });
     }
 });
 
 /**
  * PUT /api/config/prompt - Update prompt template (structured mode)
  */
-app.put('/api/config/prompt', async (req, res) => {
+app.put('/api/config/prompt', async (req: Request, res: Response) => {
     try {
         const { promptTemplate } = req.body;
         if (!promptTemplate) {
@@ -469,15 +473,15 @@ app.put('/api/config/prompt', async (req, res) => {
         }
         await updatePromptTemplate(promptTemplate);
         res.json({ success: true, message: 'Prompt template updated' });
-    } catch (error) {
-        res.status(400).json({ error: 'Failed to update prompt template', details: error.message });
+    } catch (error: unknown) {
+        res.status(400).json({ error: 'Failed to update prompt template', details: (error as Error).message });
     }
 });
 
 /**
  * PUT /api/config/prompt/raw - Update raw prompt (raw edit mode)
  */
-app.put('/api/config/prompt/raw', async (req, res) => {
+app.put('/api/config/prompt/raw', async (req: Request, res: Response) => {
     try {
         const { rawPrompt } = req.body;
         if (!rawPrompt) {
@@ -485,41 +489,41 @@ app.put('/api/config/prompt/raw', async (req, res) => {
         }
         await updateRawPrompt(rawPrompt);
         res.json({ success: true, message: 'Raw prompt saved' });
-    } catch (error) {
-        res.status(400).json({ error: 'Failed to update raw prompt', details: error.message });
+    } catch (error: unknown) {
+        res.status(400).json({ error: 'Failed to update raw prompt', details: (error as Error).message });
     }
 });
 
 /**
  * DELETE /api/config/prompt/raw - Clear raw prompt (revert to structured mode)
  */
-app.delete('/api/config/prompt/raw', async (req, res) => {
+app.delete('/api/config/prompt/raw', async (req: Request, res: Response) => {
     try {
         await clearRawPrompt();
         res.json({ success: true, message: 'Raw prompt cleared, using structured template' });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to clear raw prompt', details: error.message });
+    } catch (error: unknown) {
+        res.status(500).json({ error: 'Failed to clear raw prompt', details: (error as Error).message });
     }
 });
 
 /**
  * POST /api/config/prompt/preview - Build prompt preview from template
  */
-app.post('/api/config/prompt/preview', async (req, res) => {
+app.post('/api/config/prompt/preview', async (req: Request, res: Response) => {
     try {
         const config = await loadConfig({ requireFolders: false });
         const templateOverride = req.body.promptTemplate || {};
         const preview = buildPromptPreview(config, templateOverride);
         res.json({ preview });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to build prompt preview', details: error.message });
+    } catch (error: unknown) {
+        res.status(500).json({ error: 'Failed to build prompt preview', details: (error as Error).message });
     }
 });
 
 /**
  * PUT /api/config/output - Update output configuration (filenameTemplate)
  */
-app.put('/api/config/output', async (req, res) => {
+app.put('/api/config/output', async (req: Request, res: Response) => {
     try {
         const { filenameTemplate } = req.body;
         if (!filenameTemplate || typeof filenameTemplate !== 'string') {
@@ -528,15 +532,15 @@ app.put('/api/config/output', async (req, res) => {
         const config = await loadConfig({ requireFolders: false });
         await saveConfig({ output: { ...config.output, filenameTemplate } });
         res.json({ success: true, message: 'Filename template updated' });
-    } catch (error) {
-        res.status(400).json({ error: 'Failed to update output config', details: error.message });
+    } catch (error: unknown) {
+        res.status(400).json({ error: 'Failed to update output config', details: (error as Error).message });
     }
 });
 
 /**
  * PUT /api/config/model - Update global model
  */
-app.put('/api/config/model', async (req, res) => {
+app.put('/api/config/model', async (req: Request, res: Response) => {
     try {
         const { model } = req.body;
         if (!model || typeof model !== 'string') {
@@ -544,8 +548,8 @@ app.put('/api/config/model', async (req, res) => {
         }
         await saveConfig({ model });
         res.json({ success: true, message: 'Model updated' });
-    } catch (error) {
-        res.status(400).json({ error: 'Failed to update model', details: error.message });
+    } catch (error: unknown) {
+        res.status(400).json({ error: 'Failed to update model', details: (error as Error).message });
     }
 });
 
@@ -557,46 +561,46 @@ app.put('/api/config/model', async (req, res) => {
  * GET /api/config/export?scope=<scope> - Export configuration as JSON bundle
  * Scopes: fields, global, client:<id>, clients, all
  */
-app.get('/api/config/export', async (req, res) => {
+app.get('/api/config/export', async (req: Request, res: Response) => {
     try {
-        const scope = req.query.scope || 'all';
+        const scope = (req.query.scope as string) || 'all';
         const bundle = await exportConfig(scope);
         res.json(bundle);
-    } catch (error) {
-        const status = error.message.includes('not found') ? 404 : 400;
-        res.status(status).json({ error: error.message });
+    } catch (error: unknown) {
+        const status = (error as Error).message.includes('not found') ? 404 : 400;
+        res.status(status).json({ error: (error as Error).message });
     }
 });
 
 /**
  * POST /api/config/import - Import a config bundle (auto-backup before write)
  */
-app.post('/api/config/import', async (req, res) => {
+app.post('/api/config/import', async (req: Request, res: Response) => {
     try {
         const bundle = req.body;
         const result = await importConfig(bundle);
         res.json({ success: true, ...result });
-    } catch (error) {
-        res.status(400).json({ error: 'Import failed', details: error.message });
+    } catch (error: unknown) {
+        res.status(400).json({ error: 'Import failed', details: (error as Error).message });
     }
 });
 
 /**
  * GET /api/config/backups - List available config backups
  */
-app.get('/api/config/backups', async (req, res) => {
+app.get('/api/config/backups', async (req: Request, res: Response) => {
     try {
         const backups = await listBackups();
         res.json({ backups });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to list backups', details: error.message });
+    } catch (error: unknown) {
+        res.status(500).json({ error: 'Failed to list backups', details: (error as Error).message });
     }
 });
 
 /**
  * POST /api/config/restore - Restore from a backup (creates safety backup first)
  */
-app.post('/api/config/restore', async (req, res) => {
+app.post('/api/config/restore', async (req: Request, res: Response) => {
     try {
         const { backupId } = req.body;
         if (!backupId) {
@@ -604,9 +608,9 @@ app.post('/api/config/restore', async (req, res) => {
         }
         const result = await restoreBackup(backupId);
         res.json({ success: true, ...result });
-    } catch (error) {
-        const status = error.message.includes('not found') ? 404 : 500;
-        res.status(status).json({ error: 'Restore failed', details: error.message });
+    } catch (error: unknown) {
+        const status = (error as Error).message.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: 'Restore failed', details: (error as Error).message });
     }
 });
 
@@ -617,38 +621,42 @@ app.post('/api/config/restore', async (req, res) => {
 /**
  * GET /api/clients/:id/results - Paginated processing results with optional status filter
  */
-app.get('/api/clients/:id/results', async (req, res) => {
+app.get('/api/clients/:id/results', async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         const globalConfig = await loadConfig({ requireFolders: false });
         const clientConfig = await getClientConfig(clientId, globalConfig);
 
-        const status = req.query.status || undefined;
-        const limit = Math.min(parseInt(req.query.limit) || 50, 250);
-        const offset = parseInt(req.query.offset) || 0;
+        const status = (req.query.status as string) || undefined;
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 250);
+        const offset = parseInt(req.query.offset as string) || 0;
 
-        const results = await getResults(clientConfig.folders.base, { status, limit, offset });
+        const results = await getResults(clientConfig.folders.base, {
+            status: status as 'success' | 'failed' | undefined,
+            limit,
+            offset
+        });
         res.json(results);
-    } catch (error) {
-        const status = error.message.includes('not found') ? 404 : 500;
-        res.status(status).json({ error: error.message });
+    } catch (error: unknown) {
+        const status = (error as Error).message.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: (error as Error).message });
     }
 });
 
 /**
  * GET /api/clients/:id/results/summary - Aggregate processing statistics
  */
-app.get('/api/clients/:id/results/summary', async (req, res) => {
+app.get('/api/clients/:id/results/summary', async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         const globalConfig = await loadConfig({ requireFolders: false });
         const clientConfig = await getClientConfig(clientId, globalConfig);
 
         const summary = await getSummary(clientConfig.folders.base);
         res.json(summary);
-    } catch (error) {
-        const status = error.message.includes('not found') ? 404 : 500;
-        res.status(status).json({ error: error.message });
+    } catch (error: unknown) {
+        const status = (error as Error).message.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: (error as Error).message });
     }
 });
 
@@ -656,8 +664,8 @@ app.get('/api/clients/:id/results/summary', async (req, res) => {
  * POST /api/clients/:id/results/retry - Retry failed invoice processing (SSE)
  * Body: { resultIds: ["uuid1", ...] } or { all: true }
  */
-app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) => {
-    const clientId = req.params.id;
+app.post('/api/clients/:id/results/retry', processingLimiter, async (req: Request, res: Response) => {
+    const clientId = req.params.id as string;
 
     // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -682,14 +690,14 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
         const clientConfig = await getClientConfig(clientId, globalConfig);
         const apiKey = resolveApiKey(clientConfig);
 
-        const processingConfig = {
+        const processingConfig: AppConfig = {
             ...globalConfig,
-            model: clientConfig.model,
-            folders: clientConfig.folders,
+            model: clientConfig.model ?? undefined,
+            folders: clientConfig.folders as unknown as AppConfig['folders'],
             output: clientConfig.output,
             fieldDefinitions: clientConfig.fieldDefinitions,
-            tagDefinitions: clientConfig.tagDefinitions,
-            promptTemplate: clientConfig.promptTemplate
+            tagDefinitions: clientConfig.tagDefinitions ?? undefined,
+            promptTemplate: clientConfig.promptTemplate as AppConfig['promptTemplate']
         };
 
         // Determine which results to retry
@@ -745,15 +753,15 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
 
             try {
                 // Copy file back to input folder for processing
-                let filePath;
+                let filePath: string;
                 try {
-                    await fs.access(processedOriginalPath);
-                    await fs.copyFile(processedOriginalPath, originalPath);
+                    await fs.promises.access(processedOriginalPath);
+                    await fs.promises.copyFile(processedOriginalPath, originalPath);
                     filePath = originalPath;
                 } catch {
                     // File might still be in input folder
                     try {
-                        await fs.access(originalPath);
+                        await fs.promises.access(originalPath);
                         filePath = originalPath;
                     } catch {
                         throw new Error(`Original file not found: ${failedResult.originalFilename}`);
@@ -765,7 +773,7 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
                 // Update the result record
                 await updateResult(clientConfig.folders.base, failedResult.id, result, {
                     model: processingConfig.model,
-                    duration: result.duration
+                    duration: (result as { duration?: number }).duration
                 });
 
                 if (result.success) {
@@ -776,7 +784,7 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
                                 status: 'retry-completed',
                                 resultId: failedResult.id,
                                 filename: failedResult.originalFilename,
-                                outputFilename: result.outputFilename,
+                                outputFilename: (result as { outputFilename?: string }).outputFilename,
                                 current: i + 1,
                                 total: resultsToRetry.length
                             }) +
@@ -790,14 +798,14 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
                                 status: 'retry-failed',
                                 resultId: failedResult.id,
                                 filename: failedResult.originalFilename,
-                                error: result.error,
+                                error: (result as { error?: string }).error,
                                 current: i + 1,
                                 total: resultsToRetry.length
                             }) +
                             '\n\n'
                     );
                 }
-            } catch (error) {
+            } catch (error: unknown) {
                 retryFailed++;
                 res.write(
                     'data: ' +
@@ -805,7 +813,7 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
                             status: 'retry-failed',
                             resultId: failedResult.id,
                             filename: failedResult.originalFilename,
-                            error: error.message,
+                            error: (error as Error).message,
                             current: i + 1,
                             total: resultsToRetry.length
                         }) +
@@ -826,8 +834,8 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
         );
         res.end();
         activeProcessing.delete(clientId);
-    } catch (error) {
-        res.write('data: ' + JSON.stringify({ status: 'error', error: error.message }) + '\n\n');
+    } catch (error: unknown) {
+        res.write('data: ' + JSON.stringify({ status: 'error', error: (error as Error).message }) + '\n\n');
         res.end();
         activeProcessing.delete(clientId);
     }
@@ -840,7 +848,7 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req, res) =
 /**
  * GET /api/stats - Aggregate processing statistics across all clients
  */
-app.get('/api/stats', async (req, res) => {
+app.get('/api/stats', async (req: Request, res: Response) => {
     try {
         const clients = await getAllClients();
         const globalConfig = await loadConfig({ requireFolders: false });
@@ -852,10 +860,10 @@ app.get('/api/stats', async (req, res) => {
             successRate: 0,
             totalTokens: 0,
             totalCachedTokens: 0,
-            lastProcessed: null
+            lastProcessed: null as string | null
         };
 
-        const perClient = {};
+        const perClient: Record<string, unknown> = {};
 
         if (clients) {
             for (const [clientId] of Object.entries(clients)) {
@@ -896,8 +904,8 @@ app.get('/api/stats', async (req, res) => {
         }
 
         res.json({ aggregate, perClient });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to load stats', details: error.message });
+    } catch (error: unknown) {
+        res.status(500).json({ error: 'Failed to load stats', details: (error as Error).message });
     }
 });
 
@@ -908,27 +916,27 @@ app.get('/api/stats', async (req, res) => {
 /**
  * GET /api/clients/:id/files - List PDF files in client's input folder
  */
-app.get('/api/clients/:id/files', processingLimiter, async (req, res) => {
+app.get('/api/clients/:id/files', processingLimiter, async (req: Request, res: Response) => {
     try {
-        const clientId = req.params.id;
+        const clientId = req.params.id as string;
         const globalConfig = await loadConfig({ requireFolders: false });
         const clientConfig = await getClientConfig(clientId, globalConfig);
 
         const inputFolder = clientConfig.folders.base;
 
         try {
-            await fs.access(inputFolder);
+            await fs.promises.access(inputFolder);
         } catch {
             return res.json({ files: [], folderPath: inputFolder, exists: false });
         }
 
-        const entries = await fs.readdir(inputFolder);
+        const entries = await fs.promises.readdir(inputFolder);
         const pdfFiles = entries.filter((f) => f.toLowerCase().endsWith('.pdf'));
 
         const files = await Promise.all(
             pdfFiles.map(async (filename) => {
                 const filePath = path.join(inputFolder, filename);
-                const stat = await fs.stat(filePath);
+                const stat = await fs.promises.stat(filePath);
                 return {
                     filename,
                     size: stat.size,
@@ -940,9 +948,9 @@ app.get('/api/clients/:id/files', processingLimiter, async (req, res) => {
         files.sort((a, b) => a.filename.localeCompare(b.filename));
 
         res.json({ files, folderPath: inputFolder, exists: true });
-    } catch (error) {
-        const status = error.message.includes('not found') ? 404 : 500;
-        res.status(status).json({ error: error.message });
+    } catch (error: unknown) {
+        const status = (error as Error).message.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: (error as Error).message });
     }
 });
 
@@ -953,8 +961,8 @@ app.get('/api/clients/:id/files', processingLimiter, async (req, res) => {
 /**
  * POST /api/clients/:id/process - Process specific client (SSE)
  */
-app.post('/api/clients/:id/process', processingLimiter, async (req, res) => {
-    const clientId = req.params.id;
+app.post('/api/clients/:id/process', processingLimiter, async (req: Request, res: Response) => {
+    const clientId = req.params.id as string;
 
     // Set headers for SSE
     res.setHeader('Content-Type', 'text/event-stream');
@@ -987,7 +995,7 @@ app.post('/api/clients/:id/process', processingLimiter, async (req, res) => {
 
         // Check if folder exists
         try {
-            await fs.access(clientConfig.folders.base);
+            await fs.promises.access(clientConfig.folders.base);
         } catch {
             res.write(
                 'data: ' +
@@ -1006,14 +1014,14 @@ app.post('/api/clients/:id/process', processingLimiter, async (req, res) => {
         await ensureClientDirectories(clientConfig);
 
         // Merge client config with global config for processing
-        const processingConfig = {
+        const processingConfig: AppConfig = {
             ...globalConfig,
-            model: clientConfig.model,
-            folders: clientConfig.folders,
+            model: clientConfig.model ?? undefined,
+            folders: clientConfig.folders as unknown as AppConfig['folders'],
             output: clientConfig.output,
             fieldDefinitions: clientConfig.fieldDefinitions,
-            tagDefinitions: clientConfig.tagDefinitions,
-            promptTemplate: clientConfig.promptTemplate
+            tagDefinitions: clientConfig.tagDefinitions ?? undefined,
+            promptTemplate: clientConfig.promptTemplate as AppConfig['promptTemplate']
         };
 
         // Check for dry-run mode and file selection
@@ -1029,18 +1037,18 @@ app.post('/api/clients/:id/process', processingLimiter, async (req, res) => {
                 res.write('data: ' + JSON.stringify({ ...data, clientId, dryRun }) + '\n\n');
             },
             onComplete: (summary) => {
-                res.write('data: ' + JSON.stringify({ status: 'done', clientId, dryRun, ...summary }) + '\n\n');
+                res.write('data: ' + JSON.stringify({ ...summary, clientId, dryRun }) + '\n\n');
                 res.end();
                 activeProcessing.delete(clientId);
             }
         });
-    } catch (error) {
+    } catch (error: unknown) {
         res.write(
             'data: ' +
                 JSON.stringify({
                     status: 'error',
                     clientId,
-                    error: error.message
+                    error: (error as Error).message
                 }) +
                 '\n\n'
         );
@@ -1057,7 +1065,7 @@ app.post('/api/clients/:id/process', processingLimiter, async (req, res) => {
 /**
  * POST /api/clients/process-all - Process all enabled clients (SSE)
  */
-app.post('/api/clients/process-all', processingLimiter, async (req, res) => {
+app.post('/api/clients/process-all', processingLimiter, async (req: Request, res: Response) => {
     // Set headers for SSE
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -1151,7 +1159,7 @@ app.post('/api/clients/process-all', processingLimiter, async (req, res) => {
 
                 // Check if folder exists
                 try {
-                    await fs.access(clientConfig.folders.base);
+                    await fs.promises.access(clientConfig.folders.base);
                 } catch {
                     res.write(
                         'data: ' +
@@ -1169,13 +1177,13 @@ app.post('/api/clients/process-all', processingLimiter, async (req, res) => {
                 // Ensure subfolders exist (processed-original, processed-enriched)
                 await ensureClientDirectories(clientConfig);
 
-                const processingConfig = {
+                const processingConfig: AppConfig = {
                     ...globalConfig,
-                    model: clientConfig.model,
-                    folders: clientConfig.folders,
+                    model: clientConfig.model ?? undefined,
+                    folders: clientConfig.folders as unknown as AppConfig['folders'],
                     output: clientConfig.output,
                     fieldDefinitions: clientConfig.fieldDefinitions,
-                    tagDefinitions: clientConfig.tagDefinitions
+                    tagDefinitions: clientConfig.tagDefinitions ?? undefined
                 };
 
                 await processAllInvoices(processingConfig, {
@@ -1189,21 +1197,21 @@ app.post('/api/clients/process-all', processingLimiter, async (req, res) => {
                         res.write(
                             'data: ' +
                                 JSON.stringify({
+                                    ...summary,
                                     status: 'client-done',
-                                    clientId,
-                                    ...summary
+                                    clientId
                                 }) +
                                 '\n\n'
                         );
                     }
                 });
-            } catch (error) {
+            } catch (error: unknown) {
                 res.write(
                     'data: ' +
                         JSON.stringify({
                             status: 'client-error',
                             clientId,
-                            error: error.message
+                            error: (error as Error).message
                         }) +
                         '\n\n'
                 );
@@ -1225,12 +1233,12 @@ app.post('/api/clients/process-all', processingLimiter, async (req, res) => {
         );
         res.end();
         activeProcessing.delete('all');
-    } catch (error) {
+    } catch (error: unknown) {
         res.write(
             'data: ' +
                 JSON.stringify({
                     status: 'error',
-                    error: error.message
+                    error: (error as Error).message
                 }) +
                 '\n\n'
         );
@@ -1251,7 +1259,7 @@ app.post('/api/clients/process-all', processingLimiter, async (req, res) => {
 /**
  * GET /api/health - Health check
  */
-app.get('/api/health', async (req, res) => {
+app.get('/api/health', async (req: Request, res: Response) => {
     const multiClientMode = await isMultiClientMode();
 
     res.json({
@@ -1265,7 +1273,7 @@ app.get('/api/health', async (req, res) => {
 // START SERVER
 // ============================================================================
 
-if (require.main === module) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
     app.listen(PORT, () => {
         console.log(`\n🚀 Invoice Analyzer Admin running on http://localhost:${PORT}`);
         console.log(`📄 Open http://localhost:${PORT} in your browser to manage clients\n`);
@@ -1277,4 +1285,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = app;
+export default app;

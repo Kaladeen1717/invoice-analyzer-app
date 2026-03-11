@@ -2,58 +2,82 @@
  * Parallel processing with controlled concurrency
  */
 
-const path = require('path');
-const { processInvoice, getPdfFiles } = require('./processor');
-const {
+import path from 'node:path';
+import pLimit from 'p-limit';
+import { processInvoice, getPdfFiles } from './processor.js';
+import {
     getEnabledClients,
     getClientConfig,
     resolveApiKey,
     ensureClientDirectories,
     clientFolderExists
-} = require('./client-manager');
-const { appendInvoiceRow } = require('./csv-logger');
-const { appendResult } = require('./result-manager');
+} from './client-manager.js';
+import { appendInvoiceRow } from './csv-logger.js';
+import { appendResult } from './result-manager.js';
+
+import type {
+    AppConfig,
+    ProcessingResult,
+    BatchResult,
+    ProcessAllOptions,
+    MultiClientResult,
+    ClientBatchResult,
+    TokenUsage,
+    OnProgressCallback,
+    OnCompleteCallback,
+    OnClientStartCallback,
+    OnClientCompleteCallback,
+    MergedClientConfig
+} from './types/index.js';
 
 /**
  * Sleep for a specified number of milliseconds
- * @param {number} ms - Milliseconds to sleep
+ * @param ms - Milliseconds to sleep
  */
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface RetryOptions {
+    apiKey?: string;
+    onProgress?: OnProgressCallback;
+    dryRun?: boolean;
 }
 
 /**
  * Process a single invoice with retry logic
- * @param {string} filePath - Path to the PDF file
- * @param {Object} config - Configuration object
- * @param {Object} options - Processing options
- * @param {string} options.apiKey - Optional API key for this client
- * @param {boolean} options.dryRun - If true, skip file moves and PDF enrichment
- * @returns {Promise<Object>} Processing result
+ * @param filePath - Path to the PDF file
+ * @param config - Configuration object
+ * @param options - Processing options
+ * @returns Processing result
  */
-async function processWithRetry(filePath, config, options = {}) {
+export async function processWithRetry(
+    filePath: string,
+    config: AppConfig,
+    options: RetryOptions = {}
+): Promise<ProcessingResult> {
     const { apiKey, onProgress, dryRun } = options;
     const maxAttempts = config.processing.retryAttempts + 1;
     const baseDelay = config.processing.retryDelayMs || 1000;
 
-    let lastError = null;
+    let lastError: string | null = null;
     const startTime = Date.now();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const result = await processInvoice(filePath, config, { apiKey, onProgress, dryRun });
 
         if (result.success) {
-            result.duration = Date.now() - startTime;
+            (result as ProcessingResult & { duration?: number }).duration = Date.now() - startTime;
             return result;
         }
 
-        lastError = result.error;
+        lastError = (result as { error?: string }).error || null;
 
         // Don't retry on the last attempt
         if (attempt < maxAttempts) {
             // Rate-limited errors get more aggressive backoff (1s, 3s, 9s)
             // Other errors use standard exponential backoff (1s, 2s, 4s)
-            const isRateLimit = result.isRateLimited;
+            const isRateLimit = (result as { isRateLimited?: boolean }).isRateLimited;
             const delay = isRateLimit ? baseDelay * Math.pow(3, attempt - 1) : baseDelay * Math.pow(2, attempt - 1);
             if (onProgress) {
                 onProgress({
@@ -71,25 +95,21 @@ async function processWithRetry(filePath, config, options = {}) {
     return {
         success: false,
         originalFilename: path.basename(filePath),
-        error: lastError,
+        error: lastError!,
+        isRateLimited: false,
+        rawResponse: null,
         tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0, thoughtsTokens: 0 },
         duration: Date.now() - startTime
-    };
+    } as ProcessingResult & { duration: number };
 }
 
 /**
  * Process all invoices in the input folder with parallel execution
- * @param {Object} config - Configuration object
- * @param {Object} options - Processing options
- * @param {string} options.apiKey - Optional API key for this client
- * @param {string} options.csvPath - Optional path to CSV log file
- * @param {string[]} options.files - Optional list of filenames to process (filters from available PDFs)
- * @param {Function} options.onProgress - Progress callback for SSE
- * @param {Function} options.onComplete - Called when all processing is done
- * @param {Function} options.onInvoiceComplete - Called after each invoice is processed
- * @returns {Promise<Object>} Processing results summary
+ * @param config - Configuration object
+ * @param options - Processing options
+ * @returns Processing results summary
  */
-async function processAllInvoices(config, options = {}) {
+export async function processAllInvoices(config: AppConfig, options: ProcessAllOptions = {}): Promise<BatchResult> {
     const { apiKey, csvPath, onProgress, onComplete, onInvoiceComplete, storeResults = true, dryRun, files } = options;
 
     // Get all PDF files, then filter if specific files requested
@@ -100,20 +120,18 @@ async function processAllInvoices(config, options = {}) {
     }
 
     if (pdfFiles.length === 0) {
-        const result = {
+        const result: BatchResult = {
             total: 0,
             success: 0,
             failed: 0,
             results: [],
             csvRowsAdded: 0,
-            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 }
+            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 } as TokenUsage
         };
-        if (onComplete) onComplete(result);
+        if (onComplete) onComplete({ ...result, status: 'done' });
         return result;
     }
 
-    // Use dynamic import for p-limit (ESM module)
-    const pLimit = (await import('p-limit')).default;
     const limit = pLimit(config.processing.concurrency);
 
     if (onProgress) {
@@ -126,7 +144,7 @@ async function processAllInvoices(config, options = {}) {
 
     let completed = 0;
     let csvRowsAdded = 0;
-    const results = [];
+    const results: ProcessingResult[] = [];
 
     // Create processing tasks with concurrency limit
     const tasks = pdfFiles.map((filePath) => {
@@ -149,24 +167,33 @@ async function processAllInvoices(config, options = {}) {
             results.push(result);
 
             // Log to CSV if successful and csvPath is provided (skip for dry-run)
-            if (result.success && !result.dryRun && csvPath) {
+            if (result.success && !(result as { dryRun?: boolean }).dryRun && csvPath) {
                 try {
-                    await appendInvoiceRow(csvPath, result, config);
+                    await appendInvoiceRow(
+                        csvPath,
+                        result as {
+                            outputFilename: string;
+                            originalFilename: string;
+                            analysis: Record<string, unknown>;
+                        } & ProcessingResult,
+                        config
+                    );
                     csvRowsAdded++;
-                } catch (csvError) {
-                    console.error(`Warning: Failed to write to CSV: ${csvError.message}`);
+                } catch (csvError: unknown) {
+                    console.error(`Warning: Failed to write to CSV: ${(csvError as Error).message}`);
                 }
             }
 
             // Store result to processing-results.json
-            if (storeResults && config.folders && config.folders.base) {
+            const folders = config.folders as unknown as { base?: string };
+            if (storeResults && folders && folders.base) {
                 try {
-                    await appendResult(config.folders.base, result, {
+                    await appendResult(folders.base, result, {
                         model: config.model,
-                        duration: result.duration
+                        duration: (result as { duration?: number }).duration
                     });
-                } catch (err) {
-                    console.error(`Warning: Failed to store processing result: ${err.message}`);
+                } catch (err: unknown) {
+                    console.error(`Warning: Failed to store processing result: ${(err as Error).message}`);
                 }
             }
 
@@ -177,12 +204,13 @@ async function processAllInvoices(config, options = {}) {
 
             if (onProgress) {
                 let progressStatus = 'failed';
-                if (result.success) progressStatus = result.dryRun ? 'dry-run-completed' : 'completed';
+                if (result.success)
+                    progressStatus = (result as { dryRun?: boolean }).dryRun ? 'dry-run-completed' : 'completed';
                 onProgress({
                     status: progressStatus,
                     filename: result.originalFilename,
-                    outputFilename: result.outputFilename,
-                    error: result.error,
+                    outputFilename: (result as { outputFilename?: string }).outputFilename,
+                    error: (result as { error?: string }).error,
                     completed,
                     total: pdfFiles.length
                 });
@@ -206,10 +234,10 @@ async function processAllInvoices(config, options = {}) {
                 cachedTokens: acc.cachedTokens + (usage.cachedTokens || 0)
             };
         },
-        { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 }
+        { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 } as TokenUsage
     );
 
-    const summary = {
+    const summary: BatchResult = {
         total: pdfFiles.length,
         success: results.filter((r) => r.success).length,
         failed: results.filter((r) => !r.success).length,
@@ -219,22 +247,27 @@ async function processAllInvoices(config, options = {}) {
     };
 
     if (onComplete) {
-        onComplete(summary);
+        onComplete({ ...summary, status: 'done' });
     }
 
     return summary;
 }
 
+interface ProgressEmitter {
+    subscribe(listener: (data: Record<string, unknown>) => void): () => boolean;
+    start(): Promise<BatchResult>;
+}
+
 /**
  * Create an event emitter for SSE progress updates
- * @param {Object} config - Configuration object
- * @returns {Object} Object with start() and subscribe() methods
+ * @param config - Configuration object
+ * @returns Object with start() and subscribe() methods
  */
-function createProgressEmitter(config) {
-    const listeners = new Set();
+export function createProgressEmitter(config: AppConfig): ProgressEmitter {
+    const listeners = new Set<(data: Record<string, unknown>) => void>();
 
     return {
-        subscribe(listener) {
+        subscribe(listener: (data: Record<string, unknown>) => void) {
             listeners.add(listener);
             return () => listeners.delete(listener);
         },
@@ -244,7 +277,7 @@ function createProgressEmitter(config) {
                 onProgress: (data) => {
                     for (const listener of listeners) {
                         try {
-                            listener(data);
+                            listener(data as unknown as Record<string, unknown>);
                         } catch (e) {
                             console.error('Error in progress listener:', e);
                         }
@@ -253,7 +286,7 @@ function createProgressEmitter(config) {
                 onComplete: (summary) => {
                     for (const listener of listeners) {
                         try {
-                            listener({ status: 'done', ...summary });
+                            listener({ ...summary, status: 'done' } as unknown as Record<string, unknown>);
                         } catch (e) {
                             console.error('Error in complete listener:', e);
                         }
@@ -264,17 +297,23 @@ function createProgressEmitter(config) {
     };
 }
 
+interface ProcessAllClientsOptions {
+    onClientStart?: OnClientStartCallback;
+    onClientComplete?: OnClientCompleteCallback;
+    onProgress?: OnProgressCallback;
+    onComplete?: (result: MultiClientResult) => void;
+}
+
 /**
  * Process all invoices for all enabled clients
- * @param {Object} globalConfig - Global configuration object
- * @param {Object} options - Processing options
- * @param {Function} options.onClientStart - Called when starting to process a client
- * @param {Function} options.onClientComplete - Called when a client is done
- * @param {Function} options.onProgress - Progress callback for each invoice
- * @param {Function} options.onComplete - Called when all clients are done
- * @returns {Promise<Object>} Processing results for all clients
+ * @param globalConfig - Global configuration object
+ * @param options - Processing options
+ * @returns Processing results for all clients
  */
-async function processAllClients(globalConfig, options = {}) {
+export async function processAllClients(
+    globalConfig: AppConfig,
+    options: ProcessAllClientsOptions = {}
+): Promise<MultiClientResult> {
     const { onClientStart, onClientComplete, onProgress, onComplete } = options;
 
     const enabledClients = await getEnabledClients();
@@ -286,41 +325,41 @@ async function processAllClients(globalConfig, options = {}) {
     const clientIds = Object.keys(enabledClients);
 
     if (clientIds.length === 0) {
-        const result = {
+        const result: MultiClientResult = {
             clients: {},
             totalClients: 0,
             totalFiles: 0,
             totalSuccess: 0,
             totalFailed: 0,
-            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 }
+            tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 } as TokenUsage
         };
         if (onComplete) onComplete(result);
         return result;
     }
 
-    const results = {
+    const results: MultiClientResult = {
         clients: {},
         totalClients: clientIds.length,
         totalFiles: 0,
         totalSuccess: 0,
         totalFailed: 0,
-        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 }
+        tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 } as TokenUsage
     };
 
     for (const clientId of clientIds) {
         const client = enabledClients[clientId];
 
         // Get merged client config
-        let clientConfig;
+        let clientConfig: MergedClientConfig;
         try {
             clientConfig = await getClientConfig(clientId, globalConfig);
-        } catch (error) {
-            console.error(`Error loading config for client "${clientId}": ${error.message}`);
+        } catch (error: unknown) {
+            console.error(`Error loading config for client "${clientId}": ${(error as Error).message}`);
             results.clients[clientId] = {
                 name: client.name,
-                error: error.message,
+                error: (error as Error).message,
                 skipped: true
-            };
+            } as ClientBatchResult;
             continue;
         }
 
@@ -332,34 +371,34 @@ async function processAllClients(globalConfig, options = {}) {
                 name: client.name,
                 error: `Folder not found: ${clientConfig.folders.base}`,
                 skipped: true
-            };
+            } as ClientBatchResult;
             continue;
         }
 
         // Ensure client directories exist
         try {
             await ensureClientDirectories(clientConfig);
-        } catch (error) {
-            console.error(`Error creating directories for client "${client.name}": ${error.message}`);
+        } catch (error: unknown) {
+            console.error(`Error creating directories for client "${client.name}": ${(error as Error).message}`);
             results.clients[clientId] = {
                 name: client.name,
-                error: error.message,
+                error: (error as Error).message,
                 skipped: true
-            };
+            } as ClientBatchResult;
             continue;
         }
 
         // Resolve API key for this client
-        let apiKey;
+        let apiKey: string;
         try {
             apiKey = resolveApiKey(clientConfig);
-        } catch (error) {
-            console.error(`Error resolving API key for client "${client.name}": ${error.message}`);
+        } catch (error: unknown) {
+            console.error(`Error resolving API key for client "${client.name}": ${(error as Error).message}`);
             results.clients[clientId] = {
                 name: client.name,
-                error: error.message,
+                error: (error as Error).message,
                 skipped: true
-            };
+            } as ClientBatchResult;
             continue;
         }
 
@@ -372,7 +411,7 @@ async function processAllClients(globalConfig, options = {}) {
         }
 
         // Process all invoices for this client
-        const clientResults = await processAllInvoices(clientConfig, {
+        const clientResults = await processAllInvoices(clientConfig as unknown as AppConfig, {
             apiKey,
             csvPath: clientConfig.folders.csvPath,
             onProgress: (progress) => {
@@ -419,14 +458,23 @@ async function processAllClients(globalConfig, options = {}) {
     return results;
 }
 
+interface ProcessSingleClientOptions {
+    onProgress?: OnProgressCallback;
+    onComplete?: OnCompleteCallback;
+}
+
 /**
  * Process a single client's invoices
- * @param {string} clientId - The client ID
- * @param {Object} globalConfig - Global configuration object
- * @param {Object} options - Processing options
- * @returns {Promise<Object>} Processing results for the client
+ * @param clientId - The client ID
+ * @param globalConfig - Global configuration object
+ * @param options - Processing options
+ * @returns Processing results for the client
  */
-async function processSingleClient(clientId, globalConfig, options = {}) {
+export async function processSingleClient(
+    clientId: string,
+    globalConfig: AppConfig,
+    options: ProcessSingleClientOptions = {}
+): Promise<ClientBatchResult> {
     const { onProgress, onComplete } = options;
 
     // Get merged client config
@@ -445,7 +493,7 @@ async function processSingleClient(clientId, globalConfig, options = {}) {
     const apiKey = resolveApiKey(clientConfig);
 
     // Process all invoices for this client
-    const results = await processAllInvoices(clientConfig, {
+    const results = await processAllInvoices(clientConfig as unknown as AppConfig, {
         apiKey,
         csvPath: clientConfig.folders.csvPath,
         onProgress,
@@ -453,16 +501,7 @@ async function processSingleClient(clientId, globalConfig, options = {}) {
     });
 
     return {
-        clientId,
         name: clientConfig.name,
         ...results
-    };
+    } as ClientBatchResult;
 }
-
-module.exports = {
-    processWithRetry,
-    processAllInvoices,
-    createProgressEmitter,
-    processAllClients,
-    processSingleClient
-};

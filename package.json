@@ -22,9 +22,16 @@
     },
     "jest": {
         "testEnvironment": "node",
-        "extensionsToTreatAsEsm": [".ts"],
+        "extensionsToTreatAsEsm": [
+            ".ts"
+        ],
         "transform": {
-            "^.+\\.ts$": ["ts-jest", { "useESM": true }]
+            "^.+\\.ts$": [
+                "ts-jest",
+                {
+                    "useESM": true
+                }
+            ]
         },
         "testMatch": [
             "**/tests/**/*.test.ts"

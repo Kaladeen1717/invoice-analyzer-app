@@ -109,11 +109,7 @@ export interface MultiClientResult {
 }
 
 /** Client start callback */
-export type OnClientStartCallback = (data: {
-    clientId: string;
-    name: string;
-    folderPath: string;
-}) => void;
+export type OnClientStartCallback = (data: { clientId: string; name: string; folderPath: string }) => void;
 
 /** Client complete callback */
 export type OnClientCompleteCallback = (data: {

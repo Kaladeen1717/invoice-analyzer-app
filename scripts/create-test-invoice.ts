@@ -1,7 +1,15 @@
-const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-const fs = require('fs').promises;
+#!/usr/bin/env node
 
-async function createTestInvoice() {
+/**
+ * Creates a sample test invoice PDF for development/testing.
+ *
+ * Usage: npx tsx scripts/create-test-invoice.ts
+ */
+
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import fs from 'fs/promises';
+
+async function createTestInvoice(): Promise<void> {
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([600, 800]);
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);

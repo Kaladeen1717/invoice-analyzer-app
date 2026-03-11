@@ -1,13 +1,7 @@
 // Client-related type definitions.
 // Extracted from src/client-manager.js data shapes.
 
-import type {
-    FieldDefinition,
-    TagDefinition,
-    PromptTemplate,
-    OutputConfig,
-    ProcessingConfig
-} from './config.js';
+import type { FieldDefinition, TagDefinition, PromptTemplate, OutputConfig, ProcessingConfig } from './config.js';
 
 /** On-disk client JSON file shape (clients/{clientId}.json) */
 export interface ClientFile {

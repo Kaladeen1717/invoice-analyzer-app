@@ -1,114 +1,128 @@
 // Config Export / Import / Backup module
 // Handles exporting config bundles, importing with preview, backup management.
+
 import { showAlert } from './ui-utils.js';
+
 // --- State ---
-let pendingImportBundle = null;
-let restoreBackupId = null;
+let pendingImportBundle: Record<string, unknown> | null = null;
+let restoreBackupId: string | null = null;
 let backupsLoaded = false;
+
 // --- DOM refs (set in init) ---
-let importDropZone;
-let importFileInput;
-let backupListEl;
-let importPreviewModal;
-let importPreviewMeta;
-let importPreviewDetails;
-let closeImportPreviewBtn;
-let cancelImportBtn;
-let confirmImportBtn;
-let restoreModal;
-let restoreBackupLabel;
-let closeRestoreModalBtn;
-let cancelRestoreBtn;
-let confirmRestoreBtn;
+let importDropZone: HTMLElement;
+let importFileInput: HTMLInputElement;
+let backupListEl: HTMLElement;
+let importPreviewModal: HTMLElement;
+let importPreviewMeta: HTMLElement;
+let importPreviewDetails: HTMLElement;
+let closeImportPreviewBtn: HTMLElement;
+let cancelImportBtn: HTMLElement;
+let confirmImportBtn: HTMLButtonElement;
+let restoreModal: HTMLElement;
+let restoreBackupLabel: HTMLElement;
+let closeRestoreModalBtn: HTMLElement;
+let cancelRestoreBtn: HTMLElement;
+let confirmRestoreBtn: HTMLButtonElement;
+
 // Callback provided by app.js for reloading after import/restore
-let _onDataChanged = null;
+let _onDataChanged: (() => void) | null = null;
+
 // --- Public API ---
-export function initExportImport({ onDataChanged }) {
+
+export function initExportImport({ onDataChanged }: { onDataChanged: () => void }): void {
     _onDataChanged = onDataChanged;
-    importDropZone = document.getElementById('importDropZone');
-    importFileInput = document.getElementById('importFileInput');
-    backupListEl = document.getElementById('backupList');
-    importPreviewModal = document.getElementById('importPreviewModal');
-    importPreviewMeta = document.getElementById('importPreviewMeta');
-    importPreviewDetails = document.getElementById('importPreviewDetails');
-    closeImportPreviewBtn = document.getElementById('closeImportPreviewBtn');
-    cancelImportBtn = document.getElementById('cancelImportBtn');
-    confirmImportBtn = document.getElementById('confirmImportBtn');
-    restoreModal = document.getElementById('restoreModal');
-    restoreBackupLabel = document.getElementById('restoreBackupLabel');
-    closeRestoreModalBtn = document.getElementById('closeRestoreModalBtn');
-    cancelRestoreBtn = document.getElementById('cancelRestoreBtn');
-    confirmRestoreBtn = document.getElementById('confirmRestoreBtn');
-    const exportFieldsBtn = document.getElementById('exportFieldsBtn');
-    const exportGlobalBtn = document.getElementById('exportGlobalBtn');
-    const exportEverythingBtn = document.getElementById('exportEverythingBtn');
-    const exportClientsBtn = document.getElementById('exportClientsBtn');
-    const importFilePickerBtn = document.getElementById('importFilePickerBtn');
-    const refreshBackupsBtn = document.getElementById('refreshBackupsBtn');
+
+    importDropZone = document.getElementById('importDropZone')!;
+    importFileInput = document.getElementById('importFileInput') as HTMLInputElement;
+    backupListEl = document.getElementById('backupList')!;
+    importPreviewModal = document.getElementById('importPreviewModal')!;
+    importPreviewMeta = document.getElementById('importPreviewMeta')!;
+    importPreviewDetails = document.getElementById('importPreviewDetails')!;
+    closeImportPreviewBtn = document.getElementById('closeImportPreviewBtn')!;
+    cancelImportBtn = document.getElementById('cancelImportBtn')!;
+    confirmImportBtn = document.getElementById('confirmImportBtn') as HTMLButtonElement;
+    restoreModal = document.getElementById('restoreModal')!;
+    restoreBackupLabel = document.getElementById('restoreBackupLabel')!;
+    closeRestoreModalBtn = document.getElementById('closeRestoreModalBtn')!;
+    cancelRestoreBtn = document.getElementById('cancelRestoreBtn')!;
+    confirmRestoreBtn = document.getElementById('confirmRestoreBtn') as HTMLButtonElement;
+
+    const exportFieldsBtn = document.getElementById('exportFieldsBtn')!;
+    const exportGlobalBtn = document.getElementById('exportGlobalBtn')!;
+    const exportEverythingBtn = document.getElementById('exportEverythingBtn')!;
+    const exportClientsBtn = document.getElementById('exportClientsBtn')!;
+    const importFilePickerBtn = document.getElementById('importFilePickerBtn')!;
+    const refreshBackupsBtn = document.getElementById('refreshBackupsBtn')!;
+
     // Export buttons
     exportFieldsBtn.addEventListener('click', () => exportConfig('fields'));
     exportGlobalBtn.addEventListener('click', () => exportConfig('global'));
     exportEverythingBtn.addEventListener('click', () => exportConfig('all'));
     exportClientsBtn.addEventListener('click', () => exportConfig('clients'));
+
     // Import drag-and-drop
     importDropZone.addEventListener('click', () => importFileInput.click());
-    importFilePickerBtn.addEventListener('click', (e) => {
+    importFilePickerBtn.addEventListener('click', (e: MouseEvent) => {
         e.stopPropagation();
         importFileInput.click();
     });
     importFileInput.addEventListener('change', () => {
-        if (importFileInput.files.length > 0)
-            handleImportFile(importFileInput.files[0]);
+        if (importFileInput.files!.length > 0) handleImportFile(importFileInput.files![0]);
     });
-    importDropZone.addEventListener('dragover', (e) => {
+    importDropZone.addEventListener('dragover', (e: DragEvent) => {
         e.preventDefault();
         importDropZone.classList.add('drag-over');
     });
     importDropZone.addEventListener('dragleave', () => {
         importDropZone.classList.remove('drag-over');
     });
-    importDropZone.addEventListener('drop', (e) => {
+    importDropZone.addEventListener('drop', (e: DragEvent) => {
         e.preventDefault();
         importDropZone.classList.remove('drag-over');
-        if (e.dataTransfer.files.length > 0)
-            handleImportFile(e.dataTransfer.files[0]);
+        if (e.dataTransfer!.files.length > 0) handleImportFile(e.dataTransfer!.files[0]);
     });
+
     // Import preview modal
     closeImportPreviewBtn.addEventListener('click', closeImportPreview);
     cancelImportBtn.addEventListener('click', closeImportPreview);
     confirmImportBtn.addEventListener('click', confirmImport);
-    importPreviewModal.addEventListener('click', (e) => {
-        if (e.target === importPreviewModal)
-            closeImportPreview();
+    importPreviewModal.addEventListener('click', (e: MouseEvent) => {
+        if (e.target === importPreviewModal) closeImportPreview();
     });
+
     // Backup management
     refreshBackupsBtn.addEventListener('click', loadBackups);
+
     // Restore modal
     closeRestoreModalBtn.addEventListener('click', closeRestoreModal);
     cancelRestoreBtn.addEventListener('click', closeRestoreModal);
     confirmRestoreBtn.addEventListener('click', confirmRestore);
-    restoreModal.addEventListener('click', (e) => {
-        if (e.target === restoreModal)
-            closeRestoreModal();
+    restoreModal.addEventListener('click', (e: MouseEvent) => {
+        if (e.target === restoreModal) closeRestoreModal();
     });
 }
-export function isBackupsLoaded() {
+
+export function isBackupsLoaded(): boolean {
     return backupsLoaded;
 }
-export async function loadBackups() {
+
+export async function loadBackups(): Promise<void> {
     try {
         backupListEl.textContent = '';
         const loadingDiv = document.createElement('div');
         loadingDiv.className = 'loading-placeholder';
         loadingDiv.textContent = 'Loading backups...';
         backupListEl.appendChild(loadingDiv);
+
         const response = await fetch('/api/config/backups');
         const data = await response.json();
-        if (!response.ok)
-            throw new Error(data.error || 'Failed to load backups');
-        const backups = (data.backups || []);
+
+        if (!response.ok) throw new Error(data.error || 'Failed to load backups');
+
+        const backups = (data.backups || []) as Array<{ id: string; timestamp: string; label: string }>;
         backupsLoaded = true;
         backupListEl.textContent = '';
+
         if (backups.length === 0) {
             const emptyDiv = document.createElement('div');
             emptyDiv.className = 'backup-empty';
@@ -116,11 +130,14 @@ export async function loadBackups() {
             backupListEl.appendChild(emptyDiv);
             return;
         }
+
         backups.forEach((backup) => {
             const date = new Date(backup.timestamp).toLocaleString();
             const label = backup.label || 'manual';
+
             const item = document.createElement('div');
             item.className = 'backup-item';
+
             const info = document.createElement('div');
             info.className = 'backup-info';
             const tsDiv = document.createElement('div');
@@ -131,27 +148,29 @@ export async function loadBackups() {
             labelDiv.textContent = label;
             info.appendChild(tsDiv);
             info.appendChild(labelDiv);
+
             const btn = document.createElement('button');
             btn.className = 'btn btn-secondary btn-small';
             btn.textContent = 'Restore';
             btn.addEventListener('click', () => showRestoreConfirmation(backup.id, label + ' - ' + date));
+
             item.appendChild(info);
             item.appendChild(btn);
             backupListEl.appendChild(item);
         });
-    }
-    catch (error) {
+    } catch (error) {
         backupListEl.textContent = '';
         const errDiv = document.createElement('div');
         errDiv.className = 'error-placeholder';
-        errDiv.textContent = 'Failed to load backups: ' + error.message;
+        errDiv.textContent = 'Failed to load backups: ' + (error as Error).message;
         backupListEl.appendChild(errDiv);
     }
 }
+
 /**
  * Export config for a given scope. Also used for per-client export.
  */
-export async function exportConfig(scope) {
+export async function exportConfig(scope: string): Promise<void> {
     try {
         const response = await fetch(`/api/config/export?scope=${encodeURIComponent(scope)}`);
         if (!response.ok) {
@@ -159,9 +178,11 @@ export async function exportConfig(scope) {
             throw new Error(err.error || 'Export failed');
         }
         const bundle = await response.json();
+
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         const scopeSlug = scope.replace(':', '-');
         const filename = `invoice-analyzer-${scopeSlug}-${timestamp}.json`;
+
         const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -171,68 +192,73 @@ export async function exportConfig(scope) {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+
         showAlert(`Exported ${scope} config successfully`, 'success');
-    }
-    catch (error) {
-        showAlert(`Export failed: ${error.message}`, 'error');
+    } catch (error) {
+        showAlert(`Export failed: ${(error as Error).message}`, 'error');
     }
 }
+
 /**
  * Get modal elements for Escape key handling in app.js.
  */
-export function getRestoreModal() {
+export function getRestoreModal(): HTMLElement {
     return restoreModal;
 }
-export function getImportPreviewModal() {
+export function getImportPreviewModal(): HTMLElement {
     return importPreviewModal;
 }
-export function getCloseRestoreModal() {
+export function getCloseRestoreModal(): () => void {
     return closeRestoreModal;
 }
-export function getCloseImportPreview() {
+export function getCloseImportPreview(): () => void {
     return closeImportPreview;
 }
+
 // --- Internal ---
-function handleImportFile(file) {
+
+function handleImportFile(file: File): void {
     if (!file || !file.name.endsWith('.json')) {
         showAlert('Please select a valid JSON file', 'error');
         return;
     }
+
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (e: ProgressEvent<FileReader>) => {
         try {
-            const bundle = JSON.parse(e.target.result);
+            const bundle = JSON.parse(e.target!.result as string);
             if (!bundle.scope || !bundle.data) {
                 showAlert('Invalid config file: missing scope or data', 'error');
                 return;
             }
             pendingImportBundle = bundle;
             showImportPreview(bundle);
-        }
-        catch (err) {
-            showAlert('Invalid JSON file: ' + err.message, 'error');
+        } catch (err) {
+            showAlert('Invalid JSON file: ' + (err as Error).message, 'error');
         }
     };
     reader.readAsText(file);
 }
-function showImportPreview(bundle) {
-    const exportDate = bundle.exportedAt ? new Date(bundle.exportedAt).toLocaleString() : 'Unknown';
-    const scopeLabels = {
+
+function showImportPreview(bundle: Record<string, unknown>): void {
+    const exportDate = bundle.exportedAt ? new Date(bundle.exportedAt as string).toLocaleString() : 'Unknown';
+    const scopeLabels: Record<string, string> = {
         fields: 'Field Definitions',
         global: 'Global Config',
         clients: 'All Clients',
         all: 'Everything (Global + Clients)'
     };
-    const scope = bundle.scope;
-    const scopeLabel = scope.startsWith('client:')
-        ? `Client: ${scope.substring(7)}`
-        : scopeLabels[scope] || scope;
+    const scope = bundle.scope as string;
+    const scopeLabel = scope.startsWith('client:') ? `Client: ${scope.substring(7)}` : scopeLabels[scope] || scope;
+
     importPreviewMeta.textContent = '';
-    [
-        ['Scope', scopeLabel],
-        ['Exported', exportDate],
-        ['Version', String(bundle.exportVersion || 'Unknown')]
-    ].forEach(([label, value]) => {
+    (
+        [
+            ['Scope', scopeLabel],
+            ['Exported', exportDate],
+            ['Version', String(bundle.exportVersion || 'Unknown')]
+        ] as [string, string][]
+    ).forEach(([label, value]) => {
         const row = document.createElement('div');
         row.className = 'meta-row';
         const labelSpan = document.createElement('span');
@@ -245,38 +271,40 @@ function showImportPreview(bundle) {
         row.appendChild(valueSpan);
         importPreviewMeta.appendChild(row);
     });
+
     importPreviewDetails.textContent = '';
     const heading = document.createElement('h4');
     heading.textContent = 'Will import:';
     importPreviewDetails.appendChild(heading);
-    const data = bundle.data;
-    const addItem = (text, style) => {
+
+    const data = bundle.data as Record<string, unknown>;
+
+    const addItem = (text: string, style?: Partial<CSSStyleDeclaration>) => {
         const div = document.createElement('div');
         div.className = 'import-preview-item';
         div.textContent = text;
-        if (style)
-            Object.assign(div.style, style);
+        if (style) Object.assign(div.style, style);
         importPreviewDetails.appendChild(div);
     };
+
     switch (scope) {
         case 'fields':
-            addItem(`Field definitions (${(data.fieldDefinitions || []).length} fields)`);
-            if (data.extraction)
-                addItem('Extraction settings');
+            addItem(`Field definitions (${((data.fieldDefinitions || []) as unknown[]).length} fields)`);
+            if (data.extraction) addItem('Extraction settings');
             break;
         case 'global':
             addItem('Global config.json (all settings except folder paths)');
             break;
         case 'clients':
             if (data.clients) {
-                const clientIds = Object.keys(data.clients);
+                const clientIds = Object.keys(data.clients as Record<string, unknown>);
                 addItem(`${clientIds.length} client(s): ${clientIds.join(', ')}`);
             }
             break;
         case 'all':
             addItem('Global config.json');
             if (data.clients) {
-                const clientIds = Object.keys(data.clients);
+                const clientIds = Object.keys(data.clients as Record<string, unknown>);
                 addItem(`${clientIds.length} client(s): ${clientIds.join(', ')}`);
             }
             break;
@@ -286,82 +314,88 @@ function showImportPreview(bundle) {
             }
     }
     addItem('A backup will be created before importing.', { color: 'var(--text-secondary)', marginTop: '0.5rem' });
+
     importPreviewModal.classList.add('active');
 }
-function closeImportPreview() {
+
+function closeImportPreview(): void {
     importPreviewModal.classList.remove('active');
     pendingImportBundle = null;
     importFileInput.value = '';
 }
-async function confirmImport() {
-    if (!pendingImportBundle)
-        return;
+
+async function confirmImport(): Promise<void> {
+    if (!pendingImportBundle) return;
+
     try {
         confirmImportBtn.disabled = true;
         confirmImportBtn.textContent = 'Importing...';
+
         const response = await fetch('/api/config/import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(pendingImportBundle)
         });
+
         const result = await response.json();
+
         if (response.ok) {
             closeImportPreview();
             const updatedCount = result.updated ? result.updated.length : 0;
             showAlert(`Import successful! ${updatedCount} item(s) updated. Backup ID: ${result.backupId}`, 'success');
-            if (_onDataChanged)
-                _onDataChanged();
-        }
-        else {
+            if (_onDataChanged) _onDataChanged();
+        } else {
             showAlert(`Import failed: ${result.details || result.error}`, 'error');
         }
-    }
-    catch (error) {
-        showAlert(`Import failed: ${error.message}`, 'error');
-    }
-    finally {
+    } catch (error) {
+        showAlert(`Import failed: ${(error as Error).message}`, 'error');
+    } finally {
         confirmImportBtn.disabled = false;
         confirmImportBtn.textContent = 'Import';
     }
 }
-function showRestoreConfirmation(backupId, label) {
+
+function showRestoreConfirmation(backupId: string, label: string): void {
     restoreBackupId = backupId;
     restoreBackupLabel.textContent = label;
     restoreModal.classList.add('active');
 }
-function closeRestoreModal() {
+
+function closeRestoreModal(): void {
     restoreModal.classList.remove('active');
     restoreBackupId = null;
 }
-async function confirmRestore() {
-    if (!restoreBackupId)
-        return;
+
+async function confirmRestore(): Promise<void> {
+    if (!restoreBackupId) return;
+
     try {
         confirmRestoreBtn.disabled = true;
         confirmRestoreBtn.textContent = 'Restoring...';
+
         const response = await fetch('/api/config/restore', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ backupId: restoreBackupId })
         });
+
         const result = await response.json();
+
         if (response.ok) {
             closeRestoreModal();
             const restoredCount = result.restored ? result.restored.length : 0;
-            showAlert(`Restored ${restoredCount} item(s) from backup. Safety backup: ${result.safetyBackupId}`, 'success');
-            if (_onDataChanged)
-                _onDataChanged();
-        }
-        else {
+            showAlert(
+                `Restored ${restoredCount} item(s) from backup. Safety backup: ${result.safetyBackupId}`,
+                'success'
+            );
+            if (_onDataChanged) _onDataChanged();
+        } else {
             showAlert(`Restore failed: ${result.details || result.error}`, 'error');
         }
-    }
-    catch (error) {
-        showAlert(`Restore failed: ${error.message}`, 'error');
-    }
-    finally {
+    } catch (error) {
+        showAlert(`Restore failed: ${(error as Error).message}`, 'error');
+    } finally {
         confirmRestoreBtn.disabled = false;
         confirmRestoreBtn.textContent = 'Restore';
     }
 }
-//# sourceMappingURL=export-import.js.map

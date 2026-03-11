@@ -14,22 +14,45 @@
  * Creates backup of each client file before modifying.
  */
 
-const fs = require('fs').promises;
-const path = require('path');
+import fs from 'fs/promises';
+import path from 'path';
+
+interface FieldDefinition {
+    key: string;
+    enabled: boolean;
+    [prop: string]: unknown;
+}
+
+interface TagOverride {
+    enabled?: boolean;
+    [prop: string]: unknown;
+}
+
+interface ClientConfig {
+    fieldDefinitions?: FieldDefinition[];
+    fieldOverrides?: Record<string, Record<string, unknown>>;
+    tagOverrides?: Record<string, TagOverride>;
+    [prop: string]: unknown;
+}
+
+interface GlobalConfig {
+    fieldDefinitions?: FieldDefinition[];
+    [prop: string]: unknown;
+}
 
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 const CLIENTS_DIR = path.join(process.cwd(), 'clients');
 
-async function migrate() {
+async function migrate(): Promise<void> {
     console.log('Client Overrides Migration');
     console.log('==========================\n');
 
     // Read global config for field definitions reference
-    let globalConfig;
+    let globalConfig: GlobalConfig;
     try {
-        globalConfig = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf-8'));
+        globalConfig = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf-8')) as GlobalConfig;
     } catch (err) {
-        console.error('Failed to read config.json:', err.message);
+        console.error('Failed to read config.json:', (err as Error).message);
         process.exit(1);
     }
 
@@ -38,12 +61,12 @@ async function migrate() {
     const globalFieldMap = new Map(globalFields.map((f) => [f.key, f]));
 
     // Read client files
-    let clientFiles;
+    let clientFiles: string[];
     try {
         const files = await fs.readdir(CLIENTS_DIR);
         clientFiles = files.filter((f) => f.endsWith('.json'));
     } catch (err) {
-        if (err.code === 'ENOENT') {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
             console.log('No clients/ directory found. Nothing to migrate.');
             return;
         }
@@ -60,17 +83,17 @@ async function migrate() {
     for (const file of clientFiles) {
         const filePath = path.join(CLIENTS_DIR, file);
         const clientId = path.basename(file, '.json');
-        const raw = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+        const raw: ClientConfig = JSON.parse(await fs.readFile(filePath, 'utf-8')) as ClientConfig;
         let changed = false;
 
         // 1. Convert fieldDefinitions -> fieldOverrides
         if (raw.fieldDefinitions && Array.isArray(raw.fieldDefinitions)) {
-            const fieldOverrides = {};
+            const fieldOverrides: Record<string, Record<string, unknown>> = {};
 
             for (const field of raw.fieldDefinitions) {
                 if (globalFieldKeys.has(field.key)) {
                     // Global field — only store enabled toggle if different
-                    const globalField = globalFieldMap.get(field.key);
+                    const globalField = globalFieldMap.get(field.key)!;
                     if (field.enabled !== globalField.enabled) {
                         fieldOverrides[field.key] = { enabled: field.enabled };
                     }
@@ -95,15 +118,15 @@ async function migrate() {
 
         // 2. Simplify tagOverrides (remove parameter values, keep enabled toggles)
         if (raw.tagOverrides && typeof raw.tagOverrides === 'object') {
-            const simplified = {};
+            const simplified: Record<string, { enabled: boolean }> = {};
             for (const [tagId, override] of Object.entries(raw.tagOverrides)) {
-                const simple = {};
+                const simple: { enabled?: boolean } = {};
                 if (typeof override.enabled === 'boolean') {
                     simple.enabled = override.enabled;
                 }
                 // Only keep the override if it has meaningful content
                 if (Object.keys(simple).length > 0) {
-                    simplified[tagId] = simple;
+                    simplified[tagId] = simple as { enabled: boolean };
                 }
             }
 
@@ -128,7 +151,7 @@ async function migrate() {
     console.log(`\nMigrated ${totalMigrated} client(s) out of ${clientFiles.length}.`);
 }
 
-migrate().catch((err) => {
+migrate().catch((err: Error) => {
     console.error('Migration failed:', err);
     process.exit(1);
 });

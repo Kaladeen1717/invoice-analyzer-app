@@ -4,29 +4,49 @@
  * Returns validation results with optional auto-correction.
  */
 
-const { FORMAT_NONE } = require('./constants');
+import { FORMAT_NONE } from './constants.js';
+
+import type { FieldDefinition } from './types/index.js';
+
+interface ValidationResult {
+    valid: boolean;
+    corrected?: string;
+    error?: string;
+}
+
+interface FormatWarning {
+    field: string;
+    format: string;
+    value: unknown;
+    error: string | undefined;
+}
+
+interface ValidateAllResult {
+    corrected: Record<string, unknown>;
+    warnings: FormatWarning[];
+}
 
 /**
  * Validate a value against a declared format
- * @param {*} value - The extracted value to validate
- * @param {string} format - The format key (e.g., 'iso8601', 'iso4217')
- * @returns {{ valid: boolean, corrected?: string, error?: string }}
+ * @param value - The extracted value to validate
+ * @param format - The format key (e.g., 'iso8601', 'iso4217')
+ * @returns Validation result with optional correction
  */
-function validateFieldFormat(value, format) {
+export function validateFieldFormat(value: unknown, format: string): ValidationResult {
     if (value === undefined || value === null || value === '' || value === 'Unknown') {
         return { valid: true };
     }
 
     const str = String(value);
-    const validator = validators[format];
+    const validator = validators[format as keyof typeof validators];
     if (!validator) {
         return { valid: true };
     }
     return validator(str);
 }
 
-const validators = {
-    iso8601(value) {
+const validators: Record<string, (value: string) => ValidationResult> = {
+    iso8601(value: string): ValidationResult {
         // Strip time component if present (auto-correct)
         const dateOnly = value.replace(/T.*$/, '');
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
@@ -42,7 +62,7 @@ const validators = {
         return { valid: false, error: `Does not match YYYY-MM-DD pattern: ${value}` };
     },
 
-    iso4217(value) {
+    iso4217(value: string): ValidationResult {
         const upper = value.toUpperCase();
         if (/^[A-Z]{3}$/.test(upper)) {
             if (upper !== value) {
@@ -53,7 +73,7 @@ const validators = {
         return { valid: false, error: `Not a valid 3-letter currency code: ${value}` };
     },
 
-    iso3166_alpha2(value) {
+    iso3166_alpha2(value: string): ValidationResult {
         const upper = value.toUpperCase();
         if (/^[A-Z]{2}$/.test(upper)) {
             if (upper !== value) {
@@ -64,7 +84,7 @@ const validators = {
         return { valid: false, error: `Not a valid 2-letter country code: ${value}` };
     },
 
-    iso3166_alpha3(value) {
+    iso3166_alpha3(value: string): ValidationResult {
         const upper = value.toUpperCase();
         if (/^[A-Z]{3}$/.test(upper)) {
             if (upper !== value) {
@@ -75,7 +95,7 @@ const validators = {
         return { valid: false, error: `Not a valid 3-letter country code: ${value}` };
     },
 
-    iso9362(value) {
+    iso9362(value: string): ValidationResult {
         // BIC/SWIFT: 8 or 11 alphanumeric, first 6 must be letters
         if (/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/i.test(value)) {
             return { valid: true };
@@ -83,7 +103,7 @@ const validators = {
         return { valid: false, error: `Not a valid BIC/SWIFT code: ${value}` };
     },
 
-    iso13616(value) {
+    iso13616(value: string): ValidationResult {
         // IBAN: 2 letter country + 2 check digits + up to 30 alphanumeric BBAN
         const cleaned = value.replace(/\s/g, '');
         if (/^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/i.test(cleaned)) {
@@ -92,7 +112,7 @@ const validators = {
         return { valid: false, error: `Not a valid IBAN format: ${value}` };
     },
 
-    iso11649(value) {
+    iso11649(value: string): ValidationResult {
         // Creditor Reference: starts with RF + 2 check digits + reference
         const cleaned = value.replace(/\s/g, '');
         if (/^RF\d{2}[A-Z0-9]{1,21}$/i.test(cleaned)) {
@@ -101,7 +121,7 @@ const validators = {
         return { valid: false, error: `Not a valid creditor reference (RF format): ${value}` };
     },
 
-    iso17442(value) {
+    iso17442(value: string): ValidationResult {
         // LEI: exactly 20 alphanumeric characters
         if (/^[A-Z0-9]{20}$/i.test(value)) {
             return { valid: true };
@@ -112,13 +132,16 @@ const validators = {
 
 /**
  * Validate all fields with format metadata in an analysis result
- * @param {Object} analysis - The extracted analysis data
- * @param {Array} fieldDefinitions - The field definitions with format metadata
- * @returns {{ corrected: Object, warnings: Array<{field: string, format: string, value: *, error: string}> }}
+ * @param analysis - The extracted analysis data
+ * @param fieldDefinitions - The field definitions with format metadata
+ * @returns Corrected analysis and any warnings
  */
-function validateAllFormats(analysis, fieldDefinitions) {
-    const corrected = { ...analysis };
-    const warnings = [];
+export function validateAllFormats(
+    analysis: Record<string, unknown>,
+    fieldDefinitions: FieldDefinition[]
+): ValidateAllResult {
+    const corrected: Record<string, unknown> = { ...analysis };
+    const warnings: FormatWarning[] = [];
 
     if (!fieldDefinitions || !Array.isArray(fieldDefinitions)) {
         return { corrected, warnings };
@@ -146,8 +169,3 @@ function validateAllFormats(analysis, fieldDefinitions) {
 
     return { corrected, warnings };
 }
-
-module.exports = {
-    validateFieldFormat,
-    validateAllFormats
-};

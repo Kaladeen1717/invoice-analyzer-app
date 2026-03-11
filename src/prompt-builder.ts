@@ -2,40 +2,55 @@
  * Builds dynamic Gemini prompts based on configuration
  */
 
-const { validateAllFormats } = require('./format-validator');
-const { VALID_FIELD_FORMATS, FORMAT_NONE } = require('./constants');
+import { validateAllFormats } from './format-validator.js';
+import { VALID_FIELD_FORMATS, FORMAT_NONE } from './constants.js';
+
+import type {
+    AppConfig,
+    FieldDefinition,
+    TagDefinition,
+    PromptTemplate,
+    FieldFormatKey,
+    InvoiceAnalysis
+} from './types/index.js';
+
+interface FieldFilter {
+    fields?: string[];
+    tags?: string[];
+    includeSummary?: boolean;
+}
+
+interface BuildOptions {
+    fieldFilter?: FieldFilter;
+}
 
 /**
  * Resolve parameter templates in a tag instruction
  * Replaces {{paramName}} with the parameter value
- * @param {Object} tag - The tag definition
- * @param {Object} [paramOverrides] - Optional parameter value overrides
- * @returns {string} Resolved instruction string
+ * @param tag - The tag definition
+ * @param paramOverrides - Optional parameter value overrides
+ * @returns Resolved instruction string
  */
-function resolveTagInstruction(tag, paramOverrides) {
+export function resolveTagInstruction(tag: TagDefinition, paramOverrides?: Record<string, unknown>): string {
     let instruction = tag.instruction;
     if (!tag.parameters) return instruction;
 
     for (const [paramKey, paramDef] of Object.entries(tag.parameters)) {
         const value =
             paramOverrides && paramOverrides[paramKey] !== undefined ? paramOverrides[paramKey] : paramDef.default;
-        instruction = instruction.replace(new RegExp(`\\{\\{${paramKey}\\}\\}`, 'g'), value);
+        instruction = instruction.replace(new RegExp(`\\{\\{${paramKey}\\}\\}`, 'g'), String(value));
     }
     return instruction;
 }
 
 /**
  * Build the invoice analysis prompt from configuration
- * @param {Object} config - The configuration object
- * @param {Object} [options] - Optional parameters
- * @param {Object} [options.fieldFilter] - Filter which fields/tags to include
- * @param {string[]} [options.fieldFilter.fields] - Array of field keys to include (omit for all enabled)
- * @param {string[]} [options.fieldFilter.tags] - Array of tag IDs to include (omit for all enabled)
- * @param {boolean} [options.fieldFilter.includeSummary] - Whether to include summary (defaults to config setting)
- * @returns {string} The Gemini prompt
+ * @param config - The configuration object
+ * @param options - Optional parameters
+ * @returns The Gemini prompt
  */
-function buildExtractionPrompt(config, options = {}) {
-    const fieldDefinitions = config.fieldDefinitions;
+export function buildExtractionPrompt(config: AppConfig, options: BuildOptions = {}): string {
+    const fieldDefinitions = config.fieldDefinitions as FieldDefinition[];
     const tagDefinitions = config.tagDefinitions;
     const { fieldFilter } = options;
     const includeSummary =
@@ -44,8 +59,8 @@ function buildExtractionPrompt(config, options = {}) {
             : config.output && config.output.includeSummary;
 
     // Build the JSON structure dynamically
-    const jsonStructure = {};
-    const instructions = [];
+    const jsonStructure: Record<string, unknown> = {};
+    const instructions: string[] = [];
 
     let enabledFields = fieldDefinitions.filter((f) => f.enabled);
     if (fieldFilter && fieldFilter.fields) {
@@ -56,7 +71,7 @@ function buildExtractionPrompt(config, options = {}) {
     for (const field of enabledFields) {
         let schemaHint = field.schemaHint;
         if (field.format && field.format !== FORMAT_NONE) {
-            const formatDef = VALID_FIELD_FORMATS[field.format];
+            const formatDef = VALID_FIELD_FORMATS[field.format as FieldFormatKey];
             if (formatDef) {
                 schemaHint += ` (${formatDef.standard}: ${formatDef.pattern})`;
             }
@@ -73,7 +88,7 @@ function buildExtractionPrompt(config, options = {}) {
     }
 
     // Build tags section from tagDefinitions
-    const tagInstructions = [];
+    const tagInstructions: string[] = [];
     if (tagDefinitions) {
         let enabledTags = tagDefinitions.filter((t) => t.enabled);
         if (fieldFilter && fieldFilter.tags) {
@@ -81,7 +96,7 @@ function buildExtractionPrompt(config, options = {}) {
             enabledTags = enabledTags.filter((t) => tagSet.has(t.id));
         }
         if (enabledTags.length > 0) {
-            const tagsSchema = {};
+            const tagsSchema: Record<string, string> = {};
             for (const tag of enabledTags) {
                 tagsSchema[tag.id] = 'boolean';
                 const resolved = resolveTagInstruction(tag);
@@ -105,7 +120,7 @@ function buildExtractionPrompt(config, options = {}) {
     }
 
     // Use promptTemplate from config, or hardcoded defaults for backward compatibility
-    const template = config.promptTemplate || {};
+    const template = config.promptTemplate || ({} as Partial<PromptTemplate>);
     const preamble =
         template.preamble || 'Analyze this invoice PDF and extract the following information in JSON format:';
     const generalRules =
@@ -127,10 +142,14 @@ ${suffix}`;
 
 /**
  * Parse the Gemini response and extract JSON
- * @param {string} responseText - The raw response from Gemini
- * @returns {Object} The parsed analysis object
+ * @param responseText - The raw response from Gemini
+ * @param options - Parse options
+ * @returns The parsed analysis object
  */
-function parseGeminiResponse(responseText, { useJsonMode = false } = {}) {
+export function parseGeminiResponse(
+    responseText: string,
+    { useJsonMode = false }: { useJsonMode?: boolean } = {}
+): Record<string, unknown> {
     let jsonText = responseText.trim();
 
     if (!useJsonMode) {
@@ -144,24 +163,24 @@ function parseGeminiResponse(responseText, { useJsonMode = false } = {}) {
     }
 
     try {
-        return JSON.parse(jsonText);
-    } catch (error) {
+        return JSON.parse(jsonText) as Record<string, unknown>;
+    } catch (error: unknown) {
         throw new Error(
-            `Failed to parse Gemini response as JSON: ${error.message}\nResponse was: ${jsonText.substring(0, 200)}...`
+            `Failed to parse Gemini response as JSON: ${(error as Error).message}\nResponse was: ${jsonText.substring(0, 200)}...`
         );
     }
 }
 
 /**
  * Validate the extracted analysis has required fields
- * @param {Object} analysis - The parsed analysis
- * @param {Object} config - The configuration object
- * @returns {Object} The validated (and possibly filled) analysis, with _formatWarnings if any
+ * @param analysis - The parsed analysis
+ * @param config - The configuration object
+ * @returns The validated (and possibly filled) analysis, with _formatWarnings if any
  */
-function validateAnalysis(analysis, config) {
-    const validated = { ...analysis };
+export function validateAnalysis(analysis: Record<string, unknown>, config: AppConfig): InvoiceAnalysis {
+    const validated: Record<string, unknown> = { ...analysis };
 
-    const fieldDefinitions = config.fieldDefinitions;
+    const fieldDefinitions = config.fieldDefinitions as FieldDefinition[];
     const tagDefinitions = config.tagDefinitions;
 
     // Type-aware defaults from field definitions
@@ -201,8 +220,8 @@ function validateAnalysis(analysis, config) {
         }
         // Ensure all enabled tags have boolean values, default missing to false
         for (const tag of enabledTags) {
-            if (typeof validated.tags[tag.id] !== 'boolean') {
-                validated.tags[tag.id] = false;
+            if (typeof (validated.tags as Record<string, unknown>)[tag.id] !== 'boolean') {
+                (validated.tags as Record<string, boolean>)[tag.id] = false;
             }
         }
     }
@@ -214,15 +233,15 @@ function validateAnalysis(analysis, config) {
         validated._formatWarnings = warnings;
     }
 
-    return validated;
+    return validated as InvoiceAnalysis;
 }
 
 /**
  * Get the list of active tag IDs from analysis.tags
- * @param {Object} tags - The tags object from analysis
- * @returns {string[]} Array of tag IDs that are true
+ * @param tags - The tags object from analysis
+ * @returns Array of tag IDs that are true
  */
-function getActiveTags(tags) {
+export function getActiveTags(tags: Record<string, boolean> | undefined | null): string[] {
     if (!tags || typeof tags !== 'object') return [];
     return Object.entries(tags)
         .filter(([_, v]) => v === true)
@@ -232,28 +251,19 @@ function getActiveTags(tags) {
 /**
  * Build a prompt preview from structured template parts + current config
  * Used by the frontend to show a live preview of the assembled prompt
- * @param {Object} config - The configuration object
- * @param {Object} [templateOverride] - Optional override for promptTemplate fields
- * @returns {string} The assembled prompt text
+ * @param config - The configuration object
+ * @param templateOverride - Optional override for promptTemplate fields
+ * @returns The assembled prompt text
  */
-function buildPromptPreview(config, templateOverride) {
+export function buildPromptPreview(config: AppConfig, templateOverride?: Partial<PromptTemplate>): string {
     // Temporarily override promptTemplate and clear rawPrompt for preview
-    const previewConfig = {
+    const previewConfig: AppConfig = {
         ...config,
         rawPrompt: undefined,
         promptTemplate: {
-            ...(config.promptTemplate || {}),
+            ...(config.promptTemplate || ({} as PromptTemplate)),
             ...(templateOverride || {})
-        }
+        } as PromptTemplate
     };
     return buildExtractionPrompt(previewConfig);
 }
-
-module.exports = {
-    buildExtractionPrompt,
-    buildPromptPreview,
-    parseGeminiResponse,
-    validateAnalysis,
-    resolveTagInstruction,
-    getActiveTags
-};

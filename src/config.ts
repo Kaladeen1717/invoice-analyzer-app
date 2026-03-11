@@ -1,8 +1,8 @@
-const fs = require('fs').promises;
-const path = require('path');
-const sanitize = require('sanitize-filename');
+import fs from 'node:fs';
+import path from 'node:path';
+import sanitize from 'sanitize-filename';
 
-const {
+import {
     VALID_FIELD_TYPES,
     VALID_FIELD_FORMATS,
     FORMAT_NONE,
@@ -10,20 +10,32 @@ const {
     DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
     DEFAULT_CSV_FILENAME,
     safeJoin
-} = require('./constants');
+} from './constants.js';
+
+import type {
+    AppConfig,
+    FieldDefinition,
+    TagDefinition,
+    PromptTemplate,
+    ExportBundle,
+    BackupMetadata,
+    ImportResult,
+    RestoreResult,
+    FieldFormatKey
+} from './types/index.js';
 
 const CONFIG_FILE = 'config.json';
 const REQUIRED_FIELDS = ['processing', 'output'];
 
-let cachedConfig = null;
+let cachedConfig: AppConfig | null = null;
 
 /**
  * Load and validate configuration from config.json
- * @param {Object} options - Load options
- * @param {boolean} options.requireFolders - Whether folders section is required (default: true for backward compat)
- * @returns {Promise<Object>} The configuration object
+ * @param options - Load options
+ * @param options.requireFolders - Whether folders section is required (default: true for backward compat)
+ * @returns The configuration object
  */
-async function loadConfig(options = {}) {
+export async function loadConfig(options: { requireFolders?: boolean } = {}): Promise<AppConfig> {
     const { requireFolders = true } = options;
 
     if (cachedConfig) {
@@ -33,17 +45,19 @@ async function loadConfig(options = {}) {
     const configPath = path.join(process.cwd(), CONFIG_FILE);
 
     try {
-        const configData = await fs.readFile(configPath, 'utf-8');
-        const config = JSON.parse(configData);
+        const configData = await fs.promises.readFile(configPath, 'utf-8');
+        const config = JSON.parse(configData) as AppConfig;
 
-        validateConfig(config, { requireFolders });
+        validateConfig(config as unknown as Record<string, unknown>, { requireFolders });
 
         // Apply defaults for new output fields
         config.output = {
-            processedOriginalSubfolder: DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
-            processedEnrichedSubfolder: DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
-            csvFilename: DEFAULT_CSV_FILENAME,
-            ...config.output
+            ...config.output,
+            processedOriginalSubfolder:
+                config.output.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER,
+            processedEnrichedSubfolder:
+                config.output.processedEnrichedSubfolder || DEFAULT_PROCESSED_ENRICHED_SUBFOLDER,
+            csvFilename: config.output.csvFilename || DEFAULT_CSV_FILENAME
         };
 
         // Resolve relative paths to absolute (only if folders are provided)
@@ -61,8 +75,8 @@ async function loadConfig(options = {}) {
 
         cachedConfig = config;
         return config;
-    } catch (error) {
-        if (error.code === 'ENOENT') {
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             throw new Error(
                 `Configuration file not found: ${configPath}\nPlease copy config.json.example to config.json and update the paths.`
             );
@@ -73,9 +87,9 @@ async function loadConfig(options = {}) {
 
 /**
  * Validate field definitions array
- * @param {Array} fieldDefinitions - Field definitions to validate
+ * @param fieldDefinitions - Field definitions to validate
  */
-function validateFieldDefinitions(fieldDefinitions) {
+export function validateFieldDefinitions(fieldDefinitions: unknown): asserts fieldDefinitions is FieldDefinition[] {
     if (!Array.isArray(fieldDefinitions)) {
         throw new Error('fieldDefinitions must be an array');
     }
@@ -89,7 +103,7 @@ function validateFieldDefinitions(fieldDefinitions) {
         if (!field.label || typeof field.label !== 'string') {
             throw new Error(`fieldDefinitions[${index}]: must have a "label" string`);
         }
-        if (!VALID_FIELD_TYPES.includes(field.type)) {
+        if (!(VALID_FIELD_TYPES as readonly string[]).includes(field.type)) {
             throw new Error(`fieldDefinitions[${index}]: "type" must be one of: ${VALID_FIELD_TYPES.join(', ')}`);
         }
         if (!field.schemaHint || typeof field.schemaHint !== 'string') {
@@ -102,14 +116,14 @@ function validateFieldDefinitions(fieldDefinitions) {
             throw new Error(`fieldDefinitions[${index}]: "enabled" must be a boolean`);
         }
         if (field.format !== undefined && field.format !== null) {
-            if (field.format !== FORMAT_NONE && !VALID_FIELD_FORMATS[field.format]) {
+            if (field.format !== FORMAT_NONE && !VALID_FIELD_FORMATS[field.format as FieldFormatKey]) {
                 throw new Error(
                     `fieldDefinitions[${index}]: "format" must be one of: ${Object.keys(VALID_FIELD_FORMATS).join(', ')}`
                 );
             }
             if (
                 field.format !== FORMAT_NONE &&
-                !VALID_FIELD_FORMATS[field.format].compatibleTypes.includes(field.type)
+                !VALID_FIELD_FORMATS[field.format as FieldFormatKey].compatibleTypes.includes(field.type)
             ) {
                 throw new Error(
                     `fieldDefinitions[${index}]: format "${field.format}" is not compatible with type "${field.type}"`
@@ -121,22 +135,22 @@ function validateFieldDefinitions(fieldDefinitions) {
 
 /**
  * Get field definitions from config, or null for legacy mode
- * @param {Object} config - The configuration object
- * @returns {Array|null} Field definitions array or null
+ * @param config - The configuration object
+ * @returns Field definitions array or null
  */
-function getFieldDefinitions(config) {
+export function getFieldDefinitions(config: AppConfig): FieldDefinition[] | null {
     return config.fieldDefinitions || null;
 }
 
 /**
  * Validate tag definitions array
- * @param {Array} tagDefinitions - Tag definitions to validate
+ * @param tagDefinitions - Tag definitions to validate
  */
-function validateTagDefinitions(tagDefinitions) {
+export function validateTagDefinitions(tagDefinitions: unknown): asserts tagDefinitions is TagDefinition[] {
     if (!Array.isArray(tagDefinitions)) {
         throw new Error('tagDefinitions must be an array');
     }
-    const seenIds = new Set();
+    const seenIds = new Set<string>();
     for (const [index, tag] of tagDefinitions.entries()) {
         if (!tag.id || typeof tag.id !== 'string') {
             throw new Error(`tagDefinitions[${index}]: must have an "id" string`);
@@ -161,7 +175,10 @@ function validateTagDefinitions(tagDefinitions) {
         }
         // Validate parameters if present
         if (tag.parameters && typeof tag.parameters === 'object') {
-            for (const [paramKey, param] of Object.entries(tag.parameters)) {
+            for (const [paramKey, param] of Object.entries(tag.parameters) as [
+                string,
+                { label?: string; default?: unknown }
+            ][]) {
                 if (!param.label || typeof param.label !== 'string') {
                     throw new Error(`tagDefinitions[${index}].parameters.${paramKey}: must have a "label" string`);
                 }
@@ -190,33 +207,36 @@ function validateTagDefinitions(tagDefinitions) {
 
 /**
  * Get tag definitions from config, or null for legacy mode
- * @param {Object} config - The configuration object
- * @returns {Array|null} Tag definitions array or null
+ * @param config - The configuration object
+ * @returns Tag definitions array or null
  */
-function getTagDefinitions(config) {
+export function getTagDefinitions(config: AppConfig): TagDefinition[] | null {
     return config.tagDefinitions || null;
 }
 
 /**
  * Update tagDefinitions in config.json.
  * Validates before saving.
- * @param {Array} tagDefinitions - The tag definitions array
+ * @param tagDefinitions - The tag definitions array
  */
-async function updateTagDefinitions(tagDefinitions) {
+export async function updateTagDefinitions(tagDefinitions: TagDefinition[]): Promise<void> {
     validateTagDefinitions(tagDefinitions);
     await saveConfig({ tagDefinitions });
 }
 
 /**
  * Validate promptTemplate object
- * @param {Object} promptTemplate - The prompt template to validate
+ * @param promptTemplate - The prompt template to validate
  */
-function validatePromptTemplate(promptTemplate) {
+export function validatePromptTemplate(promptTemplate: unknown): asserts promptTemplate is PromptTemplate {
     if (!promptTemplate || typeof promptTemplate !== 'object') {
         throw new Error('promptTemplate must be an object');
     }
-    for (const field of ['preamble', 'generalRules', 'suffix']) {
-        if (!promptTemplate[field] || typeof promptTemplate[field] !== 'string') {
+    for (const field of ['preamble', 'generalRules', 'suffix'] as const) {
+        if (
+            !(promptTemplate as Record<string, unknown>)[field] ||
+            typeof (promptTemplate as Record<string, unknown>)[field] !== 'string'
+        ) {
             throw new Error(`promptTemplate.${field} must be a non-empty string`);
         }
     }
@@ -225,24 +245,24 @@ function validatePromptTemplate(promptTemplate) {
 /**
  * Update promptTemplate in config.json.
  * Also clears rawPrompt if switching back to structured mode.
- * @param {Object} promptTemplate - The prompt template object
+ * @param promptTemplate - The prompt template object
  */
-async function updatePromptTemplate(promptTemplate) {
+export async function updatePromptTemplate(promptTemplate: PromptTemplate): Promise<void> {
     validatePromptTemplate(promptTemplate);
     await saveConfig({ promptTemplate, rawPrompt: undefined });
     // Remove rawPrompt key from config file since saveConfig merges
     const configPath = path.join(process.cwd(), CONFIG_FILE);
-    const raw = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+    const raw = JSON.parse(await fs.promises.readFile(configPath, 'utf-8')) as Record<string, unknown>;
     delete raw.rawPrompt;
-    await fs.writeFile(configPath, JSON.stringify(raw, null, 2));
+    await fs.promises.writeFile(configPath, JSON.stringify(raw, null, 2));
     clearConfigCache();
 }
 
 /**
  * Update rawPrompt in config.json (for raw edit mode).
- * @param {string} rawPrompt - The full raw prompt string
+ * @param rawPrompt - The full raw prompt string
  */
-async function updateRawPrompt(rawPrompt) {
+export async function updateRawPrompt(rawPrompt: string): Promise<void> {
     if (!rawPrompt || typeof rawPrompt !== 'string') {
         throw new Error('rawPrompt must be a non-empty string');
     }
@@ -252,21 +272,21 @@ async function updateRawPrompt(rawPrompt) {
 /**
  * Clear rawPrompt from config (switch back to structured mode).
  */
-async function clearRawPrompt() {
+export async function clearRawPrompt(): Promise<void> {
     const configPath = path.join(process.cwd(), CONFIG_FILE);
-    const raw = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+    const raw = JSON.parse(await fs.promises.readFile(configPath, 'utf-8')) as Record<string, unknown>;
     delete raw.rawPrompt;
-    await fs.writeFile(configPath, JSON.stringify(raw, null, 2));
+    await fs.promises.writeFile(configPath, JSON.stringify(raw, null, 2));
     clearConfigCache();
 }
 
 /**
  * Validate the configuration object
- * @param {Object} config - The configuration to validate
- * @param {Object} options - Validation options
- * @param {boolean} options.requireFolders - Whether folders section is required
+ * @param config - The configuration to validate
+ * @param options - Validation options
+ * @param options.requireFolders - Whether folders section is required
  */
-function validateConfig(config, options = {}) {
+export function validateConfig(config: Record<string, unknown>, options: { requireFolders?: boolean } = {}): void {
     const { requireFolders = true } = options;
 
     // Check required top-level fields
@@ -281,22 +301,24 @@ function validateConfig(config, options = {}) {
         if (!config.folders) {
             throw new Error('Missing required configuration field: folders');
         }
-        if (!config.folders.input) {
+        const folders = config.folders as Record<string, unknown>;
+        if (!folders.input) {
             throw new Error('Missing required configuration: folders.input');
         }
-        if (!config.folders.output) {
+        if (!folders.output) {
             throw new Error('Missing required configuration: folders.output');
         }
-        if (!config.folders.analyzedSubfolder) {
+        if (!folders.analyzedSubfolder) {
             throw new Error('Missing required configuration: folders.analyzedSubfolder');
         }
     }
 
     // Validate processing
-    if (typeof config.processing.concurrency !== 'number' || config.processing.concurrency < 1) {
+    const processing = config.processing as Record<string, unknown>;
+    if (typeof processing.concurrency !== 'number' || (processing.concurrency as number) < 1) {
         throw new Error('processing.concurrency must be a positive number');
     }
-    if (typeof config.processing.retryAttempts !== 'number' || config.processing.retryAttempts < 0) {
+    if (typeof processing.retryAttempts !== 'number' || (processing.retryAttempts as number) < 0) {
         throw new Error('processing.retryAttempts must be a non-negative number');
     }
 
@@ -316,26 +338,27 @@ function validateConfig(config, options = {}) {
     }
 
     // Validate output
-    if (!config.output.filenameTemplate) {
+    const output = config.output as Record<string, unknown>;
+    if (!output.filenameTemplate) {
         throw new Error('Missing required configuration: output.filenameTemplate');
     }
 }
 
 /**
  * Ensure all required directories exist
- * @param {Object} config - The configuration object
+ * @param config - The configuration object
  */
-async function ensureDirectories(config) {
-    await fs.mkdir(config.folders.input, { recursive: true });
-    await fs.mkdir(config.folders.output, { recursive: true });
-    await fs.mkdir(config.folders.analyzed, { recursive: true });
+export async function ensureDirectories(config: AppConfig): Promise<void> {
+    await fs.promises.mkdir(config.folders!.input, { recursive: true });
+    await fs.promises.mkdir(config.folders!.output, { recursive: true });
+    await fs.promises.mkdir(config.folders!.analyzed, { recursive: true });
 }
 
 /**
  * Get configuration synchronously (must call loadConfig first)
- * @returns {Object} The cached configuration
+ * @returns The cached configuration
  */
-function getConfig() {
+export function getConfig(): AppConfig {
     if (!cachedConfig) {
         throw new Error('Configuration not loaded. Call loadConfig() first.');
     }
@@ -345,23 +368,23 @@ function getConfig() {
 /**
  * Clear the cached configuration (useful for testing)
  */
-function clearConfigCache() {
+export function clearConfigCache(): void {
     cachedConfig = null;
 }
 
 /**
  * Save configuration to config.json (partial update).
  * Reads current file, merges updates, writes back, clears cache.
- * @param {Object} updates - Key-value pairs to merge into config
+ * @param updates - Key-value pairs to merge into config
  */
-async function saveConfig(updates) {
+export async function saveConfig(updates: Record<string, unknown>): Promise<void> {
     const configPath = path.join(process.cwd(), CONFIG_FILE);
-    const configData = await fs.readFile(configPath, 'utf-8');
-    const config = JSON.parse(configData);
+    const configData = await fs.promises.readFile(configPath, 'utf-8');
+    const config = JSON.parse(configData) as Record<string, unknown>;
 
     Object.assign(config, updates);
 
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
 
     clearConfigCache();
 }
@@ -369,9 +392,9 @@ async function saveConfig(updates) {
 /**
  * Update fieldDefinitions in config.json.
  * Validates before saving.
- * @param {Array} fieldDefinitions - The field definitions array
+ * @param fieldDefinitions - The field definitions array
  */
-async function updateFieldDefinitions(fieldDefinitions) {
+export async function updateFieldDefinitions(fieldDefinitions: FieldDefinition[]): Promise<void> {
     validateFieldDefinitions(fieldDefinitions);
     await saveConfig({ fieldDefinitions });
 }
@@ -385,14 +408,14 @@ const CLIENTS_DIR = path.join(process.cwd(), 'clients');
 
 /**
  * Export configuration by scope
- * @param {string} scope - 'fields', 'global', 'client:<id>', 'clients', 'all'
- * @returns {Promise<Object>} Export bundle with metadata envelope
+ * @param scope - 'fields', 'global', 'client:<id>', 'clients', 'all'
+ * @returns Export bundle with metadata envelope
  */
-async function exportConfig(scope) {
+export async function exportConfig(scope: string): Promise<ExportBundle> {
     const configPath = path.join(process.cwd(), CONFIG_FILE);
-    const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+    const rawConfig = JSON.parse(await fs.promises.readFile(configPath, 'utf-8')) as Record<string, unknown>;
 
-    let data;
+    let data: unknown;
 
     switch (scope) {
         case 'fields':
@@ -405,7 +428,7 @@ async function exportConfig(scope) {
         case 'global':
             data = { ...rawConfig };
             // Exclude folders (environment-specific)
-            delete data.folders;
+            delete (data as Record<string, unknown>).folders;
             break;
 
         case 'clients': {
@@ -420,7 +443,7 @@ async function exportConfig(scope) {
                 config: { ...rawConfig },
                 clients: allClients
             };
-            delete data.config.folders;
+            delete ((data as Record<string, unknown>).config as Record<string, unknown>).folders;
             break;
         }
 
@@ -429,9 +452,10 @@ async function exportConfig(scope) {
                 const clientId = sanitize(scope.substring(7));
                 const clientPath = safeJoin(CLIENTS_DIR, `${clientId}.json`);
                 try {
-                    data = { clientId, config: JSON.parse(await fs.readFile(clientPath, 'utf-8')) };
-                } catch (err) {
-                    if (err.code === 'ENOENT') throw new Error(`Client "${clientId}" not found`);
+                    data = { clientId, config: JSON.parse(await fs.promises.readFile(clientPath, 'utf-8')) };
+                } catch (err: unknown) {
+                    if ((err as NodeJS.ErrnoException).code === 'ENOENT')
+                        throw new Error(`Client "${clientId}" not found`);
                     throw err;
                 }
             } else {
@@ -449,87 +473,92 @@ async function exportConfig(scope) {
 
 /**
  * Read all client JSON files from clients/ directory
- * @returns {Promise<Object>} Map of clientId -> client config
+ * @returns Map of clientId -> client config
  */
-async function loadClientFiles() {
-    const clients = {};
+async function loadClientFiles(): Promise<Record<string, unknown>> {
+    const clients: Record<string, unknown> = {};
     try {
-        const files = await fs.readdir(CLIENTS_DIR);
+        const files = await fs.promises.readdir(CLIENTS_DIR);
         for (const file of files) {
             if (!file.endsWith('.json')) continue;
             const clientId = path.basename(file, '.json');
-            const content = await fs.readFile(path.join(CLIENTS_DIR, file), 'utf-8');
+            const content = await fs.promises.readFile(path.join(CLIENTS_DIR, file), 'utf-8');
             clients[clientId] = JSON.parse(content);
         }
-    } catch (err) {
-        if (err.code !== 'ENOENT') throw err;
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
     return clients;
 }
 
 /**
  * Import a config bundle (auto-backup before write)
- * @param {Object} bundle - The export bundle to import
- * @returns {Promise<Object>} Import result summary
+ * @param bundle - The export bundle to import
+ * @returns Import result summary
  */
-async function importConfig(bundle) {
+export async function importConfig(bundle: unknown): Promise<ImportResult> {
     // Validate envelope
     if (!bundle || typeof bundle !== 'object') {
         throw new Error('Invalid import bundle: must be a JSON object');
     }
-    if (!bundle.scope || !bundle.data) {
+    const b = bundle as Record<string, unknown>;
+    if (!b.scope || !b.data) {
         throw new Error('Invalid import bundle: missing "scope" or "data"');
     }
 
     // Auto-backup before import
-    const backup = await createBackup(`pre-import-${bundle.scope}`);
+    const backup = await createBackup(`pre-import-${b.scope}`);
 
     const configPath = path.join(process.cwd(), CONFIG_FILE);
-    const imported = { scope: bundle.scope, backupId: backup.id, updated: [] };
+    const imported: ImportResult = { scope: b.scope as string, backupId: backup.id, updated: [] };
+    const bundleData = b.data as Record<string, unknown>;
 
-    switch (bundle.scope) {
+    switch (b.scope) {
         case 'fields': {
-            if (bundle.data.fieldDefinitions) {
-                validateFieldDefinitions(bundle.data.fieldDefinitions);
+            if (bundleData.fieldDefinitions) {
+                validateFieldDefinitions(bundleData.fieldDefinitions);
             }
-            if (bundle.data.tagDefinitions) {
-                validateTagDefinitions(bundle.data.tagDefinitions);
+            if (bundleData.tagDefinitions) {
+                validateTagDefinitions(bundleData.tagDefinitions);
             }
-            const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
-            if (bundle.data.fieldDefinitions !== undefined) {
-                rawConfig.fieldDefinitions = bundle.data.fieldDefinitions;
+            const rawConfig = JSON.parse(await fs.promises.readFile(configPath, 'utf-8')) as Record<string, unknown>;
+            if (bundleData.fieldDefinitions !== undefined) {
+                rawConfig.fieldDefinitions = bundleData.fieldDefinitions;
                 imported.updated.push('fieldDefinitions');
             }
-            if (bundle.data.tagDefinitions !== undefined) {
-                rawConfig.tagDefinitions = bundle.data.tagDefinitions;
+            if (bundleData.tagDefinitions !== undefined) {
+                rawConfig.tagDefinitions = bundleData.tagDefinitions;
                 imported.updated.push('tagDefinitions');
             }
-            await fs.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
+            await fs.promises.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
             clearConfigCache();
             break;
         }
 
         case 'global': {
-            const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+            const rawConfig = JSON.parse(await fs.promises.readFile(configPath, 'utf-8')) as Record<string, unknown>;
             const folders = rawConfig.folders; // Preserve environment-specific folders
-            Object.assign(rawConfig, bundle.data);
+            Object.assign(rawConfig, bundleData);
             rawConfig.folders = folders;
             if (rawConfig.fieldDefinitions) {
                 validateFieldDefinitions(rawConfig.fieldDefinitions);
             }
-            await fs.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
+            await fs.promises.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
             clearConfigCache();
             imported.updated.push('config.json');
             break;
         }
 
         case 'clients': {
-            if (!bundle.data.clients || typeof bundle.data.clients !== 'object') {
+            if (!bundleData.clients || typeof bundleData.clients !== 'object') {
                 throw new Error('Import bundle for "clients" scope must have data.clients object');
             }
-            await fs.mkdir(CLIENTS_DIR, { recursive: true });
-            for (const [clientId, config] of Object.entries(bundle.data.clients)) {
-                await fs.writeFile(path.join(CLIENTS_DIR, `${clientId}.json`), JSON.stringify(config, null, 2));
+            await fs.promises.mkdir(CLIENTS_DIR, { recursive: true });
+            for (const [clientId, config] of Object.entries(bundleData.clients as Record<string, unknown>)) {
+                await fs.promises.writeFile(
+                    path.join(CLIENTS_DIR, `${clientId}.json`),
+                    JSON.stringify(config, null, 2)
+                );
                 imported.updated.push(`clients/${clientId}.json`);
             }
             break;
@@ -537,23 +566,29 @@ async function importConfig(bundle) {
 
         case 'all': {
             // Import global config
-            if (bundle.data.config) {
-                const rawConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+            if (bundleData.config) {
+                const rawConfig = JSON.parse(await fs.promises.readFile(configPath, 'utf-8')) as Record<
+                    string,
+                    unknown
+                >;
                 const folders = rawConfig.folders;
-                Object.assign(rawConfig, bundle.data.config);
+                Object.assign(rawConfig, bundleData.config as Record<string, unknown>);
                 rawConfig.folders = folders;
                 if (rawConfig.fieldDefinitions) {
                     validateFieldDefinitions(rawConfig.fieldDefinitions);
                 }
-                await fs.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
+                await fs.promises.writeFile(configPath, JSON.stringify(rawConfig, null, 2));
                 clearConfigCache();
                 imported.updated.push('config.json');
             }
             // Import clients
-            if (bundle.data.clients && typeof bundle.data.clients === 'object') {
-                await fs.mkdir(CLIENTS_DIR, { recursive: true });
-                for (const [clientId, config] of Object.entries(bundle.data.clients)) {
-                    await fs.writeFile(path.join(CLIENTS_DIR, `${clientId}.json`), JSON.stringify(config, null, 2));
+            if (bundleData.clients && typeof bundleData.clients === 'object') {
+                await fs.promises.mkdir(CLIENTS_DIR, { recursive: true });
+                for (const [clientId, config] of Object.entries(bundleData.clients as Record<string, unknown>)) {
+                    await fs.promises.writeFile(
+                        path.join(CLIENTS_DIR, `${clientId}.json`),
+                        JSON.stringify(config, null, 2)
+                    );
                     imported.updated.push(`clients/${clientId}.json`);
                 }
             }
@@ -561,19 +596,19 @@ async function importConfig(bundle) {
         }
 
         default:
-            if (bundle.scope.startsWith('client:')) {
-                const clientId = sanitize(bundle.scope.substring(7));
-                if (!bundle.data.config) {
+            if ((b.scope as string).startsWith('client:')) {
+                const clientId = sanitize((b.scope as string).substring(7));
+                if (!bundleData.config) {
                     throw new Error('Import bundle for single client must have data.config');
                 }
-                await fs.mkdir(CLIENTS_DIR, { recursive: true });
-                await fs.writeFile(
+                await fs.promises.mkdir(CLIENTS_DIR, { recursive: true });
+                await fs.promises.writeFile(
                     safeJoin(CLIENTS_DIR, `${clientId}.json`),
-                    JSON.stringify(bundle.data.config, null, 2)
+                    JSON.stringify(bundleData.config, null, 2)
                 );
                 imported.updated.push(`clients/${clientId}.json`);
             } else {
-                throw new Error(`Unknown import scope: "${bundle.scope}"`);
+                throw new Error(`Unknown import scope: "${b.scope}"`);
             }
     }
 
@@ -582,61 +617,61 @@ async function importConfig(bundle) {
 
 /**
  * Create a timestamped backup of current config
- * @param {string} [label] - Optional label for the backup
- * @returns {Promise<Object>} Backup metadata { id, path, timestamp, label }
+ * @param label - Optional label for the backup
+ * @returns Backup metadata { id, path, timestamp, label }
  */
-async function createBackup(label) {
-    await fs.mkdir(BACKUPS_DIR, { recursive: true });
+export async function createBackup(label?: string): Promise<BackupMetadata> {
+    await fs.promises.mkdir(BACKUPS_DIR, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const id = label ? `${timestamp}_${sanitize(label)}` : timestamp;
     const backupDir = safeJoin(BACKUPS_DIR, id);
-    await fs.mkdir(backupDir);
+    await fs.promises.mkdir(backupDir);
 
     // Copy config.json
     const configPath = path.join(process.cwd(), CONFIG_FILE);
     try {
-        await fs.copyFile(configPath, path.join(backupDir, 'config.json'));
-    } catch (err) {
-        if (err.code !== 'ENOENT') throw err;
+        await fs.promises.copyFile(configPath, path.join(backupDir, 'config.json'));
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
 
     // Copy clients/ directory
     try {
-        const clientFiles = await fs.readdir(CLIENTS_DIR);
+        const clientFiles = await fs.promises.readdir(CLIENTS_DIR);
         if (clientFiles.length > 0) {
             const clientsBackupDir = path.join(backupDir, 'clients');
-            await fs.mkdir(clientsBackupDir);
+            await fs.promises.mkdir(clientsBackupDir);
             for (const file of clientFiles) {
                 if (file.endsWith('.json')) {
-                    await fs.copyFile(path.join(CLIENTS_DIR, file), path.join(clientsBackupDir, file));
+                    await fs.promises.copyFile(path.join(CLIENTS_DIR, file), path.join(clientsBackupDir, file));
                 }
             }
         }
-    } catch (err) {
-        if (err.code !== 'ENOENT') throw err;
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
 
     // Write metadata
-    const metadata = { id, timestamp: new Date().toISOString(), label: label || null };
-    await fs.writeFile(path.join(backupDir, '_metadata.json'), JSON.stringify(metadata, null, 2));
+    const metadata: BackupMetadata = { id, timestamp: new Date().toISOString(), label: label || null };
+    await fs.promises.writeFile(path.join(backupDir, '_metadata.json'), JSON.stringify(metadata, null, 2));
 
     return metadata;
 }
 
 /**
  * List available backups sorted newest-first
- * @returns {Promise<Array>} Array of backup metadata objects
+ * @returns Array of backup metadata objects
  */
-async function listBackups() {
+export async function listBackups(): Promise<BackupMetadata[]> {
     try {
-        const entries = await fs.readdir(BACKUPS_DIR);
-        const backups = [];
+        const entries = await fs.promises.readdir(BACKUPS_DIR);
+        const backups: BackupMetadata[] = [];
 
         for (const entry of entries) {
             const metaPath = path.join(BACKUPS_DIR, entry, '_metadata.json');
             try {
-                const meta = JSON.parse(await fs.readFile(metaPath, 'utf-8'));
+                const meta = JSON.parse(await fs.promises.readFile(metaPath, 'utf-8')) as BackupMetadata;
                 backups.push(meta);
             } catch {
                 // Skip entries without valid metadata
@@ -646,23 +681,23 @@ async function listBackups() {
         // Sort newest first
         backups.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
         return backups;
-    } catch (err) {
-        if (err.code === 'ENOENT') return [];
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
         throw err;
     }
 }
 
 /**
  * Restore from a specific backup (creates safety backup first)
- * @param {string} backupId - The backup ID to restore
- * @returns {Promise<Object>} Restore result { restoredFrom, safetyBackupId, restored }
+ * @param backupId - The backup ID to restore
+ * @returns Restore result { restoredFrom, safetyBackupId, restored }
  */
-async function restoreBackup(backupId) {
+export async function restoreBackup(backupId: string): Promise<RestoreResult> {
     const backupDir = safeJoin(BACKUPS_DIR, sanitize(backupId));
 
     // Verify backup exists
     try {
-        await fs.access(backupDir);
+        await fs.promises.access(backupDir);
     } catch {
         throw new Error(`Backup "${backupId}" not found`);
     }
@@ -670,32 +705,32 @@ async function restoreBackup(backupId) {
     // Create safety backup before restoring
     const safety = await createBackup('pre-restore-safety');
 
-    const restored = [];
+    const restored: string[] = [];
 
     // Restore config.json
     const backupConfigPath = path.join(backupDir, 'config.json');
     const configPath = path.join(process.cwd(), CONFIG_FILE);
     try {
-        await fs.copyFile(backupConfigPath, configPath);
+        await fs.promises.copyFile(backupConfigPath, configPath);
         clearConfigCache();
         restored.push('config.json');
-    } catch (err) {
-        if (err.code !== 'ENOENT') throw err;
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
 
     // Restore clients/
     const backupClientsDir = path.join(backupDir, 'clients');
     try {
-        const clientFiles = await fs.readdir(backupClientsDir);
-        await fs.mkdir(CLIENTS_DIR, { recursive: true });
+        const clientFiles = await fs.promises.readdir(backupClientsDir);
+        await fs.promises.mkdir(CLIENTS_DIR, { recursive: true });
         for (const file of clientFiles) {
             if (file.endsWith('.json')) {
-                await fs.copyFile(path.join(backupClientsDir, file), path.join(CLIENTS_DIR, file));
+                await fs.promises.copyFile(path.join(backupClientsDir, file), path.join(CLIENTS_DIR, file));
                 restored.push(`clients/${file}`);
             }
         }
-    } catch (err) {
-        if (err.code !== 'ENOENT') throw err;
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
 
     return {
@@ -704,26 +739,3 @@ async function restoreBackup(backupId) {
         restored
     };
 }
-
-module.exports = {
-    loadConfig,
-    getConfig,
-    ensureDirectories,
-    clearConfigCache,
-    validateFieldDefinitions,
-    getFieldDefinitions,
-    validateTagDefinitions,
-    getTagDefinitions,
-    saveConfig,
-    updateFieldDefinitions,
-    updateTagDefinitions,
-    validatePromptTemplate,
-    updatePromptTemplate,
-    updateRawPrompt,
-    clearRawPrompt,
-    exportConfig,
-    importConfig,
-    createBackup,
-    listBackups,
-    restoreBackup
-};

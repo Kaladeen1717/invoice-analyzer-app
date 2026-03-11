@@ -1,15 +1,17 @@
-const fs = require('fs').promises;
+import fs from 'node:fs';
+
+import type { AppConfig, FieldDefinition, InvoiceAnalysis } from './types/index.js';
 
 /**
  * Build CSV headers dynamically from field definitions
- * @param {Object} config - Configuration object
- * @returns {string[]} Array of CSV column headers
+ * @param config - Configuration object
+ * @returns Array of CSV column headers
  */
-function buildCsvHeaders(config) {
-    const fieldDefinitions = config.fieldDefinitions;
+export function buildCsvHeaders(config: AppConfig): string[] {
+    const fieldDefinitions = config.fieldDefinitions as FieldDefinition[];
     const tagDefinitions = config.tagDefinitions;
 
-    const headers = ['Enriched Filename', 'Original Filename'];
+    const headers: string[] = ['Enriched Filename', 'Original Filename'];
     const enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
     for (const field of enabledFields) {
@@ -31,10 +33,10 @@ function buildCsvHeaders(config) {
 
 /**
  * Escape a value for CSV (handles commas, quotes, and newlines)
- * @param {any} value - Value to escape
- * @returns {string} CSV-safe string
+ * @param value - Value to escape
+ * @returns CSV-safe string
  */
-function escapeCSV(value) {
+export function escapeCSV(value: unknown): string {
     if (value === null || value === undefined) {
         return '';
     }
@@ -52,12 +54,12 @@ function escapeCSV(value) {
 /**
  * Format date to ISO 8601 (YYYY-MM-DD)
  * Accepts both YYYYMMDD (legacy) and YYYY-MM-DD (ISO) input
- * @param {string} dateStr - Date in YYYYMMDD or YYYY-MM-DD format
- * @returns {string} Date in YYYY-MM-DD format
+ * @param dateStr - Date in YYYYMMDD or YYYY-MM-DD format
+ * @returns Date in YYYY-MM-DD format
  */
-function formatDateForCSV(dateStr) {
+export function formatDateForCSV(dateStr: unknown): string {
     if (!dateStr || dateStr === 'Unknown') {
-        return dateStr || '';
+        return (dateStr as string) || '';
     }
 
     const str = String(dateStr);
@@ -78,28 +80,28 @@ function formatDateForCSV(dateStr) {
 /**
  * Ensure CSV file exists with headers
  * Creates the file with headers if it doesn't exist
- * @param {string} csvPath - Path to the CSV file
- * @param {Object} config - Configuration object (for dynamic headers)
+ * @param csvPath - Path to the CSV file
+ * @param config - Configuration object (for dynamic headers)
  */
-async function ensureCsvExists(csvPath, config) {
+export async function ensureCsvExists(csvPath: string, config: AppConfig): Promise<void> {
     try {
-        await fs.access(csvPath);
+        await fs.promises.access(csvPath);
         // File exists, nothing to do
     } catch {
         // File doesn't exist, create it with headers
         const headers = buildCsvHeaders(config);
         const headerLine = headers.map((h) => escapeCSV(h)).join(',') + '\n';
-        await fs.writeFile(csvPath, headerLine, 'utf-8');
+        await fs.promises.writeFile(csvPath, headerLine, 'utf-8');
     }
 }
 
 /**
  * Format an analysis value for CSV based on field type
- * @param {*} value - The raw value
- * @param {string} type - The field type (text, number, date, boolean, array)
- * @returns {string} Formatted CSV value
+ * @param value - The raw value
+ * @param type - The field type (text, number, date, boolean, array)
+ * @returns Formatted CSV value
  */
-function formatFieldForCSV(value, type) {
+export function formatFieldForCSV(value: unknown, type: string): string {
     switch (type) {
         case 'date':
             return formatDateForCSV(value);
@@ -115,33 +117,36 @@ function formatFieldForCSV(value, type) {
     }
 }
 
+interface InvoiceRowData {
+    outputFilename: string;
+    originalFilename: string;
+    analysis: InvoiceAnalysis;
+}
+
 /**
  * Append an invoice row to the CSV file
- * @param {string} csvPath - Path to the CSV file
- * @param {Object} data - Invoice data
- * @param {string} data.outputFilename - The enriched filename
- * @param {string} data.originalFilename - The original filename
- * @param {Object} data.analysis - The analysis result from Gemini
- * @param {Object} config - Configuration object (for dynamic columns)
+ * @param csvPath - Path to the CSV file
+ * @param data - Invoice data
+ * @param config - Configuration object (for dynamic columns)
  */
-async function appendInvoiceRow(csvPath, data, config) {
+export async function appendInvoiceRow(csvPath: string, data: InvoiceRowData, config: AppConfig): Promise<void> {
     const { outputFilename, originalFilename, analysis } = data;
 
     // Ensure CSV exists before appending
     await ensureCsvExists(csvPath, config);
 
-    const fieldDefinitions = config.fieldDefinitions;
+    const fieldDefinitions = config.fieldDefinitions as FieldDefinition[];
     const tagDefinitions = config.tagDefinitions;
 
     // Build row from enabled field definitions
-    const row = [outputFilename || '', originalFilename || ''];
+    const row: string[] = [outputFilename || '', originalFilename || ''];
     const enabledFields = fieldDefinitions.filter((f) => f.enabled);
 
     for (const field of enabledFields) {
         row.push(formatFieldForCSV(analysis?.[field.key], field.type));
     }
     if (config.output && config.output.includeSummary) {
-        row.push(analysis?.summary || '');
+        row.push((analysis?.summary as string) || '');
     }
     // Add tag values
     if (tagDefinitions) {
@@ -153,16 +158,16 @@ async function appendInvoiceRow(csvPath, data, config) {
     row.push(new Date().toISOString());
 
     const rowLine = row.map((v) => escapeCSV(v)).join(',') + '\n';
-    await fs.appendFile(csvPath, rowLine, 'utf-8');
+    await fs.promises.appendFile(csvPath, rowLine, 'utf-8');
 }
 
 /**
  * Parse a CSV line handling quoted values
- * @param {string} line - CSV line to parse
- * @returns {Array<string>} Array of values
+ * @param line - CSV line to parse
+ * @returns Array of values
  */
-function parseCSVLine(line) {
-    const values = [];
+export function parseCSVLine(line: string): string[] {
+    const values: string[] = [];
     let current = '';
     let inQuotes = false;
     let i = 0;
@@ -207,12 +212,12 @@ function parseCSVLine(line) {
 /**
  * Read all rows from a CSV file
  * Returns rows as arrays of values (use buildCsvHeaders to get column names)
- * @param {string} csvPath - Path to the CSV file
- * @returns {Promise<Array<string[]>>} Array of row value arrays (excluding header)
+ * @param csvPath - Path to the CSV file
+ * @returns Array of row value arrays (excluding header)
  */
-async function readCsv(csvPath) {
+export async function readCsv(csvPath: string): Promise<string[][]> {
     try {
-        const content = await fs.readFile(csvPath, 'utf-8');
+        const content = await fs.promises.readFile(csvPath, 'utf-8');
         const lines = content.split('\n').filter((line) => line.trim());
 
         if (lines.length === 0) {
@@ -221,8 +226,8 @@ async function readCsv(csvPath) {
 
         // Skip header row, return data rows as arrays
         return lines.slice(1).map((line) => parseCSVLine(line));
-    } catch (error) {
-        if (error.code === 'ENOENT') {
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             return [];
         }
         throw error;
@@ -231,29 +236,18 @@ async function readCsv(csvPath) {
 
 /**
  * Get the count of rows in a CSV file (excluding header)
- * @param {string} csvPath - Path to the CSV file
- * @returns {Promise<number>} Number of data rows
+ * @param csvPath - Path to the CSV file
+ * @returns Number of data rows
  */
-async function getCsvRowCount(csvPath) {
+export async function getCsvRowCount(csvPath: string): Promise<number> {
     try {
-        const content = await fs.readFile(csvPath, 'utf-8');
+        const content = await fs.promises.readFile(csvPath, 'utf-8');
         const lines = content.split('\n').filter((line) => line.trim());
         return Math.max(0, lines.length - 1); // Subtract header row
-    } catch (error) {
-        if (error.code === 'ENOENT') {
+    } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             return 0;
         }
         throw error;
     }
 }
-
-module.exports = {
-    buildCsvHeaders,
-    ensureCsvExists,
-    appendInvoiceRow,
-    readCsv,
-    getCsvRowCount,
-    escapeCSV,
-    formatDateForCSV,
-    formatFieldForCSV
-};

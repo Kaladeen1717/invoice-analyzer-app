@@ -10,21 +10,39 @@
  * Creates backup before modifying.
  */
 
-const fs = require('fs').promises;
-const path = require('path');
+import fs from 'fs/promises';
+import path from 'path';
+
+interface TagDefinition {
+    id: string;
+    label: string;
+    filenamePlaceholder?: string;
+    filenameFormat?: string;
+    output?: {
+        filenamePlaceholder?: string;
+        filenameFormat?: string;
+        [prop: string]: unknown;
+    };
+    [prop: string]: unknown;
+}
+
+interface Config {
+    tagDefinitions?: TagDefinition[];
+    [prop: string]: unknown;
+}
 
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
-async function migrate() {
+async function migrate(): Promise<void> {
     console.log('Tag Output Migration');
     console.log('====================\n');
 
     // Read config
-    let raw;
+    let raw: Config;
     try {
-        raw = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf-8'));
+        raw = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf-8')) as Config;
     } catch (err) {
-        console.error('Failed to read config.json:', err.message);
+        console.error('Failed to read config.json:', (err as Error).message);
         process.exit(1);
     }
 
@@ -70,7 +88,7 @@ async function migrate() {
     console.log(`\nMigrated ${migrated} tag(s). Config saved.`);
 }
 
-migrate().catch((err) => {
+migrate().catch((err: Error) => {
     console.error('Migration failed:', err);
     process.exit(1);
 });

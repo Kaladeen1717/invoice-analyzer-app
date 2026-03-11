@@ -15,31 +15,95 @@
  *   - Summary statistics at the end
  *
  * Usage:
- *   node scripts/generate-truth.js                  # Process all PDFs without truth
- *   node scripts/generate-truth.js --force           # Overwrite existing truth files
- *   node scripts/generate-truth.js --concurrency 10  # Parallel API calls (default: 10)
- *   node scripts/generate-truth.js --limit 50        # Only process first N PDFs
+ *   npx tsx scripts/generate-truth.ts                  # Process all PDFs without truth
+ *   npx tsx scripts/generate-truth.ts --force           # Overwrite existing truth files
+ *   npx tsx scripts/generate-truth.ts --concurrency 10  # Parallel API calls (default: 10)
+ *   npx tsx scripts/generate-truth.ts --limit 50        # Only process first N PDFs
  */
 
-require('dotenv').config();
-const fs = require('fs').promises;
-const path = require('path');
+import 'dotenv/config';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import pLimit from 'p-limit';
+import type { AppConfig } from '../src/types/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const CORPUS_DIR = path.join(__dirname, '..', 'tests', 'fixtures', 'eval-corpus');
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ParsedArgs {
+    force: boolean;
+    concurrency: number;
+    limit: number;
+}
+
+interface CorpusEntry {
+    name: string;
+    pdfPath: string;
+    truthPath: string;
+    cachePath: string;
+}
+
+interface TokenUsage {
+    promptTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+}
+
+interface ExtractionResult {
+    analysis: Record<string, unknown>;
+    tokenUsage: TokenUsage;
+    duration: number;
+}
+
+interface ProcessedResult {
+    name: string;
+    analysis: Record<string, unknown>;
+    tokenUsage: TokenUsage;
+    duration: number;
+}
+
+interface ErrorEntry {
+    name: string;
+    error: string;
+}
+
+interface FieldDefinition {
+    key: string;
+    type: string;
+    enabled: boolean;
+}
+
+interface TagDefinition {
+    id: string;
+    enabled: boolean;
+}
+
+interface Config {
+    model?: string;
+    fieldDefinitions: FieldDefinition[];
+    tagDefinitions?: TagDefinition[];
+}
 
 // ---------------------------------------------------------------------------
 // Argument parsing
 // ---------------------------------------------------------------------------
 
-function parseArgs() {
+function parseArgs(): ParsedArgs {
     const args = process.argv.slice(2);
-    const opts = { force: false, concurrency: 10, limit: 0 };
+    const opts: ParsedArgs = { force: false, concurrency: 10, limit: 0 };
     for (let i = 0; i < args.length; i++) {
         if (args[i] === '--force') opts.force = true;
         else if (args[i] === '--concurrency' && args[i + 1]) opts.concurrency = parseInt(args[++i], 10);
         else if (args[i] === '--limit' && args[i + 1]) opts.limit = parseInt(args[++i], 10);
         else if (args[i] === '--help') {
-            console.log('Usage: node scripts/generate-truth.js [--force] [--concurrency N] [--limit N]');
+            console.log('Usage: npx tsx scripts/generate-truth.ts [--force] [--concurrency N] [--limit N]');
             process.exit(0);
         }
     }
@@ -50,12 +114,14 @@ function parseArgs() {
 // Discover PDFs
 // ---------------------------------------------------------------------------
 
-async function discoverPDFs(force) {
+async function discoverPDFs(
+    force: boolean
+): Promise<{ toProcess: CorpusEntry[]; skipped: string[]; totalPDFs: number }> {
     const files = await fs.readdir(CORPUS_DIR);
     const pdfFiles = files.filter((f) => f.endsWith('.pdf'));
 
-    const toProcess = [];
-    const skipped = [];
+    const toProcess: CorpusEntry[] = [];
+    const skipped: string[] = [];
 
     for (const pdf of pdfFiles) {
         const baseName = pdf.replace(/\.pdf$/, '');
@@ -86,23 +152,23 @@ async function discoverPDFs(force) {
 // Extract a single invoice with retry
 // ---------------------------------------------------------------------------
 
-async function extractWithRetry(entry, config, maxRetries = 3) {
-    const { analyzeInvoice } = require('../src/processor');
+async function extractWithRetry(entry: CorpusEntry, config: Config, maxRetries = 3): Promise<ExtractionResult> {
+    const { analyzeInvoice } = await import('../src/processor.js');
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const startTime = Date.now();
-            const result = await analyzeInvoice(entry.pdfPath, config);
+            const result = await analyzeInvoice(entry.pdfPath, config as unknown as AppConfig);
             const duration = Date.now() - startTime;
 
-            const { _tokenUsage, ...analysis } = result;
-            const tokenUsage = _tokenUsage || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
+            const { _tokenUsage, ...analysis } = result as Record<string, unknown>;
+            const tokenUsage = (_tokenUsage as TokenUsage) || { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
 
             return { analysis, tokenUsage, duration };
         } catch (error) {
-            const isRateLimit =
-                error.message && (error.message.includes('429') || error.message.includes('RATE_LIMIT'));
-            const isServerError = error.message && (error.message.includes('500') || error.message.includes('503'));
+            const message = (error as Error).message;
+            const isRateLimit = message && (message.includes('429') || message.includes('RATE_LIMIT'));
+            const isServerError = message && (message.includes('500') || message.includes('503'));
 
             if ((isRateLimit || isServerError) && attempt < maxRetries) {
                 const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
@@ -114,13 +180,16 @@ async function extractWithRetry(entry, config, maxRetries = 3) {
             throw error;
         }
     }
+
+    // TypeScript requires a return — this line is unreachable
+    throw new Error('Exhausted retries');
 }
 
 // ---------------------------------------------------------------------------
 // Progress display
 // ---------------------------------------------------------------------------
 
-function formatDuration(ms) {
+function formatDuration(ms: number): string {
     if (ms < 1000) return `${ms}ms`;
     const seconds = Math.round(ms / 1000);
     if (seconds < 60) return `${seconds}s`;
@@ -133,7 +202,7 @@ function formatDuration(ms) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+async function main(): Promise<void> {
     const opts = parseArgs();
 
     console.log('Generate Draft Ground Truth Files (INV-55)');
@@ -146,8 +215,8 @@ async function main() {
     }
 
     // Load config
-    const { loadConfig } = require('../src/config');
-    const config = await loadConfig({ requireFolders: false });
+    const { loadConfig } = await import('../src/config.js');
+    const config = (await loadConfig({ requireFolders: false })) as unknown as Config;
 
     // Discover PDFs
     const { toProcess, skipped, totalPDFs } = await discoverPDFs(opts.force);
@@ -171,14 +240,12 @@ async function main() {
     console.log(`Processing: ${queue.length} PDFs\n`);
 
     // Process with concurrency
-    // Dynamic import for p-limit (ESM module)
-    const pLimit = (await import('p-limit')).default;
     const limit = pLimit(opts.concurrency);
     const startTime = Date.now();
     let completed = 0;
     let errors = 0;
-    const errorList = [];
-    const results = [];
+    const errorList: ErrorEntry[] = [];
+    const results: ProcessedResult[] = [];
 
     const tasks = queue.map((entry) =>
         limit(async () => {
@@ -210,9 +277,9 @@ async function main() {
                 );
             } catch (error) {
                 errors++;
-                errorList.push({ name: entry.name, error: error.message });
+                errorList.push({ name: entry.name, error: (error as Error).message });
                 console.error(
-                    `  [${String(index).padStart(4)}/${queue.length}] ${entry.name.substring(0, 55).padEnd(55)} ERROR: ${error.message.substring(0, 60)}`
+                    `  [${String(index).padStart(4)}/${queue.length}] ${entry.name.substring(0, 55).padEnd(55)} ERROR: ${(error as Error).message.substring(0, 60)}`
                 );
             }
         })
@@ -252,7 +319,7 @@ async function main() {
                 else if (field.type === 'date' && val === 'Unknown') unknownCount++;
             }
             const coverage = ((1 - unknownCount / results.length) * 100).toFixed(1);
-            const bar = '█'.repeat(Math.round(coverage / 5)).padEnd(20, '░');
+            const bar = '\u2588'.repeat(Math.round(Number(coverage) / 5)).padEnd(20, '\u2591');
             console.log(`  ${field.key.padEnd(25)} ${bar} ${coverage.padStart(5)}%  (${unknownCount} unknown)`);
         }
 
@@ -263,7 +330,8 @@ async function main() {
             for (const tag of enabledTags) {
                 let trueCount = 0;
                 for (const r of results) {
-                    if (r.analysis.tags && r.analysis.tags[tag.id] === true) trueCount++;
+                    const tags = r.analysis.tags as Record<string, boolean> | undefined;
+                    if (tags && tags[tag.id] === true) trueCount++;
                 }
                 const pct = ((trueCount / results.length) * 100).toFixed(1);
                 console.log(`  ${tag.id.padEnd(25)} ${String(trueCount).padStart(5)} true  (${pct}%)`);
@@ -295,7 +363,7 @@ async function main() {
     console.log(`Summary saved to: ${summaryPath}`);
 }
 
-main().catch((err) => {
+main().catch((err: Error) => {
     console.error('Generation failed:', err.message);
     process.exit(1);
 });
