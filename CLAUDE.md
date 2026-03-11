@@ -5,7 +5,7 @@
 Local application that analyzes invoice PDFs using Google's Gemini Vision API. Supports multi-client management with both a web-based Admin UI and CLI for batch processing.
 
 - **Model**: `gemini-3-flash-preview` (configurable per-client)
-- **Runtime**: Node.js (v18+)
+- **Runtime**: Node.js (v20+)
 - **Server**: Express.js on port 3000 (configurable via `PORT` in `.env`)
 - **Backend**: TypeScript with ESM (`import`/`export`), compiled via `tsx`
 - **Frontend**: TypeScript source in `src/frontend/`, compiled to `public/` ES Modules
@@ -164,17 +164,17 @@ Or use the `/run-checks` skill to run all checks and get a summary.
 
 Triggers on both PRs to `main` and pushes to `main`. GitHub Actions runs:
 
-1. **lint-and-test** (Node 18 + 20): `npm ci` → `npm run build:frontend` → `npm run typecheck` → `npm run lint` → `npm run format:check` → `npm test`
-2. **security**: `npm audit --omit=dev` → `npx knip` → TruffleHog (full history, `fetch-depth: 0`) → Semgrep (`p/owasp-top-ten`, `p/javascript`, `p/secrets`)
-3. **codeql**: GitHub CodeQL security analysis — results appear in the repo's Security tab
+1. **lint-and-test** (Node 20 + 22): `npm ci` → `npm run build:frontend` → `npm run typecheck` → `npm run lint` → `npm run format:check` → `npm test`
+2. **security**: `npm audit --omit=dev` → `npx knip` → TruffleHog v3.93.8 (full history, `fetch-depth: 0`) → Semgrep via Docker (`p/owasp-top-ten`, `p/javascript`, `p/secrets`)
+3. **codeql**: GitHub CodeQL v4 security analysis — results appear in the repo's Security tab
 
 ### Security Scanning
 
 The repo is **public** with GitHub Advanced Security features enabled for free:
 
 - **CodeQL** — deep taint-tracking analysis. Alerts appear in Security tab → Code scanning. Can be queried via `gh api repos/{owner}/{repo}/code-scanning/alerts`.
-- **TruffleHog** — secret scanning across full git history (catches deleted secrets). Uses `--only-verified` and `continue-on-error: true`.
-- **Semgrep** — static analysis with explicit rulesets (OWASP, JavaScript, secrets). Uses `continue-on-error: true`.
+- **TruffleHog** — secret scanning across full git history (catches deleted secrets). Pinned to v3.93.8. Uses `--only-verified` and `continue-on-error: true`.
+- **Semgrep** — static analysis via `returntocorp/semgrep` Docker image with explicit rulesets (OWASP, JavaScript, secrets). No token required. Uses `continue-on-error: true`.
 - **Dependabot** — automatic dependency vulnerability alerts and fix PRs. Check via Security tab → Dependabot.
 - **Secret scanning + push protection** — GitHub-native, blocks pushes containing detected secrets.
 

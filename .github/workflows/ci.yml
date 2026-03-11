@@ -12,13 +12,13 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18, 20]
+        node-version: [20, 22]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -45,14 +45,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Use Node.js 20
-        uses: actions/setup-node@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -68,19 +68,24 @@ jobs:
         run: npx knip
 
       - name: Secret scanning (TruffleHog)
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.93.8
         continue-on-error: true
         with:
           extra_args: --only-verified
 
       - name: Static analysis (Semgrep)
-        uses: semgrep/semgrep-action@v1
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            --workdir /src \
+            returntocorp/semgrep \
+            semgrep scan \
+              --config p/owasp-top-ten \
+              --config p/javascript \
+              --config p/secrets \
+              --error \
+              --quiet
         continue-on-error: true
-        with:
-          config: >-
-            p/owasp-top-ten
-            p/javascript
-            p/secrets
 
   codeql:
     runs-on: ubuntu-latest
@@ -90,15 +95,15 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
