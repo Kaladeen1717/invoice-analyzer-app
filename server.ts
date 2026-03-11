@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 // Import modules
 import { VALID_OVERRIDE_SECTIONS, DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER } from './src/constants.js';
@@ -1037,7 +1036,7 @@ app.post('/api/clients/:id/process', processingLimiter, async (req: Request, res
                 res.write('data: ' + JSON.stringify({ ...data, clientId, dryRun }) + '\n\n');
             },
             onComplete: (summary) => {
-                res.write('data: ' + JSON.stringify({ ...summary, clientId, dryRun }) + '\n\n');
+                res.write('data: ' + JSON.stringify({ ...summary, status: 'done', clientId, dryRun }) + '\n\n');
                 res.end();
                 activeProcessing.delete(clientId);
             }
@@ -1273,7 +1272,8 @@ app.get('/api/health', async (req: Request, res: Response) => {
 // START SERVER
 // ============================================================================
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Start server only when run directly (not when imported for testing)
+if (!process.env.JEST_WORKER_ID) {
     app.listen(PORT, () => {
         console.log(`\n🚀 Invoice Analyzer Admin running on http://localhost:${PORT}`);
         console.log(`📄 Open http://localhost:${PORT} in your browser to manage clients\n`);

@@ -1,10 +1,10 @@
-const {
+import {
     sanitizeForFilename,
     generateFilename,
     generateFormattedFilename,
     formatFieldValue,
     formatDateForDisplay
-} = require('../src/filename-generator');
+} from '../src/filename-generator.js';
 
 describe('sanitizeForFilename', () => {
     test('removes illegal characters', () => {
@@ -202,7 +202,7 @@ describe('generateFormattedFilename', () => {
     });
 
     test('uses format from fieldDefinitions in config', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 { key: 'supplierName', type: 'text', enabled: true },
                 { key: 'currency', type: 'text', format: 'iso4217', enabled: true }

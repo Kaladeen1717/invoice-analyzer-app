@@ -1,14 +1,20 @@
-const request = require('supertest');
+import request from 'supertest';
 
-jest.mock('../../src/client-manager');
-jest.mock('../../src/config');
-jest.mock('../../src/result-manager');
+jest.mock('../../src/client-manager.js');
+jest.mock('../../src/config.js');
+jest.mock('../../src/result-manager.js');
 
-const { getAllClients, getClientConfig, isMultiClientMode } = require('../../src/client-manager');
-const { loadConfig } = require('../../src/config');
-const { getResults, getSummary } = require('../../src/result-manager');
+import { getAllClients, getClientConfig } from '../../src/client-manager.js';
+import { loadConfig } from '../../src/config.js';
+import { getResults, getSummary } from '../../src/result-manager.js';
 
-const app = require('../../server');
+const mockedGetAllClients = jest.mocked(getAllClients);
+const mockedGetClientConfig = jest.mocked(getClientConfig);
+const mockedLoadConfig = jest.mocked(loadConfig);
+const mockedGetResults = jest.mocked(getResults);
+const mockedGetSummary = jest.mocked(getSummary);
+
+import app from '../../server.js';
 
 const MOCK_GLOBAL_CONFIG = { output: { processedOriginalSubfolder: 'processed-original' } };
 const MOCK_CLIENT_CONFIG = {
@@ -18,8 +24,8 @@ const MOCK_CLIENT_CONFIG = {
 
 beforeEach(() => {
     jest.clearAllMocks();
-    loadConfig.mockResolvedValue(MOCK_GLOBAL_CONFIG);
-    getClientConfig.mockResolvedValue(MOCK_CLIENT_CONFIG);
+    mockedLoadConfig.mockResolvedValue(MOCK_GLOBAL_CONFIG as any);
+    mockedGetClientConfig.mockResolvedValue(MOCK_CLIENT_CONFIG as any);
 });
 
 // ============================================================================
@@ -34,12 +40,12 @@ describe('GET /api/clients/:id/results', () => {
             limit: 50,
             offset: 0
         };
-        getResults.mockResolvedValue(mockResults);
+        mockedGetResults.mockResolvedValue(mockResults as any);
 
         const res = await request(app).get('/api/clients/acme/results').expect(200);
 
         expect(res.body).toEqual(mockResults);
-        expect(getResults).toHaveBeenCalledWith('/invoices/acme', {
+        expect(mockedGetResults).toHaveBeenCalledWith('/invoices/acme', {
             status: undefined,
             limit: 50,
             offset: 0
@@ -47,11 +53,11 @@ describe('GET /api/clients/:id/results', () => {
     });
 
     it('passes status filter and pagination params', async () => {
-        getResults.mockResolvedValue({ results: [], total: 0 });
+        mockedGetResults.mockResolvedValue({ results: [], total: 0 } as any);
 
         await request(app).get('/api/clients/acme/results?status=failed&limit=10&offset=20').expect(200);
 
-        expect(getResults).toHaveBeenCalledWith('/invoices/acme', {
+        expect(mockedGetResults).toHaveBeenCalledWith('/invoices/acme', {
             status: 'failed',
             limit: 10,
             offset: 20
@@ -59,23 +65,26 @@ describe('GET /api/clients/:id/results', () => {
     });
 
     it('caps limit at 250', async () => {
-        getResults.mockResolvedValue({ results: [], total: 0 });
+        mockedGetResults.mockResolvedValue({ results: [], total: 0 } as any);
 
         await request(app).get('/api/clients/acme/results?limit=999').expect(200);
 
-        expect(getResults).toHaveBeenCalledWith('/invoices/acme', expect.objectContaining({ limit: 250 }));
+        expect(mockedGetResults).toHaveBeenCalledWith('/invoices/acme', expect.objectContaining({ limit: 250 }));
     });
 
     it('defaults invalid limit/offset to 50/0', async () => {
-        getResults.mockResolvedValue({ results: [], total: 0 });
+        mockedGetResults.mockResolvedValue({ results: [], total: 0 } as any);
 
         await request(app).get('/api/clients/acme/results?limit=abc&offset=xyz').expect(200);
 
-        expect(getResults).toHaveBeenCalledWith('/invoices/acme', expect.objectContaining({ limit: 50, offset: 0 }));
+        expect(mockedGetResults).toHaveBeenCalledWith(
+            '/invoices/acme',
+            expect.objectContaining({ limit: 50, offset: 0 })
+        );
     });
 
     it('returns 404 when client not found', async () => {
-        getClientConfig.mockRejectedValue(new Error('Client "nope" not found'));
+        mockedGetClientConfig.mockRejectedValue(new Error('Client "nope" not found'));
 
         const res = await request(app).get('/api/clients/nope/results').expect(404);
 
@@ -83,7 +92,7 @@ describe('GET /api/clients/:id/results', () => {
     });
 
     it('returns 500 on generic error', async () => {
-        getResults.mockRejectedValue(new Error('read error'));
+        mockedGetResults.mockRejectedValue(new Error('read error'));
 
         await request(app).get('/api/clients/acme/results').expect(500);
     });
@@ -96,22 +105,22 @@ describe('GET /api/clients/:id/results', () => {
 describe('GET /api/clients/:id/results/summary', () => {
     it('returns aggregate statistics', async () => {
         const mockSummary = { total: 10, success: 8, failed: 2, successRate: 80 };
-        getSummary.mockResolvedValue(mockSummary);
+        mockedGetSummary.mockResolvedValue(mockSummary as any);
 
         const res = await request(app).get('/api/clients/acme/results/summary').expect(200);
 
         expect(res.body).toEqual(mockSummary);
-        expect(getSummary).toHaveBeenCalledWith('/invoices/acme');
+        expect(mockedGetSummary).toHaveBeenCalledWith('/invoices/acme');
     });
 
     it('returns 404 when client not found', async () => {
-        getClientConfig.mockRejectedValue(new Error('Client "nope" not found'));
+        mockedGetClientConfig.mockRejectedValue(new Error('Client "nope" not found'));
 
         await request(app).get('/api/clients/nope/results/summary').expect(404);
     });
 
     it('returns 500 on generic error', async () => {
-        getSummary.mockRejectedValue(new Error('parse error'));
+        mockedGetSummary.mockRejectedValue(new Error('parse error'));
 
         await request(app).get('/api/clients/acme/results/summary').expect(500);
     });
@@ -123,18 +132,18 @@ describe('GET /api/clients/:id/results/summary', () => {
 
 describe('GET /api/stats', () => {
     it('returns aggregate stats across all clients', async () => {
-        getAllClients.mockResolvedValue({
+        mockedGetAllClients.mockResolvedValue({
             acme: { name: 'Acme', enabled: true },
             globex: { name: 'Globex', enabled: true }
-        });
-        getSummary.mockResolvedValue({
+        } as any);
+        mockedGetSummary.mockResolvedValue({
             total: 5,
             success: 4,
             failed: 1,
             successRate: 80,
             tokenUsage: { totalTokens: 1000 },
             lastProcessed: '2026-01-15T10:00:00Z'
-        });
+        } as any);
 
         const res = await request(app).get('/api/stats').expect(200);
 
@@ -147,7 +156,7 @@ describe('GET /api/stats', () => {
     });
 
     it('returns empty aggregate when no clients', async () => {
-        getAllClients.mockResolvedValue(null);
+        mockedGetAllClients.mockResolvedValue(null as any);
 
         const res = await request(app).get('/api/stats').expect(200);
 
@@ -156,19 +165,21 @@ describe('GET /api/stats', () => {
     });
 
     it('skips clients with missing folders', async () => {
-        getAllClients.mockResolvedValue({
+        mockedGetAllClients.mockResolvedValue({
             acme: { name: 'Acme', enabled: true },
             broken: { name: 'Broken', enabled: true }
-        });
-        getClientConfig.mockResolvedValueOnce(MOCK_CLIENT_CONFIG).mockRejectedValueOnce(new Error('folder missing'));
-        getSummary.mockResolvedValue({
+        } as any);
+        mockedGetClientConfig
+            .mockResolvedValueOnce(MOCK_CLIENT_CONFIG as any)
+            .mockRejectedValueOnce(new Error('folder missing'));
+        mockedGetSummary.mockResolvedValue({
             total: 3,
             success: 3,
             failed: 0,
             successRate: 100,
             tokenUsage: { totalTokens: 500 },
             lastProcessed: '2026-01-10T00:00:00Z'
-        });
+        } as any);
 
         const res = await request(app).get('/api/stats').expect(200);
 
@@ -178,15 +189,15 @@ describe('GET /api/stats', () => {
     });
 
     it('calculates success rate', async () => {
-        getAllClients.mockResolvedValue({ acme: { name: 'Acme', enabled: true } });
-        getSummary.mockResolvedValue({
+        mockedGetAllClients.mockResolvedValue({ acme: { name: 'Acme', enabled: true } } as any);
+        mockedGetSummary.mockResolvedValue({
             total: 4,
             success: 3,
             failed: 1,
             successRate: 75,
             tokenUsage: { totalTokens: 100 },
             lastProcessed: null
-        });
+        } as any);
 
         const res = await request(app).get('/api/stats').expect(200);
 
@@ -194,7 +205,7 @@ describe('GET /api/stats', () => {
     });
 
     it('returns 500 on error', async () => {
-        getAllClients.mockRejectedValue(new Error('db error'));
+        mockedGetAllClients.mockRejectedValue(new Error('db error'));
 
         await request(app).get('/api/stats').expect(500);
     });

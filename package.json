@@ -14,31 +14,44 @@
         "lint:fix": "eslint --fix .",
         "format": "prettier --write '**/*.{ts,json,md,css,html}'",
         "format:check": "prettier --check '**/*.{ts,json,md,css,html}'",
-        "test": "node --experimental-vm-modules node_modules/.bin/jest",
-        "test:watch": "node --experimental-vm-modules node_modules/.bin/jest --watch",
-        "test:coverage": "node --experimental-vm-modules node_modules/.bin/jest --coverage",
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "test:coverage": "jest --coverage",
         "typecheck": "tsc --build --noEmit",
         "knip": "knip"
     },
     "jest": {
         "testEnvironment": "node",
-        "extensionsToTreatAsEsm": [
-            ".ts"
-        ],
         "transform": {
             "^.+\\.ts$": [
                 "ts-jest",
                 {
-                    "useESM": true
+                    "useESM": false,
+                    "tsconfig": "tsconfig.test.json",
+                    "diagnostics": false
+                }
+            ],
+            "node_modules/(p-limit|yocto-queue)/.+\\.js$": [
+                "ts-jest",
+                {
+                    "useESM": false,
+                    "diagnostics": false
                 }
             ]
         },
         "testMatch": [
             "**/tests/**/*.test.ts"
         ],
+        "testPathIgnorePatterns": [
+            "/node_modules/",
+            "/.claude/"
+        ],
         "moduleNameMapper": {
             "^(\\.{1,2}/.*)\\.js$": "$1"
         },
+        "transformIgnorePatterns": [
+            "node_modules/(?!(p-limit|yocto-queue)/)"
+        ],
         "coveragePathIgnorePatterns": [
             "/node_modules/",
             "/public/",

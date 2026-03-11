@@ -1,10 +1,12 @@
-const request = require('supertest');
+import request from 'supertest';
 
-jest.mock('../../src/client-manager');
+jest.mock('../../src/client-manager.js');
 
-const { isMultiClientMode } = require('../../src/client-manager');
+import { isMultiClientMode } from '../../src/client-manager.js';
 
-const app = require('../../server');
+const mockedIsMultiClientMode = jest.mocked(isMultiClientMode);
+
+import app from '../../server.js';
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -12,7 +14,7 @@ beforeEach(() => {
 
 describe('GET /api/health', () => {
     it('returns ok status in multi-client mode', async () => {
-        isMultiClientMode.mockResolvedValue(true);
+        mockedIsMultiClientMode.mockResolvedValue(true);
 
         const res = await request(app).get('/api/health').expect(200);
 
@@ -21,7 +23,7 @@ describe('GET /api/health', () => {
     });
 
     it('returns ok status in single-client mode', async () => {
-        isMultiClientMode.mockResolvedValue(false);
+        mockedIsMultiClientMode.mockResolvedValue(false);
 
         const res = await request(app).get('/api/health').expect(200);
 
@@ -30,7 +32,7 @@ describe('GET /api/health', () => {
     });
 
     it('reports geminiConfigured based on env var', async () => {
-        isMultiClientMode.mockResolvedValue(true);
+        mockedIsMultiClientMode.mockResolvedValue(true);
         const original = process.env.GEMINI_API_KEY;
         process.env.GEMINI_API_KEY = 'test-key';
 
@@ -38,7 +40,6 @@ describe('GET /api/health', () => {
 
         expect(res.body.geminiConfigured).toBe(true);
 
-        // Restore
         if (original === undefined) {
             delete process.env.GEMINI_API_KEY;
         } else {
@@ -47,7 +48,7 @@ describe('GET /api/health', () => {
     });
 
     it('reports geminiConfigured false when key is missing', async () => {
-        isMultiClientMode.mockResolvedValue(true);
+        mockedIsMultiClientMode.mockResolvedValue(true);
         const original = process.env.GEMINI_API_KEY;
         delete process.env.GEMINI_API_KEY;
 
@@ -55,7 +56,6 @@ describe('GET /api/health', () => {
 
         expect(res.body.geminiConfigured).toBe(false);
 
-        // Restore
         if (original !== undefined) {
             process.env.GEMINI_API_KEY = original;
         }

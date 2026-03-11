@@ -1,4 +1,4 @@
-const request = require('supertest');
+import request from 'supertest';
 
 jest.mock('fs', () => {
     const actual = jest.requireActual('fs');
@@ -12,29 +12,43 @@ jest.mock('fs', () => {
         }
     };
 });
-jest.mock('../../src/client-manager');
-jest.mock('../../src/config');
-jest.mock('../../src/result-manager');
-jest.mock('../../src/parallel-processor');
+jest.mock('../../src/client-manager.js');
+jest.mock('../../src/config.js');
+jest.mock('../../src/result-manager.js');
+jest.mock('../../src/parallel-processor.js');
 
-const fs = require('fs').promises;
-const {
+import fs from 'fs';
+const fsp = jest.mocked(fs.promises);
+
+import {
     getAllClients,
     getClient,
     getClientConfig,
     resolveApiKey,
     ensureClientDirectories
-} = require('../../src/client-manager');
-const { loadConfig } = require('../../src/config');
-const { getFailedResults, getResult, updateResult } = require('../../src/result-manager');
-const { processAllInvoices, processWithRetry } = require('../../src/parallel-processor');
+} from '../../src/client-manager.js';
+import { loadConfig } from '../../src/config.js';
+import { getFailedResults, getResult, updateResult } from '../../src/result-manager.js';
+import { processAllInvoices, processWithRetry } from '../../src/parallel-processor.js';
 
-const app = require('../../server');
+const mockedGetAllClients = jest.mocked(getAllClients);
+const mockedGetClient = jest.mocked(getClient);
+const mockedGetClientConfig = jest.mocked(getClientConfig);
+const mockedResolveApiKey = jest.mocked(resolveApiKey);
+const mockedEnsureClientDirectories = jest.mocked(ensureClientDirectories);
+const mockedLoadConfig = jest.mocked(loadConfig);
+const mockedGetFailedResults = jest.mocked(getFailedResults);
+const mockedGetResult = jest.mocked(getResult);
+const mockedUpdateResult = jest.mocked(updateResult);
+const mockedProcessAllInvoices: any = jest.mocked(processAllInvoices);
+const mockedProcessWithRetry = jest.mocked(processWithRetry);
+
+import app from '../../server.js';
 
 /**
  * Parse SSE response text into an array of event objects.
  */
-function parseSSEEvents(text) {
+function parseSSEEvents(text: string): any[] {
     return text
         .split('\n\n')
         .filter((chunk) => chunk.startsWith('data: '))
@@ -47,7 +61,11 @@ const MOCK_GLOBAL_CONFIG = {
 };
 const MOCK_CLIENT_CONFIG = {
     model: 'gemini-3-flash-preview',
-    folders: { base: '/invoices/acme', processedOriginal: '/invoices/acme/processed-original', csvPath: '/log.csv' },
+    folders: {
+        base: '/invoices/acme',
+        processedOriginal: '/invoices/acme/processed-original',
+        csvPath: '/log.csv'
+    },
     output: {},
     fieldDefinitions: [],
     tagDefinitions: [],
@@ -56,13 +74,13 @@ const MOCK_CLIENT_CONFIG = {
 
 beforeEach(() => {
     jest.clearAllMocks();
-    loadConfig.mockResolvedValue(MOCK_GLOBAL_CONFIG);
-    getClientConfig.mockResolvedValue(MOCK_CLIENT_CONFIG);
-    getClient.mockResolvedValue({ folderPath: '/invoices/acme' });
-    resolveApiKey.mockReturnValue('test-api-key');
-    ensureClientDirectories.mockResolvedValue();
-    fs.access.mockResolvedValue(undefined);
-    fs.copyFile.mockResolvedValue(undefined);
+    mockedLoadConfig.mockResolvedValue(MOCK_GLOBAL_CONFIG as any);
+    mockedGetClientConfig.mockResolvedValue(MOCK_CLIENT_CONFIG as any);
+    mockedGetClient.mockResolvedValue({ folderPath: '/invoices/acme' } as any);
+    mockedResolveApiKey.mockReturnValue('test-api-key');
+    mockedEnsureClientDirectories.mockResolvedValue(undefined as any);
+    fsp.access.mockResolvedValue(undefined);
+    fsp.copyFile.mockResolvedValue(undefined);
 });
 
 // ============================================================================
@@ -75,9 +93,13 @@ describe('POST /api/clients/:id/results/retry', () => {
             { id: 'r1', status: 'failed', originalFilename: 'inv1.pdf' },
             { id: 'r2', status: 'failed', originalFilename: 'inv2.pdf' }
         ];
-        getFailedResults.mockResolvedValue(failedResults);
-        processWithRetry.mockResolvedValue({ success: true, outputFilename: 'out.pdf', duration: 1000 });
-        updateResult.mockResolvedValue();
+        mockedGetFailedResults.mockResolvedValue(failedResults as any);
+        mockedProcessWithRetry.mockResolvedValue({
+            success: true,
+            outputFilename: 'out.pdf',
+            duration: 1000
+        } as any);
+        mockedUpdateResult.mockResolvedValue(undefined as any);
 
         const res = await request(app).post('/api/clients/retry-all/results/retry').send({ all: true }).expect(200);
 
@@ -89,9 +111,17 @@ describe('POST /api/clients/:id/results/retry', () => {
     });
 
     it('retries specific result IDs', async () => {
-        getResult.mockResolvedValueOnce({ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' });
-        processWithRetry.mockResolvedValue({ success: true, outputFilename: 'out.pdf', duration: 500 });
-        updateResult.mockResolvedValue();
+        mockedGetResult.mockResolvedValueOnce({
+            id: 'r1',
+            status: 'failed',
+            originalFilename: 'inv.pdf'
+        } as any);
+        mockedProcessWithRetry.mockResolvedValue({
+            success: true,
+            outputFilename: 'out.pdf',
+            duration: 500
+        } as any);
+        mockedUpdateResult.mockResolvedValue(undefined as any);
 
         const res = await request(app)
             .post('/api/clients/retry-ids/results/retry')
@@ -100,11 +130,15 @@ describe('POST /api/clients/:id/results/retry', () => {
 
         const events = parseSSEEvents(res.text);
         expect(events.find((e) => e.status === 'retry-done')).toMatchObject({ success: 1, failed: 0 });
-        expect(getResult).toHaveBeenCalledWith('/invoices/acme', 'r1');
+        expect(mockedGetResult).toHaveBeenCalledWith('/invoices/acme', 'r1');
     });
 
     it('skips non-failed results from resultIds', async () => {
-        getResult.mockResolvedValueOnce({ id: 'r1', status: 'success', originalFilename: 'inv.pdf' });
+        mockedGetResult.mockResolvedValueOnce({
+            id: 'r1',
+            status: 'success',
+            originalFilename: 'inv.pdf'
+        } as any);
 
         const res = await request(app)
             .post('/api/clients/retry-skip/results/retry')
@@ -127,7 +161,7 @@ describe('POST /api/clients/:id/results/retry', () => {
     });
 
     it('returns error when no failed results found', async () => {
-        getFailedResults.mockResolvedValue([]);
+        mockedGetFailedResults.mockResolvedValue([]);
 
         const res = await request(app).post('/api/clients/retry-empty/results/retry').send({ all: true }).expect(200);
 
@@ -138,9 +172,13 @@ describe('POST /api/clients/:id/results/retry', () => {
     });
 
     it('reports individual retry failures', async () => {
-        getFailedResults.mockResolvedValue([{ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' }]);
-        processWithRetry.mockResolvedValue({ success: false, error: 'API timeout', duration: 5000 });
-        updateResult.mockResolvedValue();
+        mockedGetFailedResults.mockResolvedValue([{ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' }] as any);
+        mockedProcessWithRetry.mockResolvedValue({
+            success: false,
+            error: 'API timeout',
+            duration: 5000
+        } as any);
+        mockedUpdateResult.mockResolvedValue(undefined as any);
 
         const res = await request(app).post('/api/clients/retry-fail/results/retry').send({ all: true }).expect(200);
 
@@ -153,8 +191,8 @@ describe('POST /api/clients/:id/results/retry', () => {
     });
 
     it('handles processWithRetry throwing', async () => {
-        getFailedResults.mockResolvedValue([{ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' }]);
-        processWithRetry.mockRejectedValue(new Error('crash'));
+        mockedGetFailedResults.mockResolvedValue([{ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' }] as any);
+        mockedProcessWithRetry.mockRejectedValue(new Error('crash'));
 
         const res = await request(app).post('/api/clients/retry-crash/results/retry').send({ all: true }).expect(200);
 
@@ -164,11 +202,15 @@ describe('POST /api/clients/:id/results/retry', () => {
     });
 
     it('tries processed-original folder then input folder for source file', async () => {
-        getFailedResults.mockResolvedValue([{ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' }]);
+        mockedGetFailedResults.mockResolvedValue([{ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' }] as any);
         // First access (processed-original) fails, second (input folder) succeeds
-        fs.access.mockRejectedValueOnce(new Error('ENOENT')).mockResolvedValueOnce(undefined);
-        processWithRetry.mockResolvedValue({ success: true, outputFilename: 'out.pdf', duration: 100 });
-        updateResult.mockResolvedValue();
+        fsp.access.mockRejectedValueOnce(new Error('ENOENT')).mockResolvedValueOnce(undefined);
+        mockedProcessWithRetry.mockResolvedValue({
+            success: true,
+            outputFilename: 'out.pdf',
+            duration: 100
+        } as any);
+        mockedUpdateResult.mockResolvedValue(undefined as any);
 
         const res = await request(app)
             .post('/api/clients/retry-fallback/results/retry')
@@ -178,12 +220,12 @@ describe('POST /api/clients/:id/results/retry', () => {
         const events = parseSSEEvents(res.text);
         expect(events.find((e) => e.status === 'retry-completed')).toBeDefined();
         // copyFile should NOT have been called since processed-original didn't exist
-        expect(fs.copyFile).not.toHaveBeenCalled();
+        expect(fsp.copyFile).not.toHaveBeenCalled();
     });
 
     it('errors when source file not found in any location', async () => {
-        getFailedResults.mockResolvedValue([{ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' }]);
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        mockedGetFailedResults.mockResolvedValue([{ id: 'r1', status: 'failed', originalFilename: 'inv.pdf' }] as any);
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const res = await request(app).post('/api/clients/retry-nofile/results/retry').send({ all: true }).expect(200);
 
@@ -194,7 +236,7 @@ describe('POST /api/clients/:id/results/retry', () => {
     });
 
     it('sends error event on top-level failure', async () => {
-        loadConfig.mockRejectedValue(new Error('config broken'));
+        mockedLoadConfig.mockRejectedValue(new Error('config broken'));
 
         const res = await request(app)
             .post('/api/clients/retry-toplevel/results/retry')
@@ -212,7 +254,7 @@ describe('POST /api/clients/:id/results/retry', () => {
 
 describe('POST /api/clients/:id/process', () => {
     it('processes invoices and streams progress', async () => {
-        processAllInvoices.mockImplementation(async (config, options) => {
+        mockedProcessAllInvoices.mockImplementation(async (config: any, options: any) => {
             options.onProgress({ status: 'processing', filename: 'inv.pdf', current: 1, total: 1 });
             options.onComplete({ success: 1, failed: 0, total: 1 });
         });
@@ -226,7 +268,7 @@ describe('POST /api/clients/:id/process', () => {
     });
 
     it('passes dryRun flag', async () => {
-        processAllInvoices.mockImplementation(async (config, options) => {
+        mockedProcessAllInvoices.mockImplementation(async (config: any, options: any) => {
             options.onComplete({ success: 0, failed: 0, total: 0 });
         });
 
@@ -234,11 +276,14 @@ describe('POST /api/clients/:id/process', () => {
 
         const events = parseSSEEvents(res.text);
         expect(events.find((e) => e.status === 'done')).toMatchObject({ dryRun: true });
-        expect(processAllInvoices).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ dryRun: true }));
+        expect(mockedProcessAllInvoices).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ dryRun: true })
+        );
     });
 
     it('passes file selection', async () => {
-        processAllInvoices.mockImplementation(async (config, options) => {
+        mockedProcessAllInvoices.mockImplementation(async (config: any, options: any) => {
             options.onComplete({ success: 1, failed: 0, total: 1 });
         });
 
@@ -247,14 +292,14 @@ describe('POST /api/clients/:id/process', () => {
             .send({ files: ['specific.pdf'] })
             .expect(200);
 
-        expect(processAllInvoices).toHaveBeenCalledWith(
+        expect(mockedProcessAllInvoices).toHaveBeenCalledWith(
             expect.anything(),
             expect.objectContaining({ files: ['specific.pdf'] })
         );
     });
 
     it('sends error when folder does not exist', async () => {
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const res = await request(app).post('/api/clients/proc-nofolder/process').send({}).expect(200);
 
@@ -265,17 +310,17 @@ describe('POST /api/clients/:id/process', () => {
     });
 
     it('ensures client directories before processing', async () => {
-        processAllInvoices.mockImplementation(async (config, options) => {
+        mockedProcessAllInvoices.mockImplementation(async (config: any, options: any) => {
             options.onComplete({ success: 0, failed: 0, total: 0 });
         });
 
         await request(app).post('/api/clients/proc-dirs/process').send({}).expect(200);
 
-        expect(ensureClientDirectories).toHaveBeenCalledWith(MOCK_CLIENT_CONFIG);
+        expect(mockedEnsureClientDirectories).toHaveBeenCalledWith(MOCK_CLIENT_CONFIG);
     });
 
     it('sends error event on top-level failure', async () => {
-        loadConfig.mockRejectedValue(new Error('config read failed'));
+        mockedLoadConfig.mockRejectedValue(new Error('config read failed'));
 
         const res = await request(app).post('/api/clients/proc-err/process').send({}).expect(200);
 
@@ -290,11 +335,11 @@ describe('POST /api/clients/:id/process', () => {
 
 describe('POST /api/clients/process-all', () => {
     it('processes all enabled clients', async () => {
-        getAllClients.mockResolvedValue({
+        mockedGetAllClients.mockResolvedValue({
             acme: { name: 'Acme', enabled: true },
             globex: { name: 'Globex', enabled: true }
-        });
-        processAllInvoices.mockImplementation(async (config, options) => {
+        } as any);
+        mockedProcessAllInvoices.mockImplementation(async (config: any, options: any) => {
             options.onProgress({ status: 'processing', current: 1, total: 1 });
             options.onComplete({ success: 1, failed: 0 });
         });
@@ -315,11 +360,11 @@ describe('POST /api/clients/process-all', () => {
     });
 
     it('skips disabled clients', async () => {
-        getAllClients.mockResolvedValue({
+        mockedGetAllClients.mockResolvedValue({
             acme: { name: 'Acme', enabled: true },
             disabled: { name: 'Disabled', enabled: false }
-        });
-        processAllInvoices.mockImplementation(async (config, options) => {
+        } as any);
+        mockedProcessAllInvoices.mockImplementation(async (config: any, options: any) => {
             options.onComplete({ success: 1, failed: 0 });
         });
 
@@ -331,7 +376,7 @@ describe('POST /api/clients/process-all', () => {
     });
 
     it('sends error when no clients configured', async () => {
-        getAllClients.mockResolvedValue(null);
+        mockedGetAllClients.mockResolvedValue(null as any);
 
         const res = await request(app).post('/api/clients/process-all').send({}).expect(200);
 
@@ -342,10 +387,10 @@ describe('POST /api/clients/process-all', () => {
     });
 
     it('sends error when no enabled clients', async () => {
-        getAllClients.mockResolvedValue({
+        mockedGetAllClients.mockResolvedValue({
             a: { name: 'A', enabled: false },
             b: { name: 'B', enabled: false }
-        });
+        } as any);
 
         const res = await request(app).post('/api/clients/process-all').send({}).expect(200);
 
@@ -356,8 +401,8 @@ describe('POST /api/clients/process-all', () => {
     });
 
     it('reports client-error when folder does not exist', async () => {
-        getAllClients.mockResolvedValue({ acme: { name: 'Acme', enabled: true } });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        mockedGetAllClients.mockResolvedValue({ acme: { name: 'Acme', enabled: true } } as any);
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const res = await request(app).post('/api/clients/process-all').send({}).expect(200);
 
@@ -368,13 +413,15 @@ describe('POST /api/clients/process-all', () => {
     });
 
     it('continues processing other clients on error', async () => {
-        getAllClients.mockResolvedValue({
+        mockedGetAllClients.mockResolvedValue({
             broken: { name: 'Broken', enabled: true },
             good: { name: 'Good', enabled: true }
-        });
+        } as any);
         // First client throws from getClientConfig, second succeeds
-        getClientConfig.mockRejectedValueOnce(new Error('config broken')).mockResolvedValueOnce(MOCK_CLIENT_CONFIG);
-        processAllInvoices.mockImplementation(async (config, options) => {
+        mockedGetClientConfig
+            .mockRejectedValueOnce(new Error('config broken'))
+            .mockResolvedValueOnce(MOCK_CLIENT_CONFIG as any);
+        mockedProcessAllInvoices.mockImplementation(async (config: any, options: any) => {
             options.onComplete({ success: 1, failed: 0 });
         });
 
@@ -390,7 +437,7 @@ describe('POST /api/clients/process-all', () => {
     });
 
     it('sends error event on top-level failure', async () => {
-        getAllClients.mockRejectedValue(new Error('total failure'));
+        mockedGetAllClients.mockRejectedValue(new Error('total failure'));
 
         const res = await request(app).post('/api/clients/process-all').send({}).expect(200);
 
@@ -405,11 +452,11 @@ describe('POST /api/clients/process-all', () => {
 
 describe('GET /api/clients/:id/files', () => {
     it('lists PDF files in client folder', async () => {
-        fs.readdir.mockResolvedValue(['invoice1.pdf', 'invoice2.PDF', 'readme.txt']);
-        fs.stat.mockResolvedValue({
+        fsp.readdir.mockResolvedValue(['invoice1.pdf', 'invoice2.PDF', 'readme.txt'] as any);
+        fsp.stat.mockResolvedValue({
             size: 12345,
             mtime: new Date('2026-01-15T10:00:00Z')
-        });
+        } as any);
 
         const res = await request(app).get('/api/clients/acme/files').expect(200);
 
@@ -419,7 +466,7 @@ describe('GET /api/clients/:id/files', () => {
     });
 
     it('returns empty list when folder does not exist', async () => {
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const res = await request(app).get('/api/clients/acme/files').expect(200);
 
@@ -428,8 +475,8 @@ describe('GET /api/clients/:id/files', () => {
     });
 
     it('returns sorted file list', async () => {
-        fs.readdir.mockResolvedValue(['zebra.pdf', 'alpha.pdf']);
-        fs.stat.mockResolvedValue({ size: 100, mtime: new Date() });
+        fsp.readdir.mockResolvedValue(['zebra.pdf', 'alpha.pdf'] as any);
+        fsp.stat.mockResolvedValue({ size: 100, mtime: new Date() } as any);
 
         const res = await request(app).get('/api/clients/acme/files').expect(200);
 
@@ -438,13 +485,13 @@ describe('GET /api/clients/:id/files', () => {
     });
 
     it('returns 404 when client not found', async () => {
-        getClientConfig.mockRejectedValue(new Error('Client "nope" not found'));
+        mockedGetClientConfig.mockRejectedValue(new Error('Client "nope" not found'));
 
         await request(app).get('/api/clients/nope/files').expect(404);
     });
 
     it('returns 500 on generic error', async () => {
-        fs.readdir.mockRejectedValue(new Error('permission denied'));
+        fsp.readdir.mockRejectedValue(new Error('permission denied'));
 
         await request(app).get('/api/clients/acme/files').expect(500);
     });

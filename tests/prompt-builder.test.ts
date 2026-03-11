@@ -1,9 +1,9 @@
-const {
+import {
     buildExtractionPrompt,
     parseGeminiResponse,
     validateAnalysis,
     resolveTagInstruction
-} = require('../src/prompt-builder');
+} from '../src/prompt-builder.js';
 
 describe('resolveTagInstruction', () => {
     test('substitutes parameter templates', () => {
@@ -11,7 +11,7 @@ describe('resolveTagInstruction', () => {
             instruction: 'Check if address "{{address}}" appears',
             parameters: { address: { label: 'Address', default: '123 Main St' } }
         };
-        expect(resolveTagInstruction(tag)).toBe('Check if address "123 Main St" appears');
+        expect(resolveTagInstruction(tag as any)).toBe('Check if address "123 Main St" appears');
     });
 
     test('uses override values when provided', () => {
@@ -19,17 +19,17 @@ describe('resolveTagInstruction', () => {
             instruction: 'Check "{{address}}"',
             parameters: { address: { label: 'Address', default: '123 Main St' } }
         };
-        expect(resolveTagInstruction(tag, { address: '456 Oak Ave' })).toBe('Check "456 Oak Ave"');
+        expect(resolveTagInstruction(tag as any, { address: '456 Oak Ave' })).toBe('Check "456 Oak Ave"');
     });
 
     test('returns instruction unchanged when no parameters', () => {
         const tag = { instruction: 'Simple instruction' };
-        expect(resolveTagInstruction(tag)).toBe('Simple instruction');
+        expect(resolveTagInstruction(tag as any)).toBe('Simple instruction');
     });
 });
 
 describe('buildExtractionPrompt', () => {
-    const baseConfig = {
+    const baseConfig: any = {
         fieldDefinitions: [
             {
                 key: 'supplierName',
@@ -52,7 +52,7 @@ describe('buildExtractionPrompt', () => {
     };
 
     test('builds prompt with structured template', () => {
-        const config = {
+        const config: any = {
             ...baseConfig,
             promptTemplate: {
                 preamble: 'Analyze this invoice:',
@@ -69,7 +69,7 @@ describe('buildExtractionPrompt', () => {
     });
 
     test('uses rawPrompt when set', () => {
-        const config = {
+        const config: any = {
             ...baseConfig,
             rawPrompt: 'This is my raw prompt'
         };
@@ -77,7 +77,7 @@ describe('buildExtractionPrompt', () => {
     });
 
     test('includes field instructions for enabled fields only', () => {
-        const config = {
+        const config: any = {
             ...baseConfig,
             fieldDefinitions: [
                 {
@@ -113,7 +113,7 @@ describe('buildExtractionPrompt', () => {
     });
 
     test('includes tag instructions when tagDefinitions present', () => {
-        const config = {
+        const config: any = {
             ...baseConfig,
             tagDefinitions: [
                 { id: 'private', label: 'Private', instruction: 'Set true if private', enabled: true },
@@ -127,7 +127,7 @@ describe('buildExtractionPrompt', () => {
     });
 
     test('includes summary instruction when enabled', () => {
-        const config = {
+        const config: any = {
             ...baseConfig,
             output: { ...baseConfig.output, includeSummary: true }
         };
@@ -136,7 +136,7 @@ describe('buildExtractionPrompt', () => {
     });
 
     describe('fieldFilter option', () => {
-        const filterConfig = {
+        const filterConfig: any = {
             ...baseConfig,
             fieldDefinitions: [
                 {
@@ -197,7 +197,7 @@ describe('buildExtractionPrompt', () => {
         });
 
         test('includes summary when fieldFilter.includeSummary is true', () => {
-            const noSummaryConfig = {
+            const noSummaryConfig: any = {
                 ...filterConfig,
                 output: { ...filterConfig.output, includeSummary: false }
             };
@@ -282,7 +282,7 @@ describe('parseGeminiResponse', () => {
 
 describe('validateAnalysis', () => {
     test('fills missing fields with type-appropriate defaults', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true },
                 { key: 'amount', label: 'Amount', type: 'number', schemaHint: 'n', instruction: 'i', enabled: true },
@@ -298,7 +298,7 @@ describe('validateAnalysis', () => {
     });
 
     test('preserves existing values', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true }
             ]
@@ -308,7 +308,7 @@ describe('validateAnalysis', () => {
     });
 
     test('falls back paymentDate to invoiceDate', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 {
                     key: 'paymentDate',
@@ -333,7 +333,7 @@ describe('validateAnalysis', () => {
     });
 
     test('ensures tag booleans default to false', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [],
             tagDefinitions: [
                 { id: 'private', label: 'Private', instruction: 'i', enabled: true },
@@ -341,12 +341,12 @@ describe('validateAnalysis', () => {
             ]
         };
         const result = validateAnalysis({ tags: { private: true } }, config);
-        expect(result.tags.private).toBe(true);
-        expect(result.tags.urgent).toBe(false);
+        expect(result.tags!.private).toBe(true);
+        expect(result.tags!.urgent).toBe(false);
     });
 
     test('auto-corrects format values (iso4217 lowercase)', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 {
                     key: 'currency',
@@ -364,7 +364,7 @@ describe('validateAnalysis', () => {
     });
 
     test('auto-corrects iso8601 datetime to date-only', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 {
                     key: 'invoiceDate',
@@ -382,7 +382,7 @@ describe('validateAnalysis', () => {
     });
 
     test('adds _formatWarnings for invalid format values', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 {
                     key: 'currency',
@@ -398,11 +398,11 @@ describe('validateAnalysis', () => {
         const result = validateAnalysis({ currency: 'INVALID' }, config);
         expect(result.currency).toBe('INVALID');
         expect(result._formatWarnings).toHaveLength(1);
-        expect(result._formatWarnings[0].field).toBe('currency');
+        expect(result._formatWarnings![0].field).toBe('currency');
     });
 
     test('no _formatWarnings when all values are valid', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 {
                     key: 'currency',
@@ -421,7 +421,7 @@ describe('validateAnalysis', () => {
     });
 
     test('skips format validation for fields without format', () => {
-        const config = {
+        const config: any = {
             fieldDefinitions: [
                 { key: 'name', label: 'Name', type: 'text', schemaHint: 's', instruction: 'i', enabled: true }
             ]

@@ -1,4 +1,4 @@
-const { validateFieldDefinitions, validateTagDefinitions, validatePromptTemplate } = require('../src/config');
+import { validateFieldDefinitions, validateTagDefinitions, validatePromptTemplate } from '../src/config.js';
 
 // Helper: valid field definition
 function validField(overrides = {}) {

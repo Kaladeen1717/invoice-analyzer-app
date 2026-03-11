@@ -9,11 +9,17 @@ jest.mock('@google/generative-ai');
 jest.mock('../src/prompt-builder');
 jest.mock('../src/filename-generator');
 
-const fs = require('fs').promises;
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { buildExtractionPrompt, parseGeminiResponse, validateAnalysis } = require('../src/prompt-builder');
+import fs from 'fs';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { buildExtractionPrompt, parseGeminiResponse, validateAnalysis } from '../src/prompt-builder.js';
 
-const { analyzeInvoice, clearGenAICache } = require('../src/processor');
+import { analyzeInvoice, clearGenAICache } from '../src/processor.js';
+
+const fsp = jest.mocked(fs.promises);
+const MockedGoogleGenerativeAI = jest.mocked(GoogleGenerativeAI);
+const mockedBuildExtractionPrompt = jest.mocked(buildExtractionPrompt);
+const mockedParseGeminiResponse = jest.mocked(parseGeminiResponse);
+const mockedValidateAnalysis = jest.mocked(validateAnalysis);
 
 // Shared mock setup
 const mockGenerateContent = jest.fn();
@@ -23,14 +29,17 @@ beforeEach(() => {
     jest.clearAllMocks();
     clearGenAICache();
 
-    GoogleGenerativeAI.mockImplementation(() => ({
-        getGenerativeModel: mockGetGenerativeModel
-    }));
+    MockedGoogleGenerativeAI.mockImplementation(
+        () =>
+            ({
+                getGenerativeModel: mockGetGenerativeModel
+            }) as any
+    );
 
-    fs.readFile.mockResolvedValue(Buffer.from('fake-pdf'));
-    buildExtractionPrompt.mockReturnValue('Extract invoice data');
-    parseGeminiResponse.mockReturnValue({ supplierName: 'Acme' });
-    validateAnalysis.mockImplementation((analysis) => analysis);
+    fsp.readFile.mockResolvedValue(Buffer.from('fake-pdf') as any);
+    mockedBuildExtractionPrompt.mockReturnValue('Extract invoice data');
+    mockedParseGeminiResponse.mockReturnValue({ supplierName: 'Acme' } as any);
+    mockedValidateAnalysis.mockImplementation((analysis) => analysis as any);
 
     mockGenerateContent.mockResolvedValue({
         response: {
@@ -49,7 +58,7 @@ beforeEach(() => {
 describe('analyzeInvoice', () => {
     describe('JSON mode (responseMimeType)', () => {
         test('includes responseMimeType when extraction.useJsonMode is true', async () => {
-            const config = {
+            const config: any = {
                 extraction: { useJsonMode: true },
                 fieldDefinitions: [],
                 tagDefinitions: []
@@ -66,7 +75,7 @@ describe('analyzeInvoice', () => {
         });
 
         test('excludes responseMimeType when extraction.useJsonMode is false', async () => {
-            const config = {
+            const config: any = {
                 extraction: { useJsonMode: false },
                 fieldDefinitions: [],
                 tagDefinitions: []
@@ -82,7 +91,7 @@ describe('analyzeInvoice', () => {
         });
 
         test('excludes responseMimeType when extraction section is absent', async () => {
-            const config = { fieldDefinitions: [], tagDefinitions: [] };
+            const config: any = { fieldDefinitions: [], tagDefinitions: [] };
 
             await analyzeInvoice('/test.pdf', config, { apiKey: 'test-key' });
 
@@ -94,7 +103,7 @@ describe('analyzeInvoice', () => {
         });
 
         test('bypasses JSON mode when rawPrompt is set', async () => {
-            const config = {
+            const config: any = {
                 extraction: { useJsonMode: true },
                 rawPrompt: 'Custom prompt here',
                 fieldDefinitions: [],
@@ -111,7 +120,7 @@ describe('analyzeInvoice', () => {
         });
 
         test('passes useJsonMode flag to parseGeminiResponse', async () => {
-            const config = {
+            const config: any = {
                 extraction: { useJsonMode: true },
                 fieldDefinitions: [],
                 tagDefinitions: []
@@ -119,23 +128,23 @@ describe('analyzeInvoice', () => {
 
             await analyzeInvoice('/test.pdf', config, { apiKey: 'test-key' });
 
-            expect(parseGeminiResponse).toHaveBeenCalledWith('{"supplierName": "Acme"}', { useJsonMode: true });
+            expect(mockedParseGeminiResponse).toHaveBeenCalledWith('{"supplierName": "Acme"}', { useJsonMode: true });
         });
 
         test('passes useJsonMode falsy to parseGeminiResponse when disabled', async () => {
-            const config = { fieldDefinitions: [], tagDefinitions: [] };
+            const config: any = { fieldDefinitions: [], tagDefinitions: [] };
 
             await analyzeInvoice('/test.pdf', config, { apiKey: 'test-key' });
 
-            const callArgs = parseGeminiResponse.mock.calls[0];
+            const callArgs = mockedParseGeminiResponse.mock.calls[0];
             expect(callArgs[0]).toBe('{"supplierName": "Acme"}');
-            expect(callArgs[1].useJsonMode).toBeFalsy();
+            expect(callArgs[1]!.useJsonMode).toBeFalsy();
         });
     });
 
     describe('systemInstruction', () => {
         test('passes prompt as systemInstruction instead of in contents', async () => {
-            const config = { fieldDefinitions: [], tagDefinitions: [] };
+            const config: any = { fieldDefinitions: [], tagDefinitions: [] };
 
             await analyzeInvoice('/test.pdf', config, { apiKey: 'test-key' });
 
@@ -148,7 +157,7 @@ describe('analyzeInvoice', () => {
 
     describe('thinkingConfig', () => {
         test('places thinkingConfig inside generationConfig with thinkingLevel low', async () => {
-            const config = { fieldDefinitions: [], tagDefinitions: [] };
+            const config: any = { fieldDefinitions: [], tagDefinitions: [] };
 
             await analyzeInvoice('/test.pdf', config, { apiKey: 'test-key' });
 
@@ -160,7 +169,7 @@ describe('analyzeInvoice', () => {
 
     describe('token usage', () => {
         test('extracts cachedTokens from usageMetadata', async () => {
-            const config = { fieldDefinitions: [], tagDefinitions: [] };
+            const config: any = { fieldDefinitions: [], tagDefinitions: [] };
 
             const result = await analyzeInvoice('/test.pdf', config, { apiKey: 'test-key' });
 
@@ -181,11 +190,11 @@ describe('analyzeInvoice', () => {
                 }
             });
 
-            const config = { fieldDefinitions: [], tagDefinitions: [] };
+            const config: any = { fieldDefinitions: [], tagDefinitions: [] };
             const result = await analyzeInvoice('/test.pdf', config, { apiKey: 'test-key' });
 
-            expect(result._tokenUsage.cachedTokens).toBe(0);
-            expect(result._tokenUsage.thoughtsTokens).toBe(0);
+            expect(result._tokenUsage!.cachedTokens).toBe(0);
+            expect(result._tokenUsage!.thoughtsTokens).toBe(0);
         });
     });
 });

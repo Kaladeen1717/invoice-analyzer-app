@@ -10,10 +10,10 @@ jest.mock('fs', () => ({
     }
 }));
 
-const fs = require('fs').promises;
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
-const {
+import {
     loadClientsConfig,
     getEnabledClients,
     getAllClients,
@@ -34,7 +34,9 @@ const {
     removeClientOverrides,
     discoverClientFiles,
     validateClientConfig
-} = require('../src/client-manager');
+} from '../src/client-manager.js';
+
+const fsp = jest.mocked(fs.promises);
 
 // --- Shared fixtures ---
 
@@ -44,23 +46,7 @@ const MINIMAL_CLIENT = {
     folderPath: '/invoices/acme'
 };
 
-const FULL_CLIENT = {
-    ...MINIMAL_CLIENT,
-    apiKeyEnvVar: 'ACME_API_KEY',
-    model: 'gemini-pro',
-    fieldOverrides: {
-        invoiceDate: { enabled: false },
-        customField: { enabled: true, type: 'text', label: 'Custom', schemaHint: 'h', instruction: 'i' }
-    },
-    tagOverrides: {
-        private: { enabled: false },
-        'custom-tag': { enabled: true, label: 'Custom Tag', instruction: 'i' }
-    },
-    promptOverride: { extraction: 'Custom extraction prompt' },
-    outputOverride: { filenameTemplate: '{supplierName}.pdf' }
-};
-
-const GLOBAL_CONFIG = {
+const GLOBAL_CONFIG: any = {
     processing: { concurrency: 5 },
     output: {
         filenameTemplate: '{supplierName} - {invoiceDate}.pdf',
@@ -82,27 +68,25 @@ const GLOBAL_CONFIG = {
 };
 
 /** Helper: set up fs mocks so loadClientsConfig discovers a clients/ folder */
-function mockClientFolder(clients) {
+function mockClientFolder(clients: Record<string, any>) {
     const files = Object.keys(clients).map((id) => `${id}.json`);
-    fs.readdir.mockResolvedValue(files);
-    for (const [id, config] of Object.entries(clients)) {
-        fs.readFile.mockImplementation((filePath) => {
-            const basename = path.basename(filePath, '.json');
-            if (clients[basename]) {
-                return Promise.resolve(JSON.stringify(clients[basename]));
-            }
-            const err = new Error('ENOENT');
-            err.code = 'ENOENT';
-            return Promise.reject(err);
-        });
-    }
+    fsp.readdir.mockResolvedValue(files as any);
+    fsp.readFile.mockImplementation((filePath: any) => {
+        const basename = path.basename(filePath, '.json');
+        if (clients[basename]) {
+            return Promise.resolve(JSON.stringify(clients[basename]));
+        }
+        const err: any = new Error('ENOENT');
+        err.code = 'ENOENT';
+        return Promise.reject(err);
+    });
 }
 
 beforeEach(() => {
     jest.clearAllMocks();
     clearClientsCache();
-    fs.writeFile.mockResolvedValue();
-    fs.mkdir.mockResolvedValue();
+    fsp.writeFile.mockResolvedValue();
+    fsp.mkdir.mockResolvedValue(undefined as any);
     // Suppress deprecation warnings in tests
     jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -125,9 +109,9 @@ describe('discoverClientFiles', () => {
     });
 
     test('returns null when clients/ folder does not exist', async () => {
-        const err = new Error('ENOENT');
+        const err: any = new Error('ENOENT');
         err.code = 'ENOENT';
-        fs.readdir.mockRejectedValue(err);
+        fsp.readdir.mockRejectedValue(err);
 
         const result = await discoverClientFiles();
 
@@ -135,7 +119,7 @@ describe('discoverClientFiles', () => {
     });
 
     test('returns null when clients/ folder has no JSON files', async () => {
-        fs.readdir.mockResolvedValue(['readme.txt', '.gitkeep']);
+        fsp.readdir.mockResolvedValue(['readme.txt', '.gitkeep'] as any);
 
         const result = await discoverClientFiles();
 
@@ -143,10 +127,10 @@ describe('discoverClientFiles', () => {
     });
 
     test('skips files that fail to read with ENOENT', async () => {
-        fs.readdir.mockResolvedValue(['good.json', 'gone.json']);
-        fs.readFile.mockImplementation((filePath) => {
+        fsp.readdir.mockResolvedValue(['good.json', 'gone.json'] as any);
+        fsp.readFile.mockImplementation((filePath: any) => {
             if (filePath.includes('gone')) {
-                const err = new Error('ENOENT');
+                const err: any = new Error('ENOENT');
                 err.code = 'ENOENT';
                 return Promise.reject(err);
             }
@@ -155,20 +139,20 @@ describe('discoverClientFiles', () => {
 
         const result = await discoverClientFiles();
 
-        expect(result.clients).toHaveProperty('good');
-        expect(result.clients).not.toHaveProperty('gone');
+        expect(result!.clients).toHaveProperty('good');
+        expect(result!.clients).not.toHaveProperty('gone');
     });
 
     test('throws on invalid JSON in client file', async () => {
-        fs.readdir.mockResolvedValue(['bad.json']);
-        fs.readFile.mockResolvedValue('not valid json');
+        fsp.readdir.mockResolvedValue(['bad.json'] as any);
+        fsp.readFile.mockResolvedValue('not valid json');
 
         await expect(discoverClientFiles()).rejects.toThrow('Failed to load client config "bad.json"');
     });
 
     test('throws on validation failure', async () => {
-        fs.readdir.mockResolvedValue(['invalid.json']);
-        fs.readFile.mockResolvedValue(JSON.stringify({ name: 'Test' })); // missing enabled, folderPath
+        fsp.readdir.mockResolvedValue(['invalid.json'] as any);
+        fsp.readFile.mockResolvedValue(JSON.stringify({ name: 'Test' })); // missing enabled, folderPath
 
         await expect(discoverClientFiles()).rejects.toThrow('must have an "enabled" boolean');
     });
@@ -262,13 +246,13 @@ describe('loadClientsConfig', () => {
         await loadClientsConfig();
 
         // readdir only called once (second call uses cache)
-        expect(fs.readdir).toHaveBeenCalledTimes(1);
+        expect(fsp.readdir).toHaveBeenCalledTimes(1);
     });
 
     test('falls back to legacy clients.json when clients/ folder empty', async () => {
-        fs.readdir.mockResolvedValue([]); // empty clients folder
+        fsp.readdir.mockResolvedValue([] as any); // empty clients folder
         const legacyConfig = { clients: { acme: MINIMAL_CLIENT } };
-        fs.readFile.mockResolvedValue(JSON.stringify(legacyConfig));
+        fsp.readFile.mockResolvedValue(JSON.stringify(legacyConfig));
 
         const result = await loadClientsConfig();
 
@@ -277,10 +261,10 @@ describe('loadClientsConfig', () => {
     });
 
     test('returns null when no clients/ folder and no clients.json', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.readdir.mockResolvedValue([]); // empty clients folder
-        fs.readFile.mockRejectedValue(enoent);
+        fsp.readdir.mockResolvedValue([] as any); // empty clients folder
+        fsp.readFile.mockRejectedValue(enoent);
 
         const result = await loadClientsConfig();
 
@@ -288,8 +272,8 @@ describe('loadClientsConfig', () => {
     });
 
     test('throws on invalid clients.json', async () => {
-        fs.readdir.mockResolvedValue([]);
-        fs.readFile.mockResolvedValue('not json');
+        fsp.readdir.mockResolvedValue([] as any);
+        fsp.readFile.mockResolvedValue('not json');
 
         await expect(loadClientsConfig()).rejects.toThrow('Failed to load clients.json');
     });
@@ -306,15 +290,15 @@ describe('getAllClients', () => {
 
         const result = await getAllClients();
 
-        expect(Object.keys(result)).toHaveLength(2);
-        expect(result.disabled.enabled).toBe(false);
+        expect(Object.keys(result!)).toHaveLength(2);
+        expect(result!.disabled.enabled).toBe(false);
     });
 
     test('returns null in single-client mode', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.readdir.mockResolvedValue([]);
-        fs.readFile.mockRejectedValue(enoent);
+        fsp.readdir.mockResolvedValue([] as any);
+        fsp.readFile.mockRejectedValue(enoent);
 
         expect(await getAllClients()).toBeNull();
     });
@@ -327,14 +311,14 @@ describe('getEnabledClients', () => {
 
         const result = await getEnabledClients();
 
-        expect(Object.keys(result)).toEqual(['acme']);
+        expect(Object.keys(result!)).toEqual(['acme']);
     });
 
     test('returns null in single-client mode', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.readdir.mockResolvedValue([]);
-        fs.readFile.mockRejectedValue(enoent);
+        fsp.readdir.mockResolvedValue([] as any);
+        fsp.readFile.mockRejectedValue(enoent);
 
         expect(await getEnabledClients()).toBeNull();
     });
@@ -360,10 +344,10 @@ describe('getClient', () => {
     });
 
     test('throws when no client config exists', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.readdir.mockResolvedValue([]);
-        fs.readFile.mockRejectedValue(enoent);
+        fsp.readdir.mockResolvedValue([] as any);
+        fsp.readFile.mockRejectedValue(enoent);
 
         await expect(getClient('any')).rejects.toThrow('No client configuration found');
     });
@@ -392,7 +376,7 @@ describe('getClientConfig', () => {
         test('uses defaults when global output config is missing', async () => {
             mockClientFolder({ acme: MINIMAL_CLIENT });
 
-            const result = await getClientConfig('acme', { processing: {} });
+            const result = await getClientConfig('acme', { processing: {} } as any);
 
             expect(result.folders.processedOriginal).toContain('processed-original');
             expect(result.folders.processedEnriched).toContain('processed-enriched');
@@ -418,12 +402,12 @@ describe('getClientConfig', () => {
 
             const result = await getClientConfig('acme', GLOBAL_CONFIG);
 
-            const invoiceDate = result.fieldDefinitions.find((f) => f.key === 'invoiceDate');
-            expect(invoiceDate.enabled).toBe(false);
+            const invoiceDate = result.fieldDefinitions.find((f: any) => f.key === 'invoiceDate');
+            expect(invoiceDate!.enabled).toBe(false);
 
             // Other fields unchanged
-            const supplierName = result.fieldDefinitions.find((f) => f.key === 'supplierName');
-            expect(supplierName.enabled).toBe(true);
+            const supplierName = result.fieldDefinitions.find((f: any) => f.key === 'supplierName');
+            expect(supplierName!.enabled).toBe(true);
         });
 
         test('adds custom fields from fieldOverrides', async () => {
@@ -439,9 +423,9 @@ describe('getClientConfig', () => {
 
             // Global fields still present
             expect(result.fieldDefinitions).toHaveLength(4); // 3 global + 1 custom
-            const custom = result.fieldDefinitions.find((f) => f.key === 'customTaxId');
+            const custom = result.fieldDefinitions.find((f: any) => f.key === 'customTaxId');
             expect(custom).toBeDefined();
-            expect(custom.label).toBe('Tax ID');
+            expect(custom!.label).toBe('Tax ID');
         });
 
         test('preserves field properties when override only sets enabled', async () => {
@@ -453,10 +437,10 @@ describe('getClientConfig', () => {
 
             const result = await getClientConfig('acme', GLOBAL_CONFIG);
 
-            const field = result.fieldDefinitions.find((f) => f.key === 'supplierName');
-            expect(field.enabled).toBe(false);
-            expect(field.label).toBe('Supplier'); // preserved from global
-            expect(field.type).toBe('text');
+            const field = result.fieldDefinitions.find((f: any) => f.key === 'supplierName');
+            expect(field!.enabled).toBe(false);
+            expect(field!.label).toBe('Supplier'); // preserved from global
+            expect(field!.type).toBe('text');
         });
 
         test('uses legacy fieldDefinitions for backward compat (full replacement)', async () => {
@@ -488,11 +472,11 @@ describe('getClientConfig', () => {
 
             const result = await getClientConfig('acme', GLOBAL_CONFIG);
 
-            const privateTag = result.tagDefinitions.find((t) => t.id === 'private');
-            expect(privateTag.enabled).toBe(false);
+            const privateTag = result.tagDefinitions!.find((t: any) => t.id === 'private');
+            expect(privateTag!.enabled).toBe(false);
 
-            const euTag = result.tagDefinitions.find((t) => t.id === 'eu-reverse');
-            expect(euTag.enabled).toBe(true); // unchanged
+            const euTag = result.tagDefinitions!.find((t: any) => t.id === 'eu-reverse');
+            expect(euTag!.enabled).toBe(true); // unchanged
         });
 
         test('adds custom tags from tagOverrides', async () => {
@@ -507,8 +491,8 @@ describe('getClientConfig', () => {
             const result = await getClientConfig('acme', GLOBAL_CONFIG);
 
             expect(result.tagDefinitions).toHaveLength(3); // 2 global + 1 custom
-            const custom = result.tagDefinitions.find((t) => t.id === 'custom-region');
-            expect(custom.label).toBe('Region');
+            const custom = result.tagDefinitions!.find((t: any) => t.id === 'custom-region');
+            expect(custom!.label).toBe('Region');
         });
 
         test('returns null tagDefinitions when global has none', async () => {
@@ -586,8 +570,8 @@ describe('getClientConfig', () => {
 
             const result = await getClientConfig('acme', GLOBAL_CONFIG);
 
-            expect(result.promptTemplate.extraction).toBe('Custom extraction');
-            expect(result.promptTemplate.validation).toBe('Default validation'); // preserved
+            expect((result.promptTemplate as any).extraction).toBe('Custom extraction');
+            expect((result.promptTemplate as any).validation).toBe('Default validation'); // preserved
         });
 
         test('uses legacy promptTemplate for full replacement', async () => {
@@ -622,7 +606,7 @@ describe('getClientConfig', () => {
         test('returns null when neither client nor global has model', async () => {
             mockClientFolder({ acme: MINIMAL_CLIENT });
 
-            const result = await getClientConfig('acme', { processing: {} });
+            const result = await getClientConfig('acme', { processing: {} } as any);
 
             expect(result.model).toBeNull();
         });
@@ -666,10 +650,10 @@ describe('getClientConfig', () => {
         });
 
         test('throws when no client config exists', async () => {
-            const enoent = new Error('ENOENT');
+            const enoent: any = new Error('ENOENT');
             enoent.code = 'ENOENT';
-            fs.readdir.mockResolvedValue([]);
-            fs.readFile.mockRejectedValue(enoent);
+            fsp.readdir.mockResolvedValue([] as any);
+            fsp.readFile.mockRejectedValue(enoent);
 
             await expect(getClientConfig('any', GLOBAL_CONFIG)).rejects.toThrow('No client configuration found');
         });
@@ -683,11 +667,11 @@ describe('getClientConfig', () => {
 describe('getAnnotatedClientConfig', () => {
     test('marks all fields as global when no overrides', async () => {
         mockClientFolder({ acme: MINIMAL_CLIENT });
-        fs.access.mockRejectedValue(new Error('ENOENT')); // folder status check
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const result = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
 
-        result.fieldDefinitions.forEach((f) => {
+        result.fieldDefinitions.forEach((f: any) => {
             expect(f._source).toBe('global');
         });
     });
@@ -698,16 +682,16 @@ describe('getAnnotatedClientConfig', () => {
             fieldOverrides: { invoiceDate: { enabled: false } }
         };
         mockClientFolder({ acme: client });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const result = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
 
-        const invoiceDate = result.fieldDefinitions.find((f) => f.key === 'invoiceDate');
-        expect(invoiceDate._source).toBe('override');
-        expect(invoiceDate.enabled).toBe(false);
+        const invoiceDate = result.fieldDefinitions.find((f: any) => f.key === 'invoiceDate');
+        expect(invoiceDate!._source).toBe('override');
+        expect(invoiceDate!.enabled).toBe(false);
 
-        const supplierName = result.fieldDefinitions.find((f) => f.key === 'supplierName');
-        expect(supplierName._source).toBe('global');
+        const supplierName = result.fieldDefinitions.find((f: any) => f.key === 'supplierName');
+        expect(supplierName!._source).toBe('global');
     });
 
     test('marks custom fields as custom', async () => {
@@ -718,21 +702,21 @@ describe('getAnnotatedClientConfig', () => {
             }
         };
         mockClientFolder({ acme: client });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const result = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
 
-        const custom = result.fieldDefinitions.find((f) => f.key === 'customTaxId');
-        expect(custom._source).toBe('custom');
+        const custom = result.fieldDefinitions.find((f: any) => f.key === 'customTaxId');
+        expect(custom!._source).toBe('custom');
     });
 
     test('marks all tags as global when no overrides', async () => {
         mockClientFolder({ acme: MINIMAL_CLIENT });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const result = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
 
-        result.tagDefinitions.forEach((t) => {
+        result.tagDefinitions!.forEach((t: any) => {
             expect(t._source).toBe('global');
         });
     });
@@ -746,23 +730,23 @@ describe('getAnnotatedClientConfig', () => {
             }
         };
         mockClientFolder({ acme: client });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const result = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
 
-        const privateTag = result.tagDefinitions.find((t) => t.id === 'private');
-        expect(privateTag._source).toBe('override');
+        const privateTag = result.tagDefinitions!.find((t: any) => t.id === 'private');
+        expect(privateTag!._source).toBe('override');
 
-        const customTag = result.tagDefinitions.find((t) => t.id === 'custom-region');
-        expect(customTag._source).toBe('custom');
+        const customTag = result.tagDefinitions!.find((t: any) => t.id === 'custom-region');
+        expect(customTag!._source).toBe('custom');
 
-        const euTag = result.tagDefinitions.find((t) => t.id === 'eu-reverse');
-        expect(euTag._source).toBe('global');
+        const euTag = result.tagDefinitions!.find((t: any) => t.id === 'eu-reverse');
+        expect(euTag!._source).toBe('global');
     });
 
     test('marks prompt as global when no override', async () => {
         mockClientFolder({ acme: MINIMAL_CLIENT });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const result = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
 
@@ -772,18 +756,18 @@ describe('getAnnotatedClientConfig', () => {
     test('marks prompt as override when promptOverride set', async () => {
         const client = { ...MINIMAL_CLIENT, promptOverride: { extraction: 'Custom' } };
         mockClientFolder({ acme: client });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const result = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
 
         expect(result.promptTemplate._source).toBe('override');
-        expect(result.promptTemplate.extraction).toBe('Custom');
-        expect(result.promptTemplate.validation).toBe('Default validation'); // global preserved
+        expect((result.promptTemplate as any).extraction).toBe('Custom');
+        expect((result.promptTemplate as any).validation).toBe('Default validation'); // global preserved
     });
 
     test('marks model as global or override', async () => {
         mockClientFolder({ acme: MINIMAL_CLIENT });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const resultGlobal = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
         expect(resultGlobal.model).toEqual({ value: 'gemini-flash', _source: 'global' });
@@ -798,7 +782,7 @@ describe('getAnnotatedClientConfig', () => {
 
     test('marks filename template as global or override', async () => {
         mockClientFolder({ acme: MINIMAL_CLIENT });
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const resultGlobal = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
         expect(resultGlobal.filenameTemplate._source).toBe('global');
@@ -814,7 +798,7 @@ describe('getAnnotatedClientConfig', () => {
 
     test('includes client metadata and folder status', async () => {
         mockClientFolder({ acme: MINIMAL_CLIENT });
-        fs.access.mockRejectedValue(new Error('ENOENT')); // folder doesn't exist
+        fsp.access.mockRejectedValue(new Error('ENOENT')); // folder doesn't exist
 
         const result = await getAnnotatedClientConfig('acme', GLOBAL_CONFIG);
 
@@ -834,14 +818,14 @@ describe('getAnnotatedClientConfig', () => {
 
 describe('createClient', () => {
     test('creates a new client file', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.access.mockRejectedValue(enoent); // file doesn't exist yet
+        fsp.access.mockRejectedValue(enoent); // file doesn't exist yet
 
         await createClient('new-client', MINIMAL_CLIENT);
 
-        expect(fs.mkdir).toHaveBeenCalled(); // ensure clients/ dir
-        expect(fs.writeFile).toHaveBeenCalledWith(expect.stringContaining('new-client.json'), expect.any(String));
+        expect(fsp.mkdir).toHaveBeenCalled(); // ensure clients/ dir
+        expect(fsp.writeFile).toHaveBeenCalledWith(expect.stringContaining('new-client.json'), expect.any(String));
     });
 
     test('rejects invalid client ID format', async () => {
@@ -857,59 +841,59 @@ describe('createClient', () => {
     });
 
     test('rejects duplicate client ID', async () => {
-        fs.access.mockResolvedValue(undefined); // file already exists
+        fsp.access.mockResolvedValue(undefined as any); // file already exists
 
         await expect(createClient('existing', MINIMAL_CLIENT)).rejects.toThrow('Client "existing" already exists');
     });
 
     test('validates config before writing', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.access.mockRejectedValue(enoent);
+        fsp.access.mockRejectedValue(enoent);
 
-        await expect(createClient('test', { name: 'Test' })).rejects.toThrow('must have an "enabled" boolean');
-        expect(fs.writeFile).not.toHaveBeenCalled();
+        await expect(createClient('test', { name: 'Test' } as any)).rejects.toThrow('must have an "enabled" boolean');
+        expect(fsp.writeFile).not.toHaveBeenCalled();
     });
 });
 
 describe('updateClient', () => {
     test('updates an existing client file', async () => {
-        fs.access.mockResolvedValue(undefined); // file exists
+        fsp.access.mockResolvedValue(undefined as any); // file exists
 
         await updateClient('acme', MINIMAL_CLIENT);
 
-        expect(fs.writeFile).toHaveBeenCalledWith(expect.stringContaining('acme.json'), expect.any(String));
+        expect(fsp.writeFile).toHaveBeenCalledWith(expect.stringContaining('acme.json'), expect.any(String));
     });
 
     test('throws when client not found', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.access.mockRejectedValue(enoent);
+        fsp.access.mockRejectedValue(enoent);
 
         await expect(updateClient('missing', MINIMAL_CLIENT)).rejects.toThrow('Client "missing" not found');
     });
 
     test('validates config before writing', async () => {
-        fs.access.mockResolvedValue(undefined);
+        fsp.access.mockResolvedValue(undefined as any);
 
-        await expect(updateClient('acme', { name: 'Test' })).rejects.toThrow('must have an "enabled" boolean');
-        expect(fs.writeFile).not.toHaveBeenCalled();
+        await expect(updateClient('acme', { name: 'Test' } as any)).rejects.toThrow('must have an "enabled" boolean');
+        expect(fsp.writeFile).not.toHaveBeenCalled();
     });
 });
 
 describe('deleteClient', () => {
     test('deletes the client file', async () => {
-        fs.unlink.mockResolvedValue(undefined);
+        fsp.unlink.mockResolvedValue(undefined);
 
         await deleteClient('acme');
 
-        expect(fs.unlink).toHaveBeenCalledWith(expect.stringContaining('acme.json'));
+        expect(fsp.unlink).toHaveBeenCalledWith(expect.stringContaining('acme.json'));
     });
 
     test('throws when client not found', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.unlink.mockRejectedValue(enoent);
+        fsp.unlink.mockRejectedValue(enoent);
 
         await expect(deleteClient('missing')).rejects.toThrow('Client "missing" not found');
     });
@@ -923,17 +907,17 @@ describe('saveClientOverrides', () => {
     const existingConfig = { ...MINIMAL_CLIENT };
 
     beforeEach(() => {
-        fs.readFile.mockResolvedValue(JSON.stringify(existingConfig));
+        fsp.readFile.mockResolvedValue(JSON.stringify(existingConfig));
     });
 
     test('saves field overrides and removes legacy fieldDefinitions', async () => {
         const configWithLegacy = { ...MINIMAL_CLIENT, fieldDefinitions: [{ key: 'old' }] };
-        fs.readFile.mockResolvedValue(JSON.stringify(configWithLegacy));
+        fsp.readFile.mockResolvedValue(JSON.stringify(configWithLegacy));
 
         const overrides = { invoiceDate: { enabled: false } };
         await saveClientOverrides('acme', 'fields', overrides);
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.fieldOverrides).toEqual(overrides);
         expect(written.fieldDefinitions).toBeUndefined(); // legacy removed
     });
@@ -942,7 +926,7 @@ describe('saveClientOverrides', () => {
         const overrides = { private: { enabled: false } };
         await saveClientOverrides('acme', 'tags', overrides);
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.tagOverrides).toEqual(overrides);
     });
 
@@ -950,7 +934,7 @@ describe('saveClientOverrides', () => {
         const overrides = { extraction: 'Custom prompt' };
         await saveClientOverrides('acme', 'prompt', overrides);
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.promptOverride).toEqual(overrides);
     });
 
@@ -958,14 +942,14 @@ describe('saveClientOverrides', () => {
         const overrides = { filenameTemplate: 'custom.pdf' };
         await saveClientOverrides('acme', 'output', overrides);
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.outputOverride).toEqual(overrides);
     });
 
     test('saves model override', async () => {
         await saveClientOverrides('acme', 'model', 'gemini-pro');
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.model).toBe('gemini-pro');
     });
 
@@ -974,9 +958,9 @@ describe('saveClientOverrides', () => {
     });
 
     test('throws when client not found', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.readFile.mockRejectedValue(enoent);
+        fsp.readFile.mockRejectedValue(enoent);
 
         await expect(saveClientOverrides('missing', 'fields', {})).rejects.toThrow('Client "missing" not found');
     });
@@ -994,13 +978,13 @@ describe('removeClientOverrides', () => {
             outputOverride: { filenameTemplate: 'custom.pdf' },
             model: 'gemini-pro'
         };
-        fs.readFile.mockResolvedValue(JSON.stringify(fullConfig));
+        fsp.readFile.mockResolvedValue(JSON.stringify(fullConfig));
     });
 
     test('removes field overrides and legacy fieldDefinitions', async () => {
         await removeClientOverrides('acme', 'fields');
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.fieldOverrides).toBeUndefined();
         expect(written.fieldDefinitions).toBeUndefined();
     });
@@ -1008,14 +992,14 @@ describe('removeClientOverrides', () => {
     test('removes tag overrides', async () => {
         await removeClientOverrides('acme', 'tags');
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.tagOverrides).toBeUndefined();
     });
 
     test('removes prompt override and legacy promptTemplate', async () => {
         await removeClientOverrides('acme', 'prompt');
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.promptOverride).toBeUndefined();
         expect(written.promptTemplate).toBeUndefined();
     });
@@ -1023,14 +1007,14 @@ describe('removeClientOverrides', () => {
     test('removes output override', async () => {
         await removeClientOverrides('acme', 'output');
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.outputOverride).toBeUndefined();
     });
 
     test('removes model override', async () => {
         await removeClientOverrides('acme', 'model');
 
-        const written = JSON.parse(fs.writeFile.mock.calls[0][1]);
+        const written = JSON.parse(fsp.writeFile.mock.calls[0][1] as string);
         expect(written.model).toBeUndefined();
     });
 
@@ -1039,9 +1023,9 @@ describe('removeClientOverrides', () => {
     });
 
     test('throws when client not found', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.readFile.mockRejectedValue(enoent);
+        fsp.readFile.mockRejectedValue(enoent);
 
         await expect(removeClientOverrides('missing', 'fields')).rejects.toThrow('Client "missing" not found');
     });
@@ -1066,7 +1050,7 @@ describe('resolveApiKey', () => {
         process.env.ACME_KEY = 'client-specific-key';
         process.env.GEMINI_API_KEY = 'default-key';
 
-        const result = resolveApiKey({ name: 'Acme', apiKeyEnvVar: 'ACME_KEY' });
+        const result = resolveApiKey({ name: 'Acme', apiKeyEnvVar: 'ACME_KEY' } as any);
 
         expect(result).toBe('client-specific-key');
     });
@@ -1074,7 +1058,7 @@ describe('resolveApiKey', () => {
     test('falls back to GEMINI_API_KEY when client var not set', () => {
         process.env.GEMINI_API_KEY = 'default-key';
 
-        const result = resolveApiKey({ name: 'Acme', apiKeyEnvVar: 'UNSET_VAR' });
+        const result = resolveApiKey({ name: 'Acme', apiKeyEnvVar: 'UNSET_VAR' } as any);
 
         expect(result).toBe('default-key');
     });
@@ -1082,7 +1066,7 @@ describe('resolveApiKey', () => {
     test('falls back to GEMINI_API_KEY when no apiKeyEnvVar configured', () => {
         process.env.GEMINI_API_KEY = 'default-key';
 
-        const result = resolveApiKey({ name: 'Acme' });
+        const result = resolveApiKey({ name: 'Acme' } as any);
 
         expect(result).toBe('default-key');
     });
@@ -1090,7 +1074,7 @@ describe('resolveApiKey', () => {
     test('throws when no API key found', () => {
         delete process.env.GEMINI_API_KEY;
 
-        expect(() => resolveApiKey({ name: 'Acme', apiKeyEnvVar: 'UNSET_VAR' })).toThrow(
+        expect(() => resolveApiKey({ name: 'Acme', apiKeyEnvVar: 'UNSET_VAR' } as any)).toThrow(
             'No API key found for client "Acme"'
         );
     });
@@ -1098,13 +1082,13 @@ describe('resolveApiKey', () => {
     test('error message includes client env var name when set', () => {
         delete process.env.GEMINI_API_KEY;
 
-        expect(() => resolveApiKey({ name: 'Acme', apiKeyEnvVar: 'ACME_KEY' })).toThrow('Set ACME_KEY');
+        expect(() => resolveApiKey({ name: 'Acme', apiKeyEnvVar: 'ACME_KEY' } as any)).toThrow('Set ACME_KEY');
     });
 
     test('error message defaults to GEMINI_API_KEY when no env var configured', () => {
         delete process.env.GEMINI_API_KEY;
 
-        expect(() => resolveApiKey({ name: 'Acme' })).toThrow('Set GEMINI_API_KEY');
+        expect(() => resolveApiKey({ name: 'Acme' } as any)).toThrow('Set GEMINI_API_KEY');
     });
 });
 
@@ -1114,8 +1098,8 @@ describe('resolveApiKey', () => {
 
 describe('ensureClientDirectories', () => {
     test('creates subfolders when base folder exists', async () => {
-        fs.access.mockResolvedValue(undefined);
-        fs.mkdir.mockResolvedValue(undefined);
+        fsp.access.mockResolvedValue(undefined as any);
+        fsp.mkdir.mockResolvedValue(undefined as any);
 
         await ensureClientDirectories({
             folders: {
@@ -1123,16 +1107,16 @@ describe('ensureClientDirectories', () => {
                 processedOriginal: '/invoices/acme/processed-original',
                 processedEnriched: '/invoices/acme/processed-enriched'
             }
-        });
+        } as any);
 
-        expect(fs.mkdir).toHaveBeenCalledWith('/invoices/acme/processed-original', { recursive: true });
-        expect(fs.mkdir).toHaveBeenCalledWith('/invoices/acme/processed-enriched', { recursive: true });
+        expect(fsp.mkdir).toHaveBeenCalledWith('/invoices/acme/processed-original', { recursive: true });
+        expect(fsp.mkdir).toHaveBeenCalledWith('/invoices/acme/processed-enriched', { recursive: true });
     });
 
     test('throws when base folder does not exist', async () => {
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
-        await expect(ensureClientDirectories({ folders: { base: '/missing' } })).rejects.toThrow(
+        await expect(ensureClientDirectories({ folders: { base: '/missing' } } as any)).rejects.toThrow(
             'Client folder does not exist: /missing'
         );
     });
@@ -1140,15 +1124,15 @@ describe('ensureClientDirectories', () => {
 
 describe('clientFolderExists', () => {
     test('returns true when folder exists', async () => {
-        fs.access.mockResolvedValue(undefined);
+        fsp.access.mockResolvedValue(undefined as any);
 
-        expect(await clientFolderExists({ folders: { base: '/exists' } })).toBe(true);
+        expect(await clientFolderExists({ folders: { base: '/exists' } } as any)).toBe(true);
     });
 
     test('returns false when folder does not exist', async () => {
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
-        expect(await clientFolderExists({ folders: { base: '/missing' } })).toBe(false);
+        expect(await clientFolderExists({ folders: { base: '/missing' } } as any)).toBe(false);
     });
 });
 
@@ -1158,10 +1142,10 @@ describe('clientFolderExists', () => {
 
 describe('getClientFolderStatus', () => {
     test('counts PDFs in input and processed folders', async () => {
-        fs.access.mockResolvedValue(undefined);
-        fs.readdir
-            .mockResolvedValueOnce(['inv1.pdf', 'inv2.PDF', 'readme.txt']) // input folder
-            .mockResolvedValueOnce(['done1.pdf']); // processed folder
+        fsp.access.mockResolvedValue(undefined as any);
+        fsp.readdir
+            .mockResolvedValueOnce(['inv1.pdf', 'inv2.PDF', 'readme.txt'] as any) // input folder
+            .mockResolvedValueOnce(['done1.pdf'] as any); // processed folder
 
         const result = await getClientFolderStatus('/invoices/acme');
 
@@ -1169,7 +1153,7 @@ describe('getClientFolderStatus', () => {
     });
 
     test('returns exists: false when folder missing', async () => {
-        fs.access.mockRejectedValue(new Error('ENOENT'));
+        fsp.access.mockRejectedValue(new Error('ENOENT'));
 
         const result = await getClientFolderStatus('/missing');
 
@@ -1177,9 +1161,9 @@ describe('getClientFolderStatus', () => {
     });
 
     test('handles missing processed subfolder', async () => {
-        fs.access.mockResolvedValue(undefined);
-        fs.readdir
-            .mockResolvedValueOnce(['inv.pdf']) // input folder
+        fsp.access.mockResolvedValue(undefined as any);
+        fsp.readdir
+            .mockResolvedValueOnce(['inv.pdf'] as any) // input folder
             .mockRejectedValueOnce(new Error('ENOENT')); // no processed subfolder
 
         const result = await getClientFolderStatus('/invoices/acme');
@@ -1200,10 +1184,10 @@ describe('isMultiClientMode', () => {
     });
 
     test('returns false when no clients config', async () => {
-        const enoent = new Error('ENOENT');
+        const enoent: any = new Error('ENOENT');
         enoent.code = 'ENOENT';
-        fs.readdir.mockResolvedValue([]);
-        fs.readFile.mockRejectedValue(enoent);
+        fsp.readdir.mockResolvedValue([] as any);
+        fsp.readFile.mockRejectedValue(enoent);
 
         expect(await isMultiClientMode()).toBe(false);
     });

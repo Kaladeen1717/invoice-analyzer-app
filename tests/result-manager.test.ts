@@ -1,7 +1,7 @@
-const fs = require('fs').promises;
-const path = require('path');
-const os = require('os');
-const {
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import {
     appendResult,
     getResults,
     getResult,
@@ -9,19 +9,21 @@ const {
     updateResult,
     getFailedResults,
     RESULTS_FILENAME
-} = require('../src/result-manager');
+} from '../src/result-manager.js';
 
-let tmpDir;
+const fsp = fs.promises;
+
+let tmpDir: string;
 
 beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'result-manager-test-'));
+    tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'result-manager-test-'));
 });
 
 afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    await fsp.rm(tmpDir, { recursive: true, force: true });
 });
 
-function successResult(overrides = {}) {
+function successResult(overrides = {}): any {
     return {
         success: true,
         originalFilename: 'invoice-001.pdf',
@@ -32,7 +34,7 @@ function successResult(overrides = {}) {
     };
 }
 
-function failedResult(overrides = {}) {
+function failedResult(overrides = {}): any {
     return {
         success: false,
         originalFilename: 'invoice-002.pdf',
@@ -46,7 +48,7 @@ describe('appendResult', () => {
     test('creates results file when none exists', async () => {
         await appendResult(tmpDir, successResult(), { model: 'gemini-test', duration: 3000 });
 
-        const data = JSON.parse(await fs.readFile(path.join(tmpDir, RESULTS_FILENAME), 'utf-8'));
+        const data = JSON.parse(await fsp.readFile(path.join(tmpDir, RESULTS_FILENAME), 'utf-8'));
         expect(data.results).toHaveLength(1);
         expect(data.results[0].status).toBe('success');
         expect(data.results[0].model).toBe('gemini-test');
@@ -59,7 +61,7 @@ describe('appendResult', () => {
         await appendResult(tmpDir, successResult());
         await appendResult(tmpDir, failedResult());
 
-        const data = JSON.parse(await fs.readFile(path.join(tmpDir, RESULTS_FILENAME), 'utf-8'));
+        const data = JSON.parse(await fsp.readFile(path.join(tmpDir, RESULTS_FILENAME), 'utf-8'));
         expect(data.results).toHaveLength(2);
         expect(data.results[0].status).toBe('success');
         expect(data.results[1].status).toBe('failed');
@@ -131,7 +133,7 @@ describe('getResult', () => {
     test('returns result by ID', async () => {
         const record = await appendResult(tmpDir, successResult());
         const found = await getResult(tmpDir, record.id);
-        expect(found.originalFilename).toBe('invoice-001.pdf');
+        expect(found!.originalFilename).toBe('invoice-001.pdf');
     });
 
     test('returns null for unknown ID', async () => {
@@ -178,7 +180,7 @@ describe('updateResult', () => {
         expect(updated.retriedFrom).toBe(original.timestamp);
 
         const fetched = await getResult(tmpDir, original.id);
-        expect(fetched.status).toBe('success');
+        expect(fetched!.status).toBe('success');
     });
 
     test('throws for unknown ID', async () => {
@@ -194,7 +196,7 @@ describe('getFailedResults', () => {
 
         const failed = await getFailedResults(tmpDir);
         expect(failed).toHaveLength(2);
-        expect(failed.every((r) => r.status === 'failed')).toBe(true);
+        expect(failed.every((r: any) => r.status === 'failed')).toBe(true);
     });
 
     test('returns empty when no failures', async () => {

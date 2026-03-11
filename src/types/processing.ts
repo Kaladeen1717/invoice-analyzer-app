@@ -15,7 +15,7 @@ export interface InvoiceAnalysis {
     [fieldKey: string]: unknown;
     tags?: Record<string, boolean>;
     summary?: string;
-    _formatWarnings?: string[];
+    _formatWarnings?: Array<{ field: string; format: string; value: unknown; error: string | undefined }>;
     _tokenUsage?: TokenUsage;
     // Legacy support
     isPrivate?: boolean;

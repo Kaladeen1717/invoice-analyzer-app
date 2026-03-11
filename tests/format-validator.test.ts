@@ -1,4 +1,4 @@
-const { validateFieldFormat, validateAllFormats } = require('../src/format-validator');
+import { validateFieldFormat, validateAllFormats } from '../src/format-validator.js';
 
 describe('validateFieldFormat', () => {
     describe('skip validation for empty/unknown values', () => {
@@ -160,7 +160,7 @@ describe('validateAllFormats', () => {
             paymentDate: '2024-01-15T10:00:00Z',
             badField: 'not-a-date'
         };
-        const fieldDefinitions = [
+        const fieldDefinitions: any[] = [
             { key: 'currency', type: 'text', format: 'iso4217', enabled: true },
             { key: 'paymentDate', type: 'date', format: 'iso8601', enabled: true },
             { key: 'badField', type: 'date', format: 'iso8601', enabled: true }
@@ -177,7 +177,7 @@ describe('validateAllFormats', () => {
 
     test('skips fields with format "none"', () => {
         const analysis = { name: 'anything' };
-        const fieldDefinitions = [{ key: 'name', type: 'text', format: 'none', enabled: true }];
+        const fieldDefinitions: any[] = [{ key: 'name', type: 'text', format: 'none', enabled: true }];
 
         const { corrected, warnings } = validateAllFormats(analysis, fieldDefinitions);
 
@@ -187,7 +187,7 @@ describe('validateAllFormats', () => {
 
     test('skips fields without format', () => {
         const analysis = { name: 'Acme' };
-        const fieldDefinitions = [{ key: 'name', type: 'text', enabled: true }];
+        const fieldDefinitions: any[] = [{ key: 'name', type: 'text', enabled: true }];
 
         const { corrected, warnings } = validateAllFormats(analysis, fieldDefinitions);
 
@@ -197,7 +197,7 @@ describe('validateAllFormats', () => {
 
     test('skips disabled fields', () => {
         const analysis = { currency: 'invalid' };
-        const fieldDefinitions = [{ key: 'currency', type: 'text', format: 'iso4217', enabled: false }];
+        const fieldDefinitions: any[] = [{ key: 'currency', type: 'text', format: 'iso4217', enabled: false }];
 
         const { corrected, warnings } = validateAllFormats(analysis, fieldDefinitions);
 
@@ -206,7 +206,7 @@ describe('validateAllFormats', () => {
     });
 
     test('handles null/undefined fieldDefinitions', () => {
-        const { corrected, warnings } = validateAllFormats({ a: 1 }, null);
+        const { corrected, warnings } = validateAllFormats({ a: 1 }, null as any);
         expect(corrected).toEqual({ a: 1 });
         expect(warnings).toHaveLength(0);
     });
