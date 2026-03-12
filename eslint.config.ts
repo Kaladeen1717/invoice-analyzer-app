@@ -6,17 +6,7 @@ import globals from 'globals';
 export default tseslint.config(
     // Global ignores
     {
-        ignores: [
-            'node_modules/',
-            'dist/',
-            'public/',
-            'backups/',
-            'uploads/',
-            'output/',
-            'test-invoices/',
-            'clients/',
-            'config.json'
-        ]
+        ignores: ['node_modules/', 'dist/', 'public/', 'backups/', 'uploads/', 'output/', 'clients/', 'config.json']
     },
 
     // Base recommended rules

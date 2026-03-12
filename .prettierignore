@@ -2,7 +2,6 @@ node_modules/
 backups/
 uploads/
 output/
-test-invoices/
 clients/
 config.json
 package-lock.json
