@@ -22,6 +22,8 @@ let detailFilenameOverride = null;
 let detailPromptPreviewDebounceTimer = null;
 let detailModelEditMode = false;
 let detailModelOverride = null;
+let detailHeaderEditMode = false;
+let detailHeaderEditData = null;
 // --- DOM refs (set in init) ---
 let dashboardListView;
 let clientDetailView;
@@ -65,6 +67,9 @@ let resetModelBtn;
 let saveDetailModelBtn;
 let discardDetailModelBtn;
 let detailModelSaveBar;
+let detailHeaderSaveBar;
+let saveDetailHeaderBtn;
+let discardDetailHeaderBtn;
 // --- Public API ---
 export function initClientDetail() {
     dashboardListView = document.getElementById('dashboardListView');
@@ -102,6 +107,9 @@ export function initClientDetail() {
     saveDetailModelBtn = document.getElementById('saveDetailModelBtn');
     discardDetailModelBtn = document.getElementById('discardDetailModelBtn');
     detailModelSaveBar = document.getElementById('detailModelSaveBar');
+    detailHeaderSaveBar = document.getElementById('detailHeaderSaveBar');
+    saveDetailHeaderBtn = document.getElementById('saveDetailHeaderBtn');
+    discardDetailHeaderBtn = document.getElementById('discardDetailHeaderBtn');
     // Back to dashboard
     backToDashboardBtn.addEventListener('click', closeClientDetail);
     // Override buttons
@@ -126,6 +134,9 @@ export function initClientDetail() {
     resetFilenameBtn.addEventListener('click', () => resetOverride('output'));
     saveDetailFilenameBtn.addEventListener('click', saveDetailFilenameOverride);
     discardDetailFilenameBtn.addEventListener('click', cancelDetailFilenameEdit);
+    // Header edit
+    saveDetailHeaderBtn.addEventListener('click', saveHeaderProperties);
+    discardDetailHeaderBtn.addEventListener('click', cancelDetailHeaderEdit);
     // File selector
     fileSelectorEl = document.getElementById('fileSelector');
     fileCountEl = document.getElementById('fileCount');
@@ -193,6 +204,25 @@ function renderClientDetail() {
     const c = data.client;
     const folderStatus = c.folderStatus;
     detailClientHeader.textContent = '';
+    if (detailHeaderEditMode && detailHeaderEditData) {
+        renderClientDetailEditMode(c, folderStatus);
+    }
+    else {
+        renderClientDetailReadMode(c, folderStatus);
+    }
+    renderDetailModel(data.model);
+    renderDetailFieldList(data.fieldDefinitions);
+    renderDetailTagList(data.tagDefinitions);
+    renderDetailFilenameTemplate(data.filenameTemplate);
+    renderDetailPromptTemplate(data.promptTemplate);
+}
+function renderClientDetailReadMode(c, folderStatus) {
+    // Edit button (top-right)
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-small btn-secondary detail-header-edit-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', enterHeaderEditMode);
+    detailClientHeader.appendChild(editBtn);
     // Name row
     const h2 = document.createElement('h2');
     h2.className = 'detail-client-name';
@@ -245,12 +275,117 @@ function renderClientDetail() {
         folderDiv.appendChild(warn);
     }
     meta.appendChild(folderDiv);
+    // API Key env var (when set)
+    if (c.apiKeyEnvVar) {
+        const apiDiv = document.createElement('div');
+        apiDiv.className = 'detail-meta-item';
+        const apiLbl = document.createElement('span');
+        apiLbl.className = 'detail-meta-label';
+        apiLbl.textContent = 'API Key Env';
+        const apiVal = document.createElement('span');
+        apiVal.className = 'detail-meta-value mono';
+        apiVal.textContent = c.apiKeyEnvVar;
+        apiDiv.appendChild(apiLbl);
+        apiDiv.appendChild(apiVal);
+        meta.appendChild(apiDiv);
+    }
     detailClientHeader.appendChild(meta);
-    renderDetailModel(data.model);
-    renderDetailFieldList(data.fieldDefinitions);
-    renderDetailTagList(data.tagDefinitions);
-    renderDetailFilenameTemplate(data.filenameTemplate);
-    renderDetailPromptTemplate(data.promptTemplate);
+}
+function renderClientDetailEditMode(c, folderStatus) {
+    const ed = detailHeaderEditData;
+    // Name input
+    const nameLabel = document.createElement('label');
+    nameLabel.className = 'detail-meta-label';
+    nameLabel.textContent = 'Name';
+    detailClientHeader.appendChild(nameLabel);
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'detail-header-input';
+    nameInput.value = ed.name;
+    nameInput.addEventListener('input', () => {
+        ed.name = nameInput.value;
+        updateHeaderSaveBar();
+    });
+    detailClientHeader.appendChild(nameInput);
+    // Client ID (read-only)
+    const idDiv = document.createElement('div');
+    idDiv.className = 'detail-client-id';
+    idDiv.textContent = c.clientId;
+    detailClientHeader.appendChild(idDiv);
+    const meta = document.createElement('div');
+    meta.className = 'detail-client-meta';
+    meta.style.marginTop = '0.75rem';
+    // Enabled toggle
+    const enabledDiv = document.createElement('div');
+    enabledDiv.className = 'detail-meta-item';
+    const enabledLabel = document.createElement('label');
+    enabledLabel.className = 'detail-header-toggle';
+    const enabledCheckbox = document.createElement('input');
+    enabledCheckbox.type = 'checkbox';
+    enabledCheckbox.checked = ed.enabled;
+    enabledCheckbox.addEventListener('change', () => {
+        ed.enabled = enabledCheckbox.checked;
+        updateHeaderSaveBar();
+    });
+    const enabledText = document.createElement('span');
+    enabledText.textContent = 'Enabled';
+    enabledLabel.appendChild(enabledCheckbox);
+    enabledLabel.appendChild(enabledText);
+    enabledDiv.appendChild(enabledLabel);
+    meta.appendChild(enabledDiv);
+    // Pending / Processed (read-only)
+    [
+        { label: 'Pending', value: String(folderStatus.inputPdfCount) },
+        { label: 'Processed', value: String(folderStatus.processedCount) }
+    ].forEach((item) => {
+        const div = document.createElement('div');
+        div.className = 'detail-meta-item';
+        const lbl = document.createElement('span');
+        lbl.className = 'detail-meta-label';
+        lbl.textContent = item.label;
+        const val = document.createElement('span');
+        val.className = 'detail-meta-value';
+        val.textContent = item.value;
+        div.appendChild(lbl);
+        div.appendChild(val);
+        meta.appendChild(div);
+    });
+    detailClientHeader.appendChild(meta);
+    // Folder path input
+    const folderGroup = document.createElement('div');
+    folderGroup.style.marginTop = '0.75rem';
+    const folderLabel = document.createElement('label');
+    folderLabel.className = 'detail-meta-label';
+    folderLabel.textContent = 'Folder Path';
+    folderGroup.appendChild(folderLabel);
+    const folderInput = document.createElement('input');
+    folderInput.type = 'text';
+    folderInput.className = 'detail-header-input mono';
+    folderInput.value = ed.folderPath;
+    folderInput.addEventListener('input', () => {
+        ed.folderPath = folderInput.value;
+        updateHeaderSaveBar();
+    });
+    folderGroup.appendChild(folderInput);
+    detailClientHeader.appendChild(folderGroup);
+    // API Key env var input
+    const apiGroup = document.createElement('div');
+    apiGroup.style.marginTop = '0.75rem';
+    const apiLabel = document.createElement('label');
+    apiLabel.className = 'detail-meta-label';
+    apiLabel.textContent = 'API Key Env Var (optional)';
+    apiGroup.appendChild(apiLabel);
+    const apiInput = document.createElement('input');
+    apiInput.type = 'text';
+    apiInput.className = 'detail-header-input mono';
+    apiInput.placeholder = 'e.g., GEMINI_API_KEY_ACME';
+    apiInput.value = ed.apiKeyEnvVar;
+    apiInput.addEventListener('input', () => {
+        ed.apiKeyEnvVar = apiInput.value;
+        updateHeaderSaveBar();
+    });
+    apiGroup.appendChild(apiInput);
+    detailClientHeader.appendChild(apiGroup);
 }
 function renderDetailModel(modelData) {
     detailModelEl.textContent = '';
@@ -572,6 +707,81 @@ function renderDetailPromptTemplate(prompt) {
     });
     appendDetailPromptPreview(detailPromptTemplate, false);
 }
+// --- Internal: Header property editing ---
+function enterHeaderEditMode() {
+    if (!clientDetailData)
+        return;
+    const c = clientDetailData.client;
+    detailHeaderEditData = {
+        name: c.name || '',
+        folderPath: c.folderPath || '',
+        apiKeyEnvVar: c.apiKeyEnvVar || '',
+        enabled: c.enabled !== false
+    };
+    detailHeaderEditMode = true;
+    renderClientDetail();
+    updateHeaderSaveBar();
+}
+function cancelDetailHeaderEdit() {
+    detailHeaderEditMode = false;
+    detailHeaderEditData = null;
+    detailHeaderSaveBar.style.display = 'none';
+    renderClientDetail();
+}
+function updateHeaderSaveBar() {
+    if (!detailHeaderEditMode || !detailHeaderEditData || !clientDetailData) {
+        detailHeaderSaveBar.style.display = 'none';
+        return;
+    }
+    const c = clientDetailData.client;
+    const ed = detailHeaderEditData;
+    const changed = ed.name !== c.name ||
+        ed.folderPath !== c.folderPath ||
+        ed.apiKeyEnvVar !== (c.apiKeyEnvVar || '') ||
+        ed.enabled !== (c.enabled !== false);
+    detailHeaderSaveBar.style.display = changed ? 'flex' : 'none';
+}
+async function saveHeaderProperties() {
+    if (!clientDetailData || !detailHeaderEditData)
+        return;
+    const c = clientDetailData.client;
+    const clientId = c.clientId;
+    const ed = detailHeaderEditData;
+    saveDetailHeaderBtn.disabled = true;
+    try {
+        const response = await fetch(`/api/clients/${clientId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: ed.name,
+                folderPath: ed.folderPath,
+                apiKeyEnvVar: ed.apiKeyEnvVar || '',
+                enabled: ed.enabled
+            })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to update client');
+        }
+        // Reload annotated config
+        const configRes = await fetch(`/api/clients/${clientId}/config`);
+        if (configRes.ok) {
+            clientDetailData = await configRes.json();
+        }
+        detailHeaderEditMode = false;
+        detailHeaderEditData = null;
+        detailHeaderSaveBar.style.display = 'none';
+        renderClientDetail();
+        updateDetailResetButtons();
+        showAlert('Client properties updated successfully', 'success');
+    }
+    catch (error) {
+        showAlert('Failed to save: ' + error.message, 'error');
+    }
+    finally {
+        saveDetailHeaderBtn.disabled = false;
+    }
+}
 // --- Internal: Override editing ---
 function resetDetailEditState() {
     detailFieldEditMode = false;
@@ -587,21 +797,31 @@ function resetDetailEditState() {
     detailFilenameOverride = null;
     detailModelEditMode = false;
     detailModelOverride = null;
+    detailHeaderEditMode = false;
+    detailHeaderEditData = null;
     detailFieldsSaveBar.style.display = 'none';
     detailTagsSaveBar.style.display = 'none';
     detailPromptSaveBar.style.display = 'none';
     detailFilenameSaveBar.style.display = 'none';
     detailModelSaveBar.style.display = 'none';
+    detailHeaderSaveBar.style.display = 'none';
 }
 function updateDetailResetButtons() {
     if (!clientDetailData)
         return;
     const d = clientDetailData;
-    resetFieldsBtn.style.display = d.fieldDefinitions.some((f) => f._source === 'override') ? 'inline-flex' : 'none';
-    resetTagsBtn.style.display = d.tagDefinitions.some((t) => t._source === 'override') ? 'inline-flex' : 'none';
-    resetPromptBtn.style.display = d.promptTemplate._source === 'override' ? 'inline-flex' : 'none';
-    resetFilenameBtn.style.display = d.filenameTemplate._source === 'override' ? 'inline-flex' : 'none';
-    resetModelBtn.style.display = d.model && d.model._source === 'override' ? 'inline-flex' : 'none';
+    resetFieldsBtn.style.display = d.fieldDefinitions.some((f) => f._source === 'override')
+        ? 'inline-flex'
+        : 'none';
+    resetTagsBtn.style.display = d.tagDefinitions.some((t) => t._source === 'override')
+        ? 'inline-flex'
+        : 'none';
+    resetPromptBtn.style.display =
+        d.promptTemplate._source === 'override' ? 'inline-flex' : 'none';
+    resetFilenameBtn.style.display =
+        d.filenameTemplate._source === 'override' ? 'inline-flex' : 'none';
+    resetModelBtn.style.display =
+        d.model && d.model._source === 'override' ? 'inline-flex' : 'none';
 }
 // --- FIELDS OVERRIDE ---
 function customizeFields() {
@@ -965,13 +1185,19 @@ function flushDetailCellEdit(td) {
     }
 }
 function labelToCamelCase(label) {
-    return label.trim().split(/\s+/).map((word, i) => {
+    return label
+        .trim()
+        .split(/\s+/)
+        .map((word, i) => {
         const lower = word.toLowerCase();
         return i === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
-    }).join('');
+    })
+        .join('');
 }
 function getDetailCompatibleFormats(fieldType) {
-    return Object.entries(VALID_FIELD_FORMATS).filter(([, def]) => def.compatibleTypes.includes(fieldType)).map(([key, def]) => ({ key, label: def.label }));
+    return Object.entries(VALID_FIELD_FORMATS)
+        .filter(([, def]) => def.compatibleTypes.includes(fieldType))
+        .map(([key, def]) => ({ key, label: def.label }));
 }
 function isCellDifferentFromDefault(fieldIndex, propName) {
     if (!globalFieldDefaults || !detailFieldDefinitions)
@@ -987,7 +1213,15 @@ function isCellDifferentFromDefault(fieldIndex, propName) {
 function addDetailCustomField() {
     if (!detailFieldDefinitions)
         return;
-    detailFieldDefinitions.push({ key: '', label: '', type: 'text', schemaHint: '', instruction: '', enabled: true, _source: 'custom' });
+    detailFieldDefinitions.push({
+        key: '',
+        label: '',
+        type: 'text',
+        schemaHint: '',
+        instruction: '',
+        enabled: true,
+        _source: 'custom'
+    });
     renderDetailFieldListEditable();
     detailFieldsSaveBar.style.display = 'flex';
     const lastRow = detailFieldList.querySelector('tbody tr:last-child');
@@ -1550,7 +1784,12 @@ async function saveDetailModelOverride() {
 async function resetOverride(section) {
     if (!clientDetailData)
         return;
-    const sectionNames = { fields: 'field', tags: 'tag', prompt: 'prompt', output: 'filename template' };
+    const sectionNames = {
+        fields: 'field',
+        tags: 'tag',
+        prompt: 'prompt',
+        output: 'filename template'
+    };
     if (!confirm(`Reset ${sectionNames[section]} settings to global defaults? Your custom settings will be removed.`)) {
         return;
     }

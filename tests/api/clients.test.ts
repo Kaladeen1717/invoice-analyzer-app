@@ -209,20 +209,45 @@ describe('POST /api/clients', () => {
 // ============================================================================
 
 describe('PUT /api/clients/:id', () => {
-    it('updates a client', async () => {
-        mockedUpdateClient.mockResolvedValue(undefined as any);
+    const EXISTING_CLIENT = {
+        name: 'Acme Corp',
+        enabled: true,
+        folderPath: '/invoices/acme',
+        fieldOverrides: [{ key: 'total', label: 'Total', type: 'number', enabled: true }],
+        model: 'gemini-2.0-flash',
+        promptOverride: { preamble: 'Custom preamble' }
+    };
 
+    beforeEach(() => {
+        mockedGetClient.mockResolvedValue(EXISTING_CLIENT as any);
+        mockedUpdateClient.mockResolvedValue(undefined as any);
+    });
+
+    it('updates a client and preserves existing overrides', async () => {
         const res = await request(app)
             .put('/api/clients/acme')
             .send({ name: 'Acme Updated', folderPath: '/new' })
             .expect(200);
 
         expect(res.body.success).toBe(true);
-        expect(mockedUpdateClient).toHaveBeenCalledWith('acme', expect.objectContaining({ name: 'Acme Updated' }));
+        const passedConfig = mockedUpdateClient.mock.calls[0][1] as Record<string, unknown>;
+        expect(passedConfig.name).toBe('Acme Updated');
+        expect(passedConfig.folderPath).toBe('/new');
+        expect(passedConfig.fieldOverrides).toEqual(EXISTING_CLIENT.fieldOverrides);
+        expect(passedConfig.model).toBe(EXISTING_CLIENT.model);
+        expect(passedConfig.promptOverride).toEqual(EXISTING_CLIENT.promptOverride);
+    });
+
+    it('preserves existing overrides when updating core properties', async () => {
+        await request(app).put('/api/clients/acme').send({ name: 'New Name', folderPath: '/new-path' }).expect(200);
+
+        const passedConfig = mockedUpdateClient.mock.calls[0][1] as Record<string, unknown>;
+        expect(passedConfig.fieldOverrides).toEqual(EXISTING_CLIENT.fieldOverrides);
+        expect(passedConfig.model).toBe('gemini-2.0-flash');
+        expect(passedConfig.promptOverride).toEqual({ preamble: 'Custom preamble' });
     });
 
     it('passes optional fields', async () => {
-        mockedUpdateClient.mockResolvedValue(undefined as any);
         const tagOverrides = { Vendor: { values: ['Y'] } };
 
         await request(app)
@@ -236,8 +261,15 @@ describe('PUT /api/clients/:id', () => {
         );
     });
 
+    it('clears apiKeyEnvVar when sent as empty string', async () => {
+        await request(app).put('/api/clients/acme').send({ name: 'A', folderPath: '/f', apiKeyEnvVar: '' }).expect(200);
+
+        const passedConfig = mockedUpdateClient.mock.calls[0][1] as Record<string, unknown>;
+        expect(passedConfig.apiKeyEnvVar).toBeUndefined();
+    });
+
     it('returns 404 when client not found', async () => {
-        mockedUpdateClient.mockRejectedValue(new Error('Client "nope" not found'));
+        mockedGetClient.mockRejectedValue(new Error('Client "nope" not found'));
 
         const res = await request(app).put('/api/clients/nope').send({ name: 'X', folderPath: '/f' }).expect(404);
 

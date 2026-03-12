@@ -2,8 +2,16 @@
 // Manages the global prompt template (structured + raw mode, preview, save).
 import { showAlert } from './ui-utils.js';
 // --- State ---
-let promptTemplate = { preamble: '', generalRules: '', suffix: '' };
-let originalPromptTemplate = { preamble: '', generalRules: '', suffix: '' };
+let promptTemplate = {
+    preamble: '',
+    generalRules: '',
+    suffix: ''
+};
+let originalPromptTemplate = {
+    preamble: '',
+    generalRules: '',
+    suffix: ''
+};
 let rawPrompt = null;
 let originalRawPrompt = null;
 let promptRawMode = false;

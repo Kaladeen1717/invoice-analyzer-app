@@ -146,7 +146,7 @@ function renderResults(hasMore) {
         // Tokens
         const tdTokens = document.createElement('td');
         tdTokens.className = 'results-tokens';
-        tdTokens.textContent = formatTokens((result.tokenUsage?.totalTokens || 0));
+        tdTokens.textContent = formatTokens(result.tokenUsage?.totalTokens || 0);
         tr.appendChild(tdTokens);
         tr.addEventListener('click', () => toggleDetail(tr, result));
         tbody.appendChild(tr);

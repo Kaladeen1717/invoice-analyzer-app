@@ -293,7 +293,9 @@ function renderDashboardStats(aggregate) {
     statTotalProcessedEl.textContent = formatNumber(aggregate.totalProcessed);
     statSuccessRateEl.textContent = aggregate.successRate + '%';
     statTotalTokensEl.textContent = formatTokens(aggregate.totalTokens);
-    statLastProcessedEl.textContent = aggregate.lastProcessed ? formatTimestamp(aggregate.lastProcessed) : '-';
+    statLastProcessedEl.textContent = aggregate.lastProcessed
+        ? formatTimestamp(aggregate.lastProcessed)
+        : '-';
 }
 function renderClientProcessingStats(container, stats) {
     if (!stats || stats.total === 0)
@@ -359,7 +361,9 @@ function formatTimestamp(ts) {
         d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }));
 }
 function updateProcessAllButton() {
-    const enabledClientsWithPdfs = clients.filter((c) => c.enabled && c.folderStatus.exists && c.folderStatus.inputPdfCount > 0);
+    const enabledClientsWithPdfs = clients.filter((c) => c.enabled &&
+        c.folderStatus.exists &&
+        c.folderStatus.inputPdfCount > 0);
     processAllBtn.disabled = enabledClientsWithPdfs.length === 0 || isProcessing;
 }
 // --- Internal: Client Form ---
@@ -685,7 +689,9 @@ function handleProcessingUpdate(data) {
     }
 }
 function disableAllProcessButtons() {
-    document.querySelectorAll('.process-btn, .dry-run-btn').forEach((btn) => (btn.disabled = true));
+    document
+        .querySelectorAll('.process-btn, .dry-run-btn')
+        .forEach((btn) => (btn.disabled = true));
     processAllBtn.disabled = true;
 }
 function enableAllProcessButtons() {
@@ -693,7 +699,8 @@ function enableAllProcessButtons() {
         const cId = btn.dataset ? btn.dataset.clientId : null;
         const client = cId ? clients.find((c) => c.clientId === cId) : null;
         const folderStatus = client ? client.folderStatus : null;
-        btn.disabled = !client || !folderStatus || folderStatus.inputPdfCount === 0 || !folderStatus.exists;
+        btn.disabled =
+            !client || !folderStatus || folderStatus.inputPdfCount === 0 || !folderStatus.exists;
     });
     updateProcessAllButton();
 }
