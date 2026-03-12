@@ -28,12 +28,14 @@ export const JSONL_FILENAME = 'results.jsonl';
 // ── Private: debounce timers for cache rebuilds ──
 
 const rebuildTimers = new Map<string, NodeJS.Timeout>();
+const dirtyPaths = new Set<string>();
 
 // ── Private: JSONL helpers ──
 
 async function appendJsonlLine(folderPath: string, record: ResultRecord): Promise<void> {
     const jsonlPath = path.join(folderPath, JSONL_FILENAME);
     await fs.promises.appendFile(jsonlPath, JSON.stringify(record) + '\n');
+    dirtyPaths.add(folderPath);
 }
 
 function parseJsonlToMap(content: string): Map<string, ResultRecord> {
@@ -82,6 +84,7 @@ async function rebuildResultsCache(folderPath: string): Promise<ResultsFileData>
     const lastUpdated = results.length > 0 ? results[0].timestamp : null;
     const data: ResultsFileData = { results, lastUpdated };
     await writeResultsFile(folderPath, data);
+    dirtyPaths.delete(folderPath);
     return data;
 }
 
@@ -136,7 +139,7 @@ async function ensureFreshCache(folderPath: string): Promise<void> {
         return;
     }
 
-    if (jsonlExists && (await isCacheStale(folderPath))) {
+    if (jsonlExists && (dirtyPaths.has(folderPath) || (await isCacheStale(folderPath)))) {
         await rebuildResultsCache(folderPath);
     }
 }
