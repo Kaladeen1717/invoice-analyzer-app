@@ -110,7 +110,18 @@ export async function processWithRetry(
  * @returns Processing results summary
  */
 export async function processAllInvoices(config: AppConfig, options: ProcessAllOptions = {}): Promise<BatchResult> {
-    const { apiKey, csvPath, onProgress, onComplete, onInvoiceComplete, storeResults = true, dryRun, files } = options;
+    const {
+        apiKey,
+        csvPath,
+        onProgress,
+        onComplete,
+        onInvoiceComplete,
+        storeResults = true,
+        dryRun,
+        files,
+        clientId,
+        clientName
+    } = options;
 
     // Get all PDF files, then filter if specific files requested
     let pdfFiles = await getPdfFiles(config);
@@ -190,7 +201,9 @@ export async function processAllInvoices(config: AppConfig, options: ProcessAllO
                 try {
                     await appendResult(folders.base, result, {
                         model: config.model,
-                        duration: (result as { duration?: number }).duration
+                        duration: (result as { duration?: number }).duration,
+                        clientId,
+                        clientName
                     });
                 } catch (err: unknown) {
                     console.error(`Warning: Failed to store processing result: ${(err as Error).message}`);

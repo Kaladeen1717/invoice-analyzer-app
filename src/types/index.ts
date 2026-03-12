@@ -47,6 +47,7 @@ export type {
     MultiClientResult,
     OnClientStartCallback,
     OnClientCompleteCallback,
+    GlobalResultRecord,
     ResultRecord,
     ResultsFileData,
     GetResultsOptions,

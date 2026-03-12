@@ -89,6 +89,8 @@ export interface ProcessAllOptions {
     storeResults?: boolean;
     dryRun?: boolean;
     files?: string[];
+    clientId?: string;
+    clientName?: string;
 }
 
 /** Per-client batch result */
@@ -122,6 +124,24 @@ export type OnClientCompleteCallback = (data: {
     csvRowsAdded: number;
     tokenUsage: TokenUsage;
 }) => void;
+
+/** Global archive record — ResultRecord with client context, without rawResponse */
+export interface GlobalResultRecord {
+    id: string;
+    clientId: string;
+    clientName: string;
+    originalFilename: string;
+    outputFilename: string | null;
+    status: 'success' | 'failed' | 'dry-run';
+    model: string | null;
+    extractedFields: Record<string, unknown>;
+    tags: Record<string, boolean>;
+    tokenUsage: TokenUsage;
+    timestamp: string;
+    error: string | null;
+    duration: number | null;
+    retriedFrom?: string;
+}
 
 /** Stored result record (in processing-results.json) */
 export interface ResultRecord {

@@ -6,15 +6,18 @@
  * on a debounced schedule or on-demand when a read detects staleness.
  * This eliminates the read-modify-write race that dropped results under
  * concurrent p-limit workers.
+ *
+ * Also maintains a global cross-client archive at data/global-results.jsonl
+ * for aggregate analytics.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-
 import type {
     ProcessingResult,
     ResultRecord,
+    GlobalResultRecord,
     ResultsFileData,
     GetResultsOptions,
     PaginatedResults,
@@ -24,11 +27,19 @@ import type {
 
 export const RESULTS_FILENAME = 'processing-results.json';
 export const JSONL_FILENAME = 'results.jsonl';
+export const GLOBAL_ARCHIVE_DIR = 'data';
+export const GLOBAL_ARCHIVE_FILENAME = 'global-results.jsonl';
 
 // ── Private: debounce timers for cache rebuilds ──
 
 const rebuildTimers = new Map<string, NodeJS.Timeout>();
 const dirtyPaths = new Set<string>();
+
+// ── Private: project root resolution ──
+
+function getGlobalArchivePath(): string {
+    return path.join(process.cwd(), GLOBAL_ARCHIVE_DIR, GLOBAL_ARCHIVE_FILENAME);
+}
 
 // ── Private: JSONL helpers ──
 
@@ -38,13 +49,13 @@ async function appendJsonlLine(folderPath: string, record: ResultRecord): Promis
     dirtyPaths.add(folderPath);
 }
 
-function parseJsonlToMap(content: string): Map<string, ResultRecord> {
-    const map = new Map<string, ResultRecord>();
+function parseJsonlToMap<T extends { id: string }>(content: string): Map<string, T> {
+    const map = new Map<string, T>();
     for (const line of content.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed) continue;
         try {
-            const record = JSON.parse(trimmed) as ResultRecord;
+            const record = JSON.parse(trimmed) as T;
             map.set(record.id, record); // last occurrence wins (dedup for retries)
         } catch {
             // Skip corrupt lines — more resilient than JSON (single corruption ≠ total loss)
@@ -75,7 +86,7 @@ async function writeResultsFile(folderPath: string, data: ResultsFileData): Prom
 async function rebuildResultsCache(folderPath: string): Promise<ResultsFileData> {
     const jsonlPath = path.join(folderPath, JSONL_FILENAME);
     const content = await fs.promises.readFile(jsonlPath, 'utf-8');
-    const map = parseJsonlToMap(content);
+    const map = parseJsonlToMap<ResultRecord>(content);
 
     const results = Array.from(map.values()).sort(
         (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -158,6 +169,35 @@ function scheduleCacheRebuild(folderPath: string): void {
     rebuildTimers.set(folderPath, timer);
 }
 
+// ── Private: global archive ──
+
+function toGlobalRecord(record: ResultRecord, clientId: string, clientName: string): GlobalResultRecord {
+    const globalRecord: GlobalResultRecord = {
+        id: record.id,
+        clientId,
+        clientName,
+        originalFilename: record.originalFilename,
+        outputFilename: record.outputFilename,
+        status: record.status,
+        model: record.model,
+        extractedFields: record.extractedFields,
+        tags: record.tags,
+        tokenUsage: record.tokenUsage,
+        timestamp: record.timestamp,
+        error: record.error,
+        duration: record.duration
+    };
+    if (record.retriedFrom) globalRecord.retriedFrom = record.retriedFrom;
+    return globalRecord;
+}
+
+async function appendGlobalResult(record: ResultRecord, clientId: string, clientName: string): Promise<void> {
+    const archivePath = getGlobalArchivePath();
+    await fs.promises.mkdir(path.dirname(archivePath), { recursive: true });
+    const globalRecord = toGlobalRecord(record, clientId, clientName);
+    await fs.promises.appendFile(archivePath, JSON.stringify(globalRecord) + '\n');
+}
+
 // ── Private: record builder ──
 
 function buildRecord(
@@ -204,15 +244,25 @@ function buildRecord(
 
 /**
  * Append a single processing result to the client's JSONL log.
+ * If clientId and clientName are provided, also appends to the global archive.
  */
 export async function appendResult(
     folderPath: string,
     result: ProcessingResult,
-    options: { model?: string | null; duration?: number | null } = {}
+    options: { model?: string | null; duration?: number | null; clientId?: string; clientName?: string } = {}
 ): Promise<ResultRecord> {
     const record = buildRecord(result, options);
     await appendJsonlLine(folderPath, record);
     scheduleCacheRebuild(folderPath);
+
+    if (options.clientId && options.clientName) {
+        try {
+            await appendGlobalResult(record, options.clientId, options.clientName);
+        } catch (err: unknown) {
+            console.error(`Warning: Failed to write to global archive: ${(err as Error).message}`);
+        }
+    }
+
     return record;
 }
 
@@ -312,12 +362,13 @@ export async function getSummary(folderPath: string): Promise<SummaryStats> {
 /**
  * Replace a result entry by ID with a new processing outcome.
  * Appends a new JSONL line with the same ID — last occurrence wins on rebuild.
+ * If clientId and clientName are provided, also appends to the global archive.
  */
 export async function updateResult(
     folderPath: string,
     id: string,
     result: ProcessingResult,
-    options: { model?: string | null; duration?: number | null } = {}
+    options: { model?: string | null; duration?: number | null; clientId?: string; clientName?: string } = {}
 ): Promise<ResultRecord> {
     await ensureFreshCache(folderPath);
     const data = await readResultsFile(folderPath);
@@ -333,6 +384,15 @@ export async function updateResult(
 
     await appendJsonlLine(folderPath, record);
     scheduleCacheRebuild(folderPath);
+
+    if (options.clientId && options.clientName) {
+        try {
+            await appendGlobalResult(record, options.clientId, options.clientName);
+        } catch (err: unknown) {
+            console.error(`Warning: Failed to write to global archive: ${(err as Error).message}`);
+        }
+    }
+
     return record;
 }
 
@@ -343,4 +403,97 @@ export async function getFailedResults(folderPath: string): Promise<ResultRecord
     await ensureFreshCache(folderPath);
     const data = await readResultsFile(folderPath);
     return data.results.filter((r) => r.status === 'failed');
+}
+
+// ── Global archive stats ──
+
+interface ClientStats {
+    total: number;
+    success: number;
+    failed: number;
+    successRate: number;
+    totalTokens: number;
+    totalCachedTokens: number;
+    lastProcessed: string | null;
+}
+
+/**
+ * Get aggregate stats from the global archive. Returns null if archive doesn't exist.
+ * Same response shape as /api/stats for backward compatibility.
+ */
+export async function getGlobalStats(): Promise<{
+    aggregate: {
+        totalProcessed: number;
+        totalSuccess: number;
+        totalFailed: number;
+        successRate: number;
+        totalTokens: number;
+        totalCachedTokens: number;
+        lastProcessed: string | null;
+    };
+    perClient: Record<string, ClientStats>;
+} | null> {
+    const archivePath = getGlobalArchivePath();
+    if (!(await fileExists(archivePath))) return null;
+
+    const content = await fs.promises.readFile(archivePath, 'utf-8');
+    const map = parseJsonlToMap<GlobalResultRecord>(content);
+
+    if (map.size === 0) return null;
+
+    // Group by clientId
+    const byClient = new Map<string, GlobalResultRecord[]>();
+    for (const record of map.values()) {
+        const existing = byClient.get(record.clientId) || [];
+        existing.push(record);
+        byClient.set(record.clientId, existing);
+    }
+
+    const aggregate = {
+        totalProcessed: 0,
+        totalSuccess: 0,
+        totalFailed: 0,
+        successRate: 0,
+        totalTokens: 0,
+        totalCachedTokens: 0,
+        lastProcessed: null as string | null
+    };
+
+    const perClient: Record<string, ClientStats> = {};
+
+    for (const [clientId, records] of byClient) {
+        const success = records.filter((r) => r.status === 'success').length;
+        const failed = records.filter((r) => r.status === 'failed').length;
+        const totalTokens = records.reduce((sum, r) => sum + (r.tokenUsage?.totalTokens || 0), 0);
+        const totalCachedTokens = records.reduce((sum, r) => sum + (r.tokenUsage?.cachedTokens || 0), 0);
+
+        const timestamps = records.map((r) => r.timestamp).sort();
+        const lastProcessed = timestamps.length > 0 ? timestamps[timestamps.length - 1] : null;
+
+        perClient[clientId] = {
+            total: records.length,
+            success,
+            failed,
+            successRate: records.length > 0 ? Math.round((success / records.length) * 100) : 0,
+            totalTokens,
+            totalCachedTokens,
+            lastProcessed
+        };
+
+        aggregate.totalProcessed += records.length;
+        aggregate.totalSuccess += success;
+        aggregate.totalFailed += failed;
+        aggregate.totalTokens += totalTokens;
+        aggregate.totalCachedTokens += totalCachedTokens;
+
+        if (lastProcessed && (!aggregate.lastProcessed || lastProcessed > aggregate.lastProcessed)) {
+            aggregate.lastProcessed = lastProcessed;
+        }
+    }
+
+    if (aggregate.totalProcessed > 0) {
+        aggregate.successRate = Math.round((aggregate.totalSuccess / aggregate.totalProcessed) * 100);
+    }
+
+    return { aggregate, perClient };
 }
