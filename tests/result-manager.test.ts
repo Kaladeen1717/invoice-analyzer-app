@@ -8,7 +8,8 @@ import {
     getSummary,
     updateResult,
     getFailedResults,
-    RESULTS_FILENAME
+    RESULTS_FILENAME,
+    JSONL_FILENAME
 } from '../src/result-manager.js';
 
 const fsp = fs.promises;
@@ -45,26 +46,36 @@ function failedResult(overrides = {}): any {
 }
 
 describe('appendResult', () => {
-    test('creates results file when none exists', async () => {
+    test('creates JSONL file when none exists', async () => {
         await appendResult(tmpDir, successResult(), { model: 'gemini-test', duration: 3000 });
 
-        const data = JSON.parse(await fsp.readFile(path.join(tmpDir, RESULTS_FILENAME), 'utf-8'));
-        expect(data.results).toHaveLength(1);
-        expect(data.results[0].status).toBe('success');
-        expect(data.results[0].model).toBe('gemini-test');
-        expect(data.results[0].duration).toBe(3000);
-        expect(data.results[0].id).toBeTruthy();
-        expect(data.lastUpdated).toBeTruthy();
+        // Verify JSONL has 1 line
+        const jsonl = await fsp.readFile(path.join(tmpDir, JSONL_FILENAME), 'utf-8');
+        const lines = jsonl.trim().split('\n');
+        expect(lines).toHaveLength(1);
+
+        const record = JSON.parse(lines[0]);
+        expect(record.status).toBe('success');
+        expect(record.model).toBe('gemini-test');
+        expect(record.duration).toBe(3000);
+        expect(record.id).toBeTruthy();
+
+        // Verify cache is built on read
+        const result = await getResults(tmpDir);
+        expect(result.results).toHaveLength(1);
     });
 
-    test('appends to existing results', async () => {
+    test('appends to existing JSONL', async () => {
         await appendResult(tmpDir, successResult());
         await appendResult(tmpDir, failedResult());
 
-        const data = JSON.parse(await fsp.readFile(path.join(tmpDir, RESULTS_FILENAME), 'utf-8'));
-        expect(data.results).toHaveLength(2);
-        expect(data.results[0].status).toBe('success');
-        expect(data.results[1].status).toBe('failed');
+        const jsonl = await fsp.readFile(path.join(tmpDir, JSONL_FILENAME), 'utf-8');
+        const lines = jsonl.trim().split('\n');
+        expect(lines).toHaveLength(2);
+
+        // Verify cache via getResults (triggers rebuild)
+        const result = await getResults(tmpDir);
+        expect(result.results).toHaveLength(2);
     });
 
     test('stores extracted fields and tags for success', async () => {
@@ -203,5 +214,152 @@ describe('getFailedResults', () => {
         await appendResult(tmpDir, successResult());
         const failed = await getFailedResults(tmpDir);
         expect(failed).toHaveLength(0);
+    });
+});
+
+describe('concurrent writes (regression)', () => {
+    test('all results are preserved under concurrent appendResult calls', async () => {
+        const count = 10;
+        const promises = Array.from({ length: count }, (_, i) =>
+            appendResult(tmpDir, successResult({ originalFilename: `concurrent-${i}.pdf` }), { model: 'test' })
+        );
+
+        const records = await Promise.all(promises);
+        expect(records).toHaveLength(count);
+
+        // Verify JSONL has all lines
+        const jsonl = await fsp.readFile(path.join(tmpDir, JSONL_FILENAME), 'utf-8');
+        const lines = jsonl.trim().split('\n');
+        expect(lines).toHaveLength(count);
+
+        // Verify all records are readable (forces cache rebuild)
+        const result = await getResults(tmpDir, { limit: 100 });
+        expect(result.total).toBe(count);
+
+        // Verify all unique IDs are present
+        const ids = new Set(result.results.map((r) => r.id));
+        expect(ids.size).toBe(count);
+    });
+});
+
+describe('migration', () => {
+    test('migrates legacy JSON to JSONL on first read', async () => {
+        // Write legacy processing-results.json directly (no JSONL)
+        const legacyData = {
+            results: [
+                {
+                    id: 'legacy-1',
+                    originalFilename: 'old-invoice.pdf',
+                    outputFilename: null,
+                    status: 'success',
+                    model: 'gemini-old',
+                    extractedFields: { amount: 100 },
+                    tags: {},
+                    tokenUsage: {
+                        promptTokens: 50,
+                        outputTokens: 25,
+                        totalTokens: 75,
+                        cachedTokens: 0,
+                        thoughtsTokens: 0
+                    },
+                    timestamp: '2024-01-01T00:00:00.000Z',
+                    error: null,
+                    rawResponse: null,
+                    duration: 1000
+                },
+                {
+                    id: 'legacy-2',
+                    originalFilename: 'old-invoice-2.pdf',
+                    outputFilename: null,
+                    status: 'failed',
+                    model: 'gemini-old',
+                    extractedFields: {},
+                    tags: {},
+                    tokenUsage: {
+                        promptTokens: 0,
+                        outputTokens: 0,
+                        totalTokens: 0,
+                        cachedTokens: 0,
+                        thoughtsTokens: 0
+                    },
+                    timestamp: '2024-01-02T00:00:00.000Z',
+                    error: 'some error',
+                    rawResponse: null,
+                    duration: null
+                }
+            ],
+            lastUpdated: '2024-01-02T00:00:00.000Z'
+        };
+
+        await fsp.writeFile(path.join(tmpDir, RESULTS_FILENAME), JSON.stringify(legacyData, null, 2));
+
+        // First read triggers migration
+        const result = await getResults(tmpDir);
+        expect(result.total).toBe(2);
+
+        // Verify JSONL was created
+        const jsonl = await fsp.readFile(path.join(tmpDir, JSONL_FILENAME), 'utf-8');
+        const lines = jsonl.trim().split('\n');
+        expect(lines).toHaveLength(2);
+
+        // Verify records are accessible
+        const found = await getResult(tmpDir, 'legacy-1');
+        expect(found!.originalFilename).toBe('old-invoice.pdf');
+    });
+});
+
+describe('retry dedup', () => {
+    test('updateResult appends new JSONL line, getResult returns latest', async () => {
+        const original = await appendResult(tmpDir, failedResult());
+        await updateResult(tmpDir, original.id, successResult(), { model: 'retry-model' });
+
+        // JSONL should have 2 lines (original + retry, same id)
+        const jsonl = await fsp.readFile(path.join(tmpDir, JSONL_FILENAME), 'utf-8');
+        const lines = jsonl.trim().split('\n');
+        expect(lines).toHaveLength(2);
+
+        // Both lines should have the same id
+        const parsed = lines.map((l) => JSON.parse(l));
+        expect(parsed[0].id).toBe(parsed[1].id);
+
+        // getResult should return only the retry outcome (last wins)
+        const fetched = await getResult(tmpDir, original.id);
+        expect(fetched!.status).toBe('success');
+        expect(fetched!.model).toBe('retry-model');
+        expect(fetched!.retriedFrom).toBe(original.timestamp);
+    });
+});
+
+describe('corrupt JSONL handling', () => {
+    test('skips corrupt lines and recovers valid records', async () => {
+        // Write JSONL with a corrupt line in the middle
+        const validRecord = {
+            id: 'valid-1',
+            originalFilename: 'test.pdf',
+            outputFilename: null,
+            status: 'success',
+            model: 'test',
+            extractedFields: {},
+            tags: {},
+            tokenUsage: {
+                promptTokens: 0,
+                outputTokens: 0,
+                totalTokens: 0,
+                cachedTokens: 0,
+                thoughtsTokens: 0
+            },
+            timestamp: '2024-01-01T00:00:00.000Z',
+            error: null,
+            rawResponse: null,
+            duration: null
+        };
+
+        const jsonlContent = [JSON.stringify(validRecord), '{corrupt json here', ''].join('\n');
+
+        await fsp.writeFile(path.join(tmpDir, JSONL_FILENAME), jsonlContent);
+
+        const result = await getResults(tmpDir);
+        expect(result.total).toBe(1);
+        expect(result.results[0].id).toBe('valid-1');
     });
 });
