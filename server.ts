@@ -75,7 +75,7 @@ const activeProcessing = new Map<string, boolean>();
 app.get('/api/clients', async (req: Request, res: Response) => {
     try {
         const clients = await getAllClients();
-        const globalConfig = await loadConfig();
+        const globalConfig = await loadConfig({ requireFolders: false });
 
         if (!clients) {
             return res.json({
@@ -123,7 +123,7 @@ app.get('/api/clients/:id', async (req: Request, res: Response) => {
     try {
         const clientId = req.params.id as string;
         const client = await getClient(clientId);
-        const globalConfig = await loadConfig();
+        const globalConfig = await loadConfig({ requireFolders: false });
         const folderStatus = await getClientFolderStatus(
             client.folderPath,
             globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER
@@ -266,7 +266,7 @@ app.get('/api/clients/:id/status', async (req: Request, res: Response) => {
     try {
         const clientId = req.params.id as string;
         const client = await getClient(clientId);
-        const globalConfig = await loadConfig();
+        const globalConfig = await loadConfig({ requireFolders: false });
         const folderStatus = await getClientFolderStatus(
             client.folderPath,
             globalConfig.output?.processedOriginalSubfolder || DEFAULT_PROCESSED_ORIGINAL_SUBFOLDER
@@ -699,7 +699,7 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req: Reques
 
         activeProcessing.set(clientId, true);
 
-        const globalConfig = await loadConfig();
+        const globalConfig = await loadConfig({ requireFolders: false });
         const clientConfig = await getClientConfig(clientId, globalConfig);
         const apiKey = resolveApiKey(clientConfig);
 
@@ -1012,7 +1012,7 @@ app.post('/api/clients/:id/process', processingLimiter, async (req: Request, res
 
         activeProcessing.set(clientId, true);
 
-        const globalConfig = await loadConfig();
+        const globalConfig = await loadConfig({ requireFolders: false });
         const clientConfig = await getClientConfig(clientId, globalConfig);
 
         // Check if folder exists
@@ -1117,7 +1117,7 @@ app.post('/api/clients/process-all', processingLimiter, async (req: Request, res
         activeProcessing.set('all', true);
 
         const clients = await getAllClients();
-        const globalConfig = await loadConfig();
+        const globalConfig = await loadConfig({ requireFolders: false });
 
         if (!clients || Object.keys(clients).length === 0) {
             res.write(
