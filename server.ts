@@ -20,7 +20,14 @@ import {
 } from './src/config.js';
 import { buildPromptPreview } from './src/prompt-builder.js';
 import { processAllInvoices, processWithRetry } from './src/parallel-processor.js';
-import { getResults, getSummary, getResult, getFailedResults, updateResult } from './src/result-manager.js';
+import {
+    getResults,
+    getSummary,
+    getResult,
+    getFailedResults,
+    updateResult,
+    getGlobalStats
+} from './src/result-manager.js';
 import {
     getAllClients,
     getClient,
@@ -779,7 +786,9 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req: Reques
                 // Update the result record
                 await updateResult(clientConfig.folders.base, failedResult.id, result, {
                     model: processingConfig.model,
-                    duration: (result as { duration?: number }).duration
+                    duration: (result as { duration?: number }).duration,
+                    clientId,
+                    clientName: clientConfig.name
                 });
 
                 if (result.success) {
@@ -854,8 +863,15 @@ app.post('/api/clients/:id/results/retry', processingLimiter, async (req: Reques
 /**
  * GET /api/stats - Aggregate processing statistics across all clients
  */
-app.get('/api/stats', async (req: Request, res: Response) => {
+app.get('/api/stats', async (_req: Request, res: Response) => {
     try {
+        // Fast path: read from global archive
+        const globalStats = await getGlobalStats();
+        if (globalStats) {
+            return res.json(globalStats);
+        }
+
+        // Fallback: per-client loop (pre-backfill or empty archive)
         const clients = await getAllClients();
         const globalConfig = await loadConfig({ requireFolders: false });
 
@@ -1039,6 +1055,8 @@ app.post('/api/clients/:id/process', processingLimiter, async (req: Request, res
             csvPath: clientConfig.folders.csvPath,
             dryRun,
             files,
+            clientId,
+            clientName: clientConfig.name,
             onProgress: (data) => {
                 res.write('data: ' + JSON.stringify({ ...data, clientId, dryRun }) + '\n\n');
             },
@@ -1194,6 +1212,8 @@ app.post('/api/clients/process-all', processingLimiter, async (req: Request, res
 
                 await processAllInvoices(processingConfig, {
                     csvPath: clientConfig.folders.csvPath,
+                    clientId,
+                    clientName: clientConfig.name,
                     onProgress: (data) => {
                         res.write('data: ' + JSON.stringify({ ...data, clientId }) + '\n\n');
                     },

@@ -8,8 +8,11 @@ import {
     getSummary,
     updateResult,
     getFailedResults,
+    getGlobalStats,
     RESULTS_FILENAME,
-    JSONL_FILENAME
+    JSONL_FILENAME,
+    GLOBAL_ARCHIVE_DIR,
+    GLOBAL_ARCHIVE_FILENAME
 } from '../src/result-manager.js';
 
 const fsp = fs.promises;
@@ -361,5 +364,239 @@ describe('corrupt JSONL handling', () => {
         const result = await getResults(tmpDir);
         expect(result.total).toBe(1);
         expect(result.results[0].id).toBe('valid-1');
+    });
+});
+
+describe('global archive', () => {
+    test('appendResult with client context writes to global archive', async () => {
+        const record = await appendResult(tmpDir, successResult(), {
+            model: 'test',
+            clientId: 'acme',
+            clientName: 'Acme Corp'
+        });
+
+        // Verify global archive was written
+        // getGlobalArchivePath resolves relative to src/result-manager.ts → project root/data/
+        const projectRoot = process.cwd();
+        const archivePath = path.join(projectRoot, GLOBAL_ARCHIVE_DIR, GLOBAL_ARCHIVE_FILENAME);
+        const content = await fsp.readFile(archivePath, 'utf-8');
+        const lines = content.trim().split('\n');
+        const lastLine = JSON.parse(lines[lines.length - 1]);
+
+        expect(lastLine.id).toBe(record.id);
+        expect(lastLine.clientId).toBe('acme');
+        expect(lastLine.clientName).toBe('Acme Corp');
+        expect(lastLine.rawResponse).toBeUndefined(); // excluded from global records
+    });
+
+    test('appendResult without client context does not write to global archive', async () => {
+        const projectRoot = process.cwd();
+        const archivePath = path.join(projectRoot, GLOBAL_ARCHIVE_DIR, GLOBAL_ARCHIVE_FILENAME);
+
+        // Record size before
+        let sizeBefore = 0;
+        try {
+            const stat = await fsp.stat(archivePath);
+            sizeBefore = stat.size;
+        } catch {
+            // File may not exist
+        }
+
+        await appendResult(tmpDir, successResult(), { model: 'test' });
+
+        // File size should not have changed
+        let sizeAfter = 0;
+        try {
+            const stat = await fsp.stat(archivePath);
+            sizeAfter = stat.size;
+        } catch {
+            // File may not exist
+        }
+
+        expect(sizeAfter).toBe(sizeBefore);
+    });
+
+    test('updateResult with client context writes retry to global archive', async () => {
+        const original = await appendResult(tmpDir, failedResult(), {
+            clientId: 'acme',
+            clientName: 'Acme Corp'
+        });
+
+        const updated = await updateResult(tmpDir, original.id, successResult(), {
+            model: 'retry',
+            clientId: 'acme',
+            clientName: 'Acme Corp'
+        });
+
+        const projectRoot = process.cwd();
+        const archivePath = path.join(projectRoot, GLOBAL_ARCHIVE_DIR, GLOBAL_ARCHIVE_FILENAME);
+        const content = await fsp.readFile(archivePath, 'utf-8');
+        const lines = content.trim().split('\n');
+        const lastLine = JSON.parse(lines[lines.length - 1]);
+
+        expect(lastLine.id).toBe(updated.id);
+        expect(lastLine.status).toBe('success');
+        expect(lastLine.retriedFrom).toBe(original.timestamp);
+    });
+});
+
+describe('getGlobalStats', () => {
+    const projectRoot = process.cwd();
+    const archivePath = path.join(projectRoot, GLOBAL_ARCHIVE_DIR, GLOBAL_ARCHIVE_FILENAME);
+
+    // Note: global archive is shared across tests, so we clean up after ourselves
+    let originalContent: string | null = null;
+
+    beforeEach(async () => {
+        try {
+            originalContent = await fsp.readFile(archivePath, 'utf-8');
+        } catch {
+            originalContent = null;
+        }
+    });
+
+    afterEach(async () => {
+        if (originalContent === null) {
+            try {
+                await fsp.unlink(archivePath);
+            } catch {
+                // May not exist
+            }
+        } else {
+            await fsp.writeFile(archivePath, originalContent);
+        }
+    });
+
+    test('returns null when archive does not exist', async () => {
+        // Remove archive if it exists
+        try {
+            await fsp.unlink(archivePath);
+        } catch {
+            // May not exist
+        }
+
+        const stats = await getGlobalStats();
+        expect(stats).toBeNull();
+    });
+
+    test('aggregates multi-client data correctly', async () => {
+        const records = [
+            {
+                id: 'r1',
+                clientId: 'acme',
+                clientName: 'Acme',
+                originalFilename: 'a.pdf',
+                outputFilename: null,
+                status: 'success',
+                model: 'test',
+                extractedFields: {},
+                tags: {},
+                tokenUsage: { promptTokens: 100, outputTokens: 50, totalTokens: 150, cachedTokens: 10 },
+                timestamp: '2024-01-01T00:00:00.000Z',
+                error: null,
+                duration: 1000
+            },
+            {
+                id: 'r2',
+                clientId: 'acme',
+                clientName: 'Acme',
+                originalFilename: 'b.pdf',
+                outputFilename: null,
+                status: 'failed',
+                model: 'test',
+                extractedFields: {},
+                tags: {},
+                tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 },
+                timestamp: '2024-01-02T00:00:00.000Z',
+                error: 'err',
+                duration: null
+            },
+            {
+                id: 'r3',
+                clientId: 'globex',
+                clientName: 'Globex',
+                originalFilename: 'c.pdf',
+                outputFilename: null,
+                status: 'success',
+                model: 'test',
+                extractedFields: {},
+                tags: {},
+                tokenUsage: { promptTokens: 200, outputTokens: 100, totalTokens: 300, cachedTokens: 20 },
+                timestamp: '2024-01-03T00:00:00.000Z',
+                error: null,
+                duration: 2000
+            }
+        ];
+
+        await fsp.mkdir(path.dirname(archivePath), { recursive: true });
+        await fsp.writeFile(archivePath, records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+        const stats = await getGlobalStats();
+        expect(stats).not.toBeNull();
+        expect(stats!.aggregate.totalProcessed).toBe(3);
+        expect(stats!.aggregate.totalSuccess).toBe(2);
+        expect(stats!.aggregate.totalFailed).toBe(1);
+        expect(stats!.aggregate.successRate).toBe(67);
+        expect(stats!.aggregate.totalTokens).toBe(450);
+        expect(stats!.aggregate.totalCachedTokens).toBe(30);
+        expect(stats!.aggregate.lastProcessed).toBe('2024-01-03T00:00:00.000Z');
+
+        expect(stats!.perClient.acme.total).toBe(2);
+        expect(stats!.perClient.acme.success).toBe(1);
+        expect(stats!.perClient.acme.failed).toBe(1);
+        expect(stats!.perClient.globex.total).toBe(1);
+        expect(stats!.perClient.globex.success).toBe(1);
+    });
+
+    test('deduplicates retries by ID (last wins)', async () => {
+        const records = [
+            {
+                id: 'r1',
+                clientId: 'acme',
+                clientName: 'Acme',
+                originalFilename: 'a.pdf',
+                outputFilename: null,
+                status: 'failed',
+                model: 'test',
+                extractedFields: {},
+                tags: {},
+                tokenUsage: { promptTokens: 0, outputTokens: 0, totalTokens: 0, cachedTokens: 0 },
+                timestamp: '2024-01-01T00:00:00.000Z',
+                error: 'err',
+                duration: null
+            },
+            {
+                id: 'r1',
+                clientId: 'acme',
+                clientName: 'Acme',
+                originalFilename: 'a.pdf',
+                outputFilename: 'out.pdf',
+                status: 'success',
+                model: 'test',
+                extractedFields: {},
+                tags: {},
+                tokenUsage: { promptTokens: 100, outputTokens: 50, totalTokens: 150, cachedTokens: 0 },
+                timestamp: '2024-01-02T00:00:00.000Z',
+                error: null,
+                duration: 1000,
+                retriedFrom: '2024-01-01T00:00:00.000Z'
+            }
+        ];
+
+        await fsp.mkdir(path.dirname(archivePath), { recursive: true });
+        await fsp.writeFile(archivePath, records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+        const stats = await getGlobalStats();
+        expect(stats!.aggregate.totalProcessed).toBe(1);
+        expect(stats!.aggregate.totalSuccess).toBe(1);
+        expect(stats!.aggregate.totalFailed).toBe(0);
+    });
+
+    test('returns null for empty archive', async () => {
+        await fsp.mkdir(path.dirname(archivePath), { recursive: true });
+        await fsp.writeFile(archivePath, '\n');
+
+        const stats = await getGlobalStats();
+        expect(stats).toBeNull();
     });
 });

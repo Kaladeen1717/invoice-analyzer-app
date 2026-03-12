@@ -19,6 +19,9 @@ clients/*.json
 **/processing-results.json
 **/results.jsonl
 
+# Global analytics archive
+data/
+
 # Evaluation fixtures (real invoices + ground truth — private)
 tests/fixtures/eval-corpus/
 tests/fixtures/eval-results/

@@ -6,13 +6,14 @@ jest.mock('../../src/result-manager.js');
 
 import { getAllClients, getClientConfig } from '../../src/client-manager.js';
 import { loadConfig } from '../../src/config.js';
-import { getResults, getSummary } from '../../src/result-manager.js';
+import { getResults, getSummary, getGlobalStats } from '../../src/result-manager.js';
 
 const mockedGetAllClients = jest.mocked(getAllClients);
 const mockedGetClientConfig = jest.mocked(getClientConfig);
 const mockedLoadConfig = jest.mocked(loadConfig);
 const mockedGetResults = jest.mocked(getResults);
 const mockedGetSummary = jest.mocked(getSummary);
+const mockedGetGlobalStats = jest.mocked(getGlobalStats);
 
 import app from '../../server.js';
 
@@ -131,7 +132,50 @@ describe('GET /api/clients/:id/results/summary', () => {
 // ============================================================================
 
 describe('GET /api/stats', () => {
-    it('returns aggregate stats across all clients', async () => {
+    it('uses global archive fast path when available', async () => {
+        const globalData = {
+            aggregate: {
+                totalProcessed: 15,
+                totalSuccess: 12,
+                totalFailed: 3,
+                successRate: 80,
+                totalTokens: 3000,
+                totalCachedTokens: 100,
+                lastProcessed: '2026-01-20T10:00:00Z'
+            },
+            perClient: {
+                acme: {
+                    total: 10,
+                    success: 8,
+                    failed: 2,
+                    successRate: 80,
+                    totalTokens: 2000,
+                    totalCachedTokens: 50,
+                    lastProcessed: '2026-01-20T10:00:00Z'
+                },
+                globex: {
+                    total: 5,
+                    success: 4,
+                    failed: 1,
+                    successRate: 80,
+                    totalTokens: 1000,
+                    totalCachedTokens: 50,
+                    lastProcessed: '2026-01-15T10:00:00Z'
+                }
+            }
+        };
+        mockedGetGlobalStats.mockResolvedValue(globalData);
+
+        const res = await request(app).get('/api/stats').expect(200);
+
+        expect(res.body).toEqual(globalData);
+        expect(mockedGetGlobalStats).toHaveBeenCalled();
+        // Should NOT fall back to per-client loop
+        expect(mockedGetAllClients).not.toHaveBeenCalled();
+    });
+
+    it('falls back to per-client loop when global archive is null', async () => {
+        mockedGetGlobalStats.mockResolvedValue(null);
         mockedGetAllClients.mockResolvedValue({
             acme: { name: 'Acme', enabled: true },
             globex: { name: 'Globex', enabled: true }
@@ -155,7 +199,8 @@ describe('GET /api/stats', () => {
         expect(res.body.perClient).toHaveProperty('globex');
     });
 
-    it('returns empty aggregate when no clients', async () => {
+    it('returns empty aggregate when no clients (fallback)', async () => {
+        mockedGetGlobalStats.mockResolvedValue(null);
         mockedGetAllClients.mockResolvedValue(null as any);
 
         const res = await request(app).get('/api/stats').expect(200);
@@ -164,7 +209,8 @@ describe('GET /api/stats', () => {
         expect(res.body.perClient).toEqual({});
     });
 
-    it('skips clients with missing folders', async () => {
+    it('skips clients with missing folders (fallback)', async () => {
+        mockedGetGlobalStats.mockResolvedValue(null);
         mockedGetAllClients.mockResolvedValue({
             acme: { name: 'Acme', enabled: true },
             broken: { name: 'Broken', enabled: true }
@@ -188,7 +234,8 @@ describe('GET /api/stats', () => {
         expect(res.body.perClient).not.toHaveProperty('broken');
     });
 
-    it('calculates success rate', async () => {
+    it('calculates success rate (fallback)', async () => {
+        mockedGetGlobalStats.mockResolvedValue(null);
         mockedGetAllClients.mockResolvedValue({ acme: { name: 'Acme', enabled: true } } as any);
         mockedGetSummary.mockResolvedValue({
             total: 4,
@@ -205,7 +252,7 @@ describe('GET /api/stats', () => {
     });
 
     it('returns 500 on error', async () => {
-        mockedGetAllClients.mockRejectedValue(new Error('db error'));
+        mockedGetGlobalStats.mockRejectedValue(new Error('db error'));
 
         await request(app).get('/api/stats').expect(500);
     });
