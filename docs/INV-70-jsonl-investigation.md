@@ -43,21 +43,23 @@ The actual crash scenario described in the ticket ("file was cleared") is more l
 
 Replace `processing-results.json` (read-modify-write) with **two files** per client:
 
-| File | Purpose | Access Pattern |
-|------|---------|----------------|
-| `results.jsonl` | Append-only truth log | `fs.appendFile()` — one JSON line per result |
-| `processing-results.json` | Derived cache for fast reads | Rebuilt from JSONL on demand |
+| File                      | Purpose                      | Access Pattern                               |
+| ------------------------- | ---------------------------- | -------------------------------------------- |
+| `results.jsonl`           | Append-only truth log        | `fs.appendFile()` — one JSON line per result |
+| `processing-results.json` | Derived cache for fast reads | Rebuilt from JSONL on demand                 |
 
 Each line in `results.jsonl` is a self-contained JSON object (one `ResultRecord` per line). New results are appended with `fs.appendFile()`, which is **atomic for small writes on local filesystems** (<= PIPE_BUF, typically 4KB — a single result record is ~500B-2KB).
 
 ### 2.2 Write Path Changes
 
 **Current** (`appendResult`):
+
 ```
 read JSON → parse → push → serialize → write temp → rename
 ```
 
 **Proposed** (`appendResult`):
+
 ```
 serialize record → fs.appendFile(resultsJsonlPath, JSON + '\n')
 ```
@@ -65,11 +67,13 @@ serialize record → fs.appendFile(resultsJsonlPath, JSON + '\n')
 No read step. No parse step. No race condition. Multiple concurrent workers can safely append simultaneously.
 
 **Current** (`updateResult` for retry):
+
 ```
 read JSON → find by ID → replace in-place → serialize → write temp → rename
 ```
 
 **Proposed** (`updateResult` for retry):
+
 ```
 serialize new record with retriedFrom reference → fs.appendFile()
 ```
@@ -79,6 +83,7 @@ JSONL is append-only — retries don't modify previous records. The new record i
 ### 2.3 Read Path Changes
 
 The read path (`getResults`, `getSummary`, `getResult`, `getFailedResults`) currently does:
+
 ```
 read JSON → parse → filter/sort/slice → return
 ```
@@ -90,6 +95,7 @@ Two options for JSONL reads:
 **Option B: Derived JSON cache** — Rebuild `processing-results.json` from JSONL periodically (on startup, after writes, or lazily on first read). The existing read path code stays unchanged. Cache invalidation is trivial: compare `results.jsonl` mtime with cache mtime.
 
 **Recommendation: Option B (derived cache)**. Reasons:
+
 - Zero changes to read path code (`getResults`, `getSummary`, etc. remain unchanged)
 - Cache rebuild is a simple sequential read of JSONL → deduplicate retries → write JSON
 - Startup cost is negligible (<100ms for 10K records)
@@ -107,6 +113,7 @@ rebuildCache(folderPath):
 ```
 
 Trigger points:
+
 - After each `appendResult()` call (debounced — batch writes trigger one rebuild at end)
 - On `getResults()`/`getSummary()` if cache is stale (mtime check)
 - On server startup
@@ -144,6 +151,7 @@ interface GlobalResultRecord extends ResultRecord {
 ```
 
 Fields per record:
+
 - **Identity**: `id`, `clientId`, `clientName`, `originalFilename`, `outputFilename`
 - **Outcome**: `status`, `error`, `rawResponse`
 - **Timing**: `timestamp`, `duration`, `retriedFrom`
@@ -164,28 +172,29 @@ Same `fs.appendFile()` pattern — no read-modify-write, no race conditions.
 ### 3.3 Storage Growth Projections
 
 Estimated per-record size (based on current `ResultRecord` shape):
+
 - **Success record** (with extractedFields, tags, tokenUsage): ~800B–2KB depending on field count
 - **Failed record** (with error, rawResponse): ~500B–5KB depending on rawResponse size
 - **Average**: ~1.5KB per record
 
 | Records | JSONL Size | JSON Cache Size |
-|---------|-----------|-----------------|
-| 1,000   | ~1.5 MB   | ~1.8 MB         |
-| 10,000  | ~15 MB    | ~18 MB          |
-| 50,000  | ~75 MB    | ~90 MB          |
-| 100,000 | ~150 MB   | ~180 MB         |
+| ------- | ---------- | --------------- |
+| 1,000   | ~1.5 MB    | ~1.8 MB         |
+| 10,000  | ~15 MB     | ~18 MB          |
+| 50,000  | ~75 MB     | ~90 MB          |
+| 100,000 | ~150 MB    | ~180 MB         |
 
 At expected usage (hundreds to low thousands of invoices per client, a handful of clients), the global archive will stay well under 50MB for years. At 100K+ records, consider log rotation or archival — but this is far beyond current scale.
 
 ### 3.4 Consumption Patterns
 
-| Consumer | Method | Notes |
-|----------|--------|-------|
-| `/api/stats` endpoint | Read JSONL → aggregate in memory | Replaces current per-client `getSummary()` loop. Single file read instead of N client reads |
-| Admin UI dashboard | Via `/api/stats` API | No frontend changes needed |
-| CLI analytics | `npx tsx scripts/analyze-results.ts` | Custom script reads JSONL directly |
-| DuckDB ad-hoc queries | `SELECT * FROM read_json_auto('data/global-results.jsonl')` | Zero-config — DuckDB auto-detects JSONL. Enables complex analytics: cost per model, error rates over time, throughput trends |
-| Pipeline test comparison | Combine with `tests/fixtures/pipeline-runs.json` | Cross-reference extraction accuracy with production results |
+| Consumer                 | Method                                                      | Notes                                                                                                                        |
+| ------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `/api/stats` endpoint    | Read JSONL → aggregate in memory                            | Replaces current per-client `getSummary()` loop. Single file read instead of N client reads                                  |
+| Admin UI dashboard       | Via `/api/stats` API                                        | No frontend changes needed                                                                                                   |
+| CLI analytics            | `npx tsx scripts/analyze-results.ts`                        | Custom script reads JSONL directly                                                                                           |
+| DuckDB ad-hoc queries    | `SELECT * FROM read_json_auto('data/global-results.jsonl')` | Zero-config — DuckDB auto-detects JSONL. Enables complex analytics: cost per model, error rates over time, throughput trends |
+| Pipeline test comparison | Combine with `tests/fixtures/pipeline-runs.json`            | Cross-reference extraction accuracy with production results                                                                  |
 
 ### 3.5 Can the Global Archive Replace `/api/stats`?
 
@@ -224,30 +233,33 @@ Single file read, no per-client config resolution needed. Significant simplifica
 
 ## 5. Decisions
 
-| Question | Recommendation |
-|----------|---------------|
-| Per-client JSON files: keep or eliminate? | **Keep as derived cache.** Zero read-path changes, trivially rebuildable. Delete the cache and it auto-rebuilds. |
-| JSONL read path: direct parse or cache? | **Cache (Option B).** The existing read code stays untouched. |
-| Cache rebuild trigger | **After writes (debounced) + on stale reads.** |
-| Global archive: separate from per-client? | **Yes, separate file.** Per-client JSONL handles correctness; global archive handles analytics. Both are append-only. |
-| `rawResponse` in global archive? | **No.** Exclude `rawResponse` from global records to keep file size manageable. Keep it only in per-client JSONL for debugging. |
-| Migration: big-bang or gradual? | **Single PR per phase.** Phase 1 is the critical bug fix. Phase 2 is an enhancement. |
+| Question                                  | Recommendation                                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Per-client JSON files: keep or eliminate? | **Keep as derived cache.** Zero read-path changes, trivially rebuildable. Delete the cache and it auto-rebuilds.                |
+| JSONL read path: direct parse or cache?   | **Cache (Option B).** The existing read code stays untouched.                                                                   |
+| Cache rebuild trigger                     | **After writes (debounced) + on stale reads.**                                                                                  |
+| Global archive: separate from per-client? | **Yes, separate file.** Per-client JSONL handles correctness; global archive handles analytics. Both are append-only.           |
+| `rawResponse` in global archive?          | **No.** Exclude `rawResponse` from global records to keep file size manageable. Keep it only in per-client JSONL for debugging. |
+| Migration: big-bang or gradual?           | **Single PR per phase.** Phase 1 is the critical bug fix. Phase 2 is an enhancement.                                            |
 
 ## 6. Follow-Up Tickets
 
-### INV-XX: Replace per-client JSON with JSONL source of truth (Phase 1)
+### INV-80: Replace per-client JSON with JSONL source of truth (Phase 1)
+
 - **Type**: fix (addresses data loss bug)
 - **Priority**: High
 - **Scope**: `src/result-manager.ts`, `src/parallel-processor.ts`, migration script
 - **Acceptance**: concurrent writes don't lose data, retry dedup works, existing UI unchanged
 
-### INV-XX: Add cross-client JSONL archive (Phase 2)
+### INV-81: Add cross-client JSONL archive (Phase 2)
+
 - **Type**: feature
 - **Priority**: Medium
 - **Scope**: `src/result-manager.ts`, `src/parallel-processor.ts`, `server.ts` (`/api/stats`), migration script
 - **Acceptance**: global archive populated on every process run, `/api/stats` reads from it, DuckDB queryable
 
-### INV-XX: Add `rawResponse` exclusion and JSONL housekeeping (Phase 3)
+### INV-82: Add `rawResponse` exclusion and JSONL housekeeping (Phase 3)
+
 - **Type**: chore
 - **Priority**: Low
 - **Scope**: Archive size management, optional log rotation
