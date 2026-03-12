@@ -1,6 +1,11 @@
 /**
- * Processing result storage — persists per-file results to processing-results.json
- * in each client's folder for history, retry, and statistics features.
+ * Processing result storage — append-only JSONL as source of truth,
+ * with processing-results.json as a derived cache for fast reads.
+ *
+ * Each write appends a line to results.jsonl. The JSON cache is rebuilt
+ * on a debounced schedule or on-demand when a read detects staleness.
+ * This eliminates the read-modify-write race that dropped results under
+ * concurrent p-limit workers.
  */
 
 import fs from 'node:fs';
@@ -18,12 +23,36 @@ import type {
 } from './types/index.js';
 
 export const RESULTS_FILENAME = 'processing-results.json';
+export const JSONL_FILENAME = 'results.jsonl';
 
-/**
- * Read the results file for a client folder, or return empty structure if missing.
- * @param folderPath - The client's base folder path
- * @returns The results data { results: [], lastUpdated }
- */
+// ── Private: debounce timers for cache rebuilds ──
+
+const rebuildTimers = new Map<string, NodeJS.Timeout>();
+
+// ── Private: JSONL helpers ──
+
+async function appendJsonlLine(folderPath: string, record: ResultRecord): Promise<void> {
+    const jsonlPath = path.join(folderPath, JSONL_FILENAME);
+    await fs.promises.appendFile(jsonlPath, JSON.stringify(record) + '\n');
+}
+
+function parseJsonlToMap(content: string): Map<string, ResultRecord> {
+    const map = new Map<string, ResultRecord>();
+    for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+            const record = JSON.parse(trimmed) as ResultRecord;
+            map.set(record.id, record); // last occurrence wins (dedup for retries)
+        } catch {
+            // Skip corrupt lines — more resilient than JSON (single corruption ≠ total loss)
+        }
+    }
+    return map;
+}
+
+// ── Private: cache management ──
+
 async function readResultsFile(folderPath: string): Promise<ResultsFileData> {
     const filePath = path.join(folderPath, RESULTS_FILENAME);
     try {
@@ -34,11 +63,6 @@ async function readResultsFile(folderPath: string): Promise<ResultsFileData> {
     }
 }
 
-/**
- * Write the results file atomically (write to temp, then rename).
- * @param folderPath - The client's base folder path
- * @param data - The full results data to write
- */
 async function writeResultsFile(folderPath: string, data: ResultsFileData): Promise<void> {
     const filePath = path.join(folderPath, RESULTS_FILENAME);
     const tmpPath = filePath + '.tmp';
@@ -46,26 +70,104 @@ async function writeResultsFile(folderPath: string, data: ResultsFileData): Prom
     await fs.promises.rename(tmpPath, filePath);
 }
 
-/**
- * Append a single processing result to the client's results file.
- * @param folderPath - The client's base folder path
- * @param result - The processing result from the pipeline
- * @param options - Additional metadata
- * @returns The stored result record
- */
-export async function appendResult(
-    folderPath: string,
-    result: ProcessingResult,
-    options: { model?: string | null; duration?: number | null } = {}
-): Promise<ResultRecord> {
+async function rebuildResultsCache(folderPath: string): Promise<ResultsFileData> {
+    const jsonlPath = path.join(folderPath, JSONL_FILENAME);
+    const content = await fs.promises.readFile(jsonlPath, 'utf-8');
+    const map = parseJsonlToMap(content);
+
+    const results = Array.from(map.values()).sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+
+    const lastUpdated = results.length > 0 ? results[0].timestamp : null;
+    const data: ResultsFileData = { results, lastUpdated };
+    await writeResultsFile(folderPath, data);
+    return data;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+    try {
+        await fs.promises.access(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function isCacheStale(folderPath: string): Promise<boolean> {
+    const jsonlPath = path.join(folderPath, JSONL_FILENAME);
+    const cachePath = path.join(folderPath, RESULTS_FILENAME);
+    try {
+        const [jsonlStat, cacheStat] = await Promise.all([fs.promises.stat(jsonlPath), fs.promises.stat(cachePath)]);
+        return jsonlStat.mtimeMs > cacheStat.mtimeMs;
+    } catch {
+        // Cache missing or JSONL missing — treat as stale so rebuild runs
+        return true;
+    }
+}
+
+async function migrateJsonToJsonl(folderPath: string): Promise<void> {
     const data = await readResultsFile(folderPath);
+    if (data.results.length === 0) return;
+
+    const jsonlPath = path.join(folderPath, JSONL_FILENAME);
+    const lines = data.results.map((r) => JSON.stringify(r)).join('\n') + '\n';
+    await fs.promises.writeFile(jsonlPath, lines);
+
+    // Rebuild cache to verify consistency
+    const rebuilt = await rebuildResultsCache(folderPath);
+    if (rebuilt.results.length !== data.results.length) {
+        throw new Error(
+            `Migration verification failed: expected ${data.results.length} records, got ${rebuilt.results.length}`
+        );
+    }
+}
+
+async function ensureFreshCache(folderPath: string): Promise<void> {
+    const jsonlPath = path.join(folderPath, JSONL_FILENAME);
+    const cachePath = path.join(folderPath, RESULTS_FILENAME);
+
+    const jsonlExists = await fileExists(jsonlPath);
+    const cacheExists = await fileExists(cachePath);
+
+    if (!jsonlExists && cacheExists) {
+        // Legacy data — migrate JSON → JSONL
+        await migrateJsonToJsonl(folderPath);
+        return;
+    }
+
+    if (jsonlExists && (await isCacheStale(folderPath))) {
+        await rebuildResultsCache(folderPath);
+    }
+}
+
+function scheduleCacheRebuild(folderPath: string): void {
+    const existing = rebuildTimers.get(folderPath);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+        rebuildTimers.delete(folderPath);
+        rebuildResultsCache(folderPath).catch(() => {
+            // Fire-and-forget — reads will trigger rebuild via ensureFreshCache
+        });
+    }, 100);
+
+    rebuildTimers.set(folderPath, timer);
+}
+
+// ── Private: record builder ──
+
+function buildRecord(
+    result: ProcessingResult,
+    options: { id?: string; model?: string | null; duration?: number | null; retriedFrom?: string }
+): ResultRecord {
     const now = new Date().toISOString();
 
     let status: ResultRecord['status'] = 'failed';
     if (result.success) status = (result as { dryRun?: boolean }).dryRun ? 'dry-run' : 'success';
 
     const record: ResultRecord = {
-        id: crypto.randomUUID(),
+        id: options.id || crypto.randomUUID(),
         originalFilename: result.originalFilename,
         outputFilename: (result as { outputFilename?: string }).outputFilename || null,
         status,
@@ -88,21 +190,35 @@ export async function appendResult(
         duration: options.duration || null
     };
 
-    data.results.push(record);
-    data.lastUpdated = now;
+    if (options.retriedFrom) {
+        record.retriedFrom = options.retriedFrom;
+    }
 
-    await writeResultsFile(folderPath, data);
+    return record;
+}
+
+// ── Public API ──
+
+/**
+ * Append a single processing result to the client's JSONL log.
+ */
+export async function appendResult(
+    folderPath: string,
+    result: ProcessingResult,
+    options: { model?: string | null; duration?: number | null } = {}
+): Promise<ResultRecord> {
+    const record = buildRecord(result, options);
+    await appendJsonlLine(folderPath, record);
+    scheduleCacheRebuild(folderPath);
     return record;
 }
 
 /**
  * Get results with optional filtering and pagination.
- * @param folderPath - The client's base folder path
- * @param options - Query options
- * @returns Paginated results
  */
 export async function getResults(folderPath: string, options: GetResultsOptions = {}): Promise<PaginatedResults> {
     const { status, limit = 50, offset = 0 } = options;
+    await ensureFreshCache(folderPath);
     const data = await readResultsFile(folderPath);
 
     // Sort newest first
@@ -124,21 +240,18 @@ export async function getResults(folderPath: string, options: GetResultsOptions 
 
 /**
  * Get a single result by ID.
- * @param folderPath - The client's base folder path
- * @param id - The result ID
- * @returns The result record or null
  */
 export async function getResult(folderPath: string, id: string): Promise<ResultRecord | null> {
+    await ensureFreshCache(folderPath);
     const data = await readResultsFile(folderPath);
     return data.results.find((r) => r.id === id) || null;
 }
 
 /**
  * Get aggregate statistics for a client's processing history.
- * @param folderPath - The client's base folder path
- * @returns Summary stats
  */
 export async function getSummary(folderPath: string): Promise<SummaryStats> {
+    await ensureFreshCache(folderPath);
     const data = await readResultsFile(folderPath);
     const results = data.results;
 
@@ -195,12 +308,7 @@ export async function getSummary(folderPath: string): Promise<SummaryStats> {
 
 /**
  * Replace a result entry by ID with a new processing outcome.
- * Used by retry to update failed results with new success/failure.
- * @param folderPath - The client's base folder path
- * @param id - The result ID to replace
- * @param result - The new processing result
- * @param options - Additional metadata (model, duration)
- * @returns The updated result record
+ * Appends a new JSONL line with the same ID — last occurrence wins on rebuild.
  */
 export async function updateResult(
     folderPath: string,
@@ -208,49 +316,28 @@ export async function updateResult(
     result: ProcessingResult,
     options: { model?: string | null; duration?: number | null } = {}
 ): Promise<ResultRecord> {
+    await ensureFreshCache(folderPath);
     const data = await readResultsFile(folderPath);
-    const index = data.results.findIndex((r) => r.id === id);
-    if (index === -1) throw new Error(`Result ${id} not found`);
+    const original = data.results.find((r) => r.id === id);
+    if (!original) throw new Error(`Result ${id} not found`);
 
-    const now = new Date().toISOString();
-    const record: ResultRecord = {
+    const record = buildRecord(result, {
         id,
-        originalFilename: result.originalFilename,
-        outputFilename: (result as { outputFilename?: string }).outputFilename || null,
-        status: result.success ? 'success' : 'failed',
-        model: options.model || data.results[index].model,
-        extractedFields: result.success ? (result as { analysis?: Record<string, unknown> }).analysis || {} : {},
-        tags:
-            result.success && (result as { analysis?: { tags?: Record<string, boolean> } }).analysis
-                ? (result as { analysis: { tags?: Record<string, boolean> } }).analysis.tags || {}
-                : {},
-        tokenUsage: result.tokenUsage || {
-            promptTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0,
-            cachedTokens: 0,
-            thoughtsTokens: 0
-        },
-        timestamp: now,
-        error: (result as { error?: string }).error || null,
-        rawResponse: null,
-        duration: options.duration || null,
-        retriedFrom: data.results[index].timestamp
-    };
+        model: options.model || original.model,
+        duration: options.duration,
+        retriedFrom: original.timestamp
+    });
 
-    data.results[index] = record;
-    data.lastUpdated = now;
-
-    await writeResultsFile(folderPath, data);
+    await appendJsonlLine(folderPath, record);
+    scheduleCacheRebuild(folderPath);
     return record;
 }
 
 /**
  * Get all failed result entries (for retry-all).
- * @param folderPath - The client's base folder path
- * @returns Array of failed result records
  */
 export async function getFailedResults(folderPath: string): Promise<ResultRecord[]> {
+    await ensureFreshCache(folderPath);
     const data = await readResultsFile(folderPath);
     return data.results.filter((r) => r.status === 'failed');
 }

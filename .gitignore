@@ -17,6 +17,7 @@ backups/
 # Per-client config and processing results
 clients/*.json
 **/processing-results.json
+**/results.jsonl
 
 # Evaluation fixtures (real invoices + ground truth — private)
 tests/fixtures/eval-corpus/
