@@ -18,12 +18,10 @@ backups/
 clients/*.json
 **/processing-results.json
 
-# Test data
-test-invoices/
-
 # Evaluation fixtures (real invoices + ground truth — private)
 tests/fixtures/eval-corpus/
 tests/fixtures/eval-results/
+tests/fixtures/pipeline-runs.json
 
 # OS files
 .DS_Store

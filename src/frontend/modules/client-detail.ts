@@ -25,6 +25,8 @@ let detailFilenameOverride: string | null = null;
 let detailPromptPreviewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let detailModelEditMode = false;
 let detailModelOverride: string | null = null;
+let detailHeaderEditMode = false;
+let detailHeaderEditData: { name: string; folderPath: string; apiKeyEnvVar: string; enabled: boolean } | null = null;
 
 // --- DOM refs (set in init) ---
 let dashboardListView: HTMLElement;
@@ -75,6 +77,9 @@ let resetModelBtn: HTMLElement;
 let saveDetailModelBtn: HTMLButtonElement;
 let discardDetailModelBtn: HTMLElement;
 let detailModelSaveBar: HTMLElement;
+let detailHeaderSaveBar: HTMLElement;
+let saveDetailHeaderBtn: HTMLButtonElement;
+let discardDetailHeaderBtn: HTMLElement;
 
 // --- Public API ---
 
@@ -120,6 +125,10 @@ export function initClientDetail(): void {
     discardDetailModelBtn = document.getElementById('discardDetailModelBtn')!;
     detailModelSaveBar = document.getElementById('detailModelSaveBar')!;
 
+    detailHeaderSaveBar = document.getElementById('detailHeaderSaveBar')!;
+    saveDetailHeaderBtn = document.getElementById('saveDetailHeaderBtn') as HTMLButtonElement;
+    discardDetailHeaderBtn = document.getElementById('discardDetailHeaderBtn')!;
+
     // Back to dashboard
     backToDashboardBtn.addEventListener('click', closeClientDetail);
 
@@ -157,6 +166,10 @@ export function initClientDetail(): void {
     resetFilenameBtn.addEventListener('click', () => resetOverride('output'));
     saveDetailFilenameBtn.addEventListener('click', saveDetailFilenameOverride);
     discardDetailFilenameBtn.addEventListener('click', cancelDetailFilenameEdit);
+
+    // Header edit
+    saveDetailHeaderBtn.addEventListener('click', saveHeaderProperties);
+    discardDetailHeaderBtn.addEventListener('click', cancelDetailHeaderEdit);
 
     // File selector
     fileSelectorEl = document.getElementById('fileSelector')!;
@@ -234,6 +247,27 @@ function renderClientDetail(): void {
     const folderStatus = c.folderStatus as Record<string, unknown>;
     detailClientHeader.textContent = '';
 
+    if (detailHeaderEditMode && detailHeaderEditData) {
+        renderClientDetailEditMode(c, folderStatus);
+    } else {
+        renderClientDetailReadMode(c, folderStatus);
+    }
+
+    renderDetailModel(data.model as Record<string, unknown>);
+    renderDetailFieldList(data.fieldDefinitions as Record<string, unknown>[]);
+    renderDetailTagList(data.tagDefinitions as Record<string, unknown>[]);
+    renderDetailFilenameTemplate(data.filenameTemplate as Record<string, unknown>);
+    renderDetailPromptTemplate(data.promptTemplate as Record<string, unknown>);
+}
+
+function renderClientDetailReadMode(c: Record<string, unknown>, folderStatus: Record<string, unknown>): void {
+    // Edit button (top-right)
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-small btn-secondary detail-header-edit-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', enterHeaderEditMode);
+    detailClientHeader.appendChild(editBtn);
+
     // Name row
     const h2 = document.createElement('h2');
     h2.className = 'detail-client-name';
@@ -292,13 +326,128 @@ function renderClientDetail(): void {
     }
     meta.appendChild(folderDiv);
 
+    // API Key env var (when set)
+    if (c.apiKeyEnvVar) {
+        const apiDiv = document.createElement('div');
+        apiDiv.className = 'detail-meta-item';
+        const apiLbl = document.createElement('span');
+        apiLbl.className = 'detail-meta-label';
+        apiLbl.textContent = 'API Key Env';
+        const apiVal = document.createElement('span');
+        apiVal.className = 'detail-meta-value mono';
+        apiVal.textContent = c.apiKeyEnvVar as string;
+        apiDiv.appendChild(apiLbl);
+        apiDiv.appendChild(apiVal);
+        meta.appendChild(apiDiv);
+    }
+
+    detailClientHeader.appendChild(meta);
+}
+
+function renderClientDetailEditMode(c: Record<string, unknown>, folderStatus: Record<string, unknown>): void {
+    const ed = detailHeaderEditData!;
+
+    // Name input
+    const nameLabel = document.createElement('label');
+    nameLabel.className = 'detail-meta-label';
+    nameLabel.textContent = 'Name';
+    detailClientHeader.appendChild(nameLabel);
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'detail-header-input';
+    nameInput.value = ed.name;
+    nameInput.addEventListener('input', () => {
+        ed.name = nameInput.value;
+        updateHeaderSaveBar();
+    });
+    detailClientHeader.appendChild(nameInput);
+
+    // Client ID (read-only)
+    const idDiv = document.createElement('div');
+    idDiv.className = 'detail-client-id';
+    idDiv.textContent = c.clientId as string;
+    detailClientHeader.appendChild(idDiv);
+
+    const meta = document.createElement('div');
+    meta.className = 'detail-client-meta';
+    meta.style.marginTop = '0.75rem';
+
+    // Enabled toggle
+    const enabledDiv = document.createElement('div');
+    enabledDiv.className = 'detail-meta-item';
+    const enabledLabel = document.createElement('label');
+    enabledLabel.className = 'detail-header-toggle';
+    const enabledCheckbox = document.createElement('input');
+    enabledCheckbox.type = 'checkbox';
+    enabledCheckbox.checked = ed.enabled;
+    enabledCheckbox.addEventListener('change', () => {
+        ed.enabled = enabledCheckbox.checked;
+        updateHeaderSaveBar();
+    });
+    const enabledText = document.createElement('span');
+    enabledText.textContent = 'Enabled';
+    enabledLabel.appendChild(enabledCheckbox);
+    enabledLabel.appendChild(enabledText);
+    enabledDiv.appendChild(enabledLabel);
+    meta.appendChild(enabledDiv);
+
+    // Pending / Processed (read-only)
+    [
+        { label: 'Pending', value: String(folderStatus.inputPdfCount) },
+        { label: 'Processed', value: String(folderStatus.processedCount) }
+    ].forEach((item) => {
+        const div = document.createElement('div');
+        div.className = 'detail-meta-item';
+        const lbl = document.createElement('span');
+        lbl.className = 'detail-meta-label';
+        lbl.textContent = item.label;
+        const val = document.createElement('span');
+        val.className = 'detail-meta-value';
+        val.textContent = item.value;
+        div.appendChild(lbl);
+        div.appendChild(val);
+        meta.appendChild(div);
+    });
+
     detailClientHeader.appendChild(meta);
 
-    renderDetailModel(data.model as Record<string, unknown>);
-    renderDetailFieldList(data.fieldDefinitions as Record<string, unknown>[]);
-    renderDetailTagList(data.tagDefinitions as Record<string, unknown>[]);
-    renderDetailFilenameTemplate(data.filenameTemplate as Record<string, unknown>);
-    renderDetailPromptTemplate(data.promptTemplate as Record<string, unknown>);
+    // Folder path input
+    const folderGroup = document.createElement('div');
+    folderGroup.style.marginTop = '0.75rem';
+    const folderLabel = document.createElement('label');
+    folderLabel.className = 'detail-meta-label';
+    folderLabel.textContent = 'Folder Path';
+    folderGroup.appendChild(folderLabel);
+    const folderInput = document.createElement('input');
+    folderInput.type = 'text';
+    folderInput.className = 'detail-header-input mono';
+    folderInput.value = ed.folderPath;
+    folderInput.addEventListener('input', () => {
+        ed.folderPath = folderInput.value;
+        updateHeaderSaveBar();
+    });
+    folderGroup.appendChild(folderInput);
+    detailClientHeader.appendChild(folderGroup);
+
+    // API Key env var input
+    const apiGroup = document.createElement('div');
+    apiGroup.style.marginTop = '0.75rem';
+    const apiLabel = document.createElement('label');
+    apiLabel.className = 'detail-meta-label';
+    apiLabel.textContent = 'API Key Env Var (optional)';
+    apiGroup.appendChild(apiLabel);
+    const apiInput = document.createElement('input');
+    apiInput.type = 'text';
+    apiInput.className = 'detail-header-input mono';
+    apiInput.placeholder = 'e.g., GEMINI_API_KEY_ACME';
+    apiInput.value = ed.apiKeyEnvVar;
+    apiInput.addEventListener('input', () => {
+        ed.apiKeyEnvVar = apiInput.value;
+        updateHeaderSaveBar();
+    });
+    apiGroup.appendChild(apiInput);
+    detailClientHeader.appendChild(apiGroup);
 }
 
 function renderDetailModel(modelData: Record<string, unknown>): void {
@@ -684,6 +833,86 @@ function renderDetailPromptTemplate(prompt: Record<string, unknown>): void {
     appendDetailPromptPreview(detailPromptTemplate, false);
 }
 
+// --- Internal: Header property editing ---
+
+function enterHeaderEditMode(): void {
+    if (!clientDetailData) return;
+    const c = clientDetailData.client as Record<string, unknown>;
+    detailHeaderEditData = {
+        name: (c.name as string) || '',
+        folderPath: (c.folderPath as string) || '',
+        apiKeyEnvVar: (c.apiKeyEnvVar as string) || '',
+        enabled: c.enabled !== false
+    };
+    detailHeaderEditMode = true;
+    renderClientDetail();
+    updateHeaderSaveBar();
+}
+
+function cancelDetailHeaderEdit(): void {
+    detailHeaderEditMode = false;
+    detailHeaderEditData = null;
+    detailHeaderSaveBar.style.display = 'none';
+    renderClientDetail();
+}
+
+function updateHeaderSaveBar(): void {
+    if (!detailHeaderEditMode || !detailHeaderEditData || !clientDetailData) {
+        detailHeaderSaveBar.style.display = 'none';
+        return;
+    }
+    const c = clientDetailData.client as Record<string, unknown>;
+    const ed = detailHeaderEditData;
+    const changed =
+        ed.name !== (c.name as string) ||
+        ed.folderPath !== (c.folderPath as string) ||
+        ed.apiKeyEnvVar !== ((c.apiKeyEnvVar as string) || '') ||
+        ed.enabled !== (c.enabled !== false);
+    detailHeaderSaveBar.style.display = changed ? 'flex' : 'none';
+}
+
+async function saveHeaderProperties(): Promise<void> {
+    if (!clientDetailData || !detailHeaderEditData) return;
+    const c = clientDetailData.client as Record<string, unknown>;
+    const clientId = c.clientId as string;
+    const ed = detailHeaderEditData;
+
+    saveDetailHeaderBtn.disabled = true;
+    try {
+        const response = await fetch(`/api/clients/${clientId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: ed.name,
+                folderPath: ed.folderPath,
+                apiKeyEnvVar: ed.apiKeyEnvVar || '',
+                enabled: ed.enabled
+            })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to update client');
+        }
+
+        // Reload annotated config
+        const configRes = await fetch(`/api/clients/${clientId}/config`);
+        if (configRes.ok) {
+            clientDetailData = await configRes.json();
+        }
+
+        detailHeaderEditMode = false;
+        detailHeaderEditData = null;
+        detailHeaderSaveBar.style.display = 'none';
+        renderClientDetail();
+        updateDetailResetButtons();
+        showAlert('Client properties updated successfully', 'success');
+    } catch (error) {
+        showAlert('Failed to save: ' + (error as Error).message, 'error');
+    } finally {
+        saveDetailHeaderBtn.disabled = false;
+    }
+}
+
 // --- Internal: Override editing ---
 
 function resetDetailEditState(): void {
@@ -699,11 +928,14 @@ function resetDetailEditState(): void {
     detailFilenameOverride = null;
     detailModelEditMode = false;
     detailModelOverride = null;
+    detailHeaderEditMode = false;
+    detailHeaderEditData = null;
     detailFieldsSaveBar.style.display = 'none';
     detailTagsSaveBar.style.display = 'none';
     detailPromptSaveBar.style.display = 'none';
     detailFilenameSaveBar.style.display = 'none';
     detailModelSaveBar.style.display = 'none';
+    detailHeaderSaveBar.style.display = 'none';
 }
 
 function updateDetailResetButtons(): void {

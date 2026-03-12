@@ -105,7 +105,9 @@ export function readFieldsFromDOM() {
 function onCellWrite(index, fieldName, input, tr) {
     if (index >= fieldDefinitions.length || !fieldName)
         return;
-    const value = input.tagName === 'INPUT' && input.type === 'checkbox' ? input.checked : input.value.trim();
+    const value = input.tagName === 'INPUT' && input.type === 'checkbox'
+        ? input.checked
+        : input.value.trim();
     // Handle format field: empty string -> FORMAT_NONE
     if (fieldName === 'format') {
         fieldDefinitions[index].format = value === '' ? FORMAT_NONE : value;
@@ -116,7 +118,9 @@ function onCellWrite(index, fieldName, input, tr) {
     // Auto-generate key from label for new fields
     if (fieldName === 'label') {
         const keyTd = tr.querySelector('td.col-key');
-        const keyInput = keyTd ? keyTd.querySelector('.cell-edit input[data-field="key"]') : null;
+        const keyInput = keyTd
+            ? keyTd.querySelector('.cell-edit input[data-field="key"]')
+            : null;
         if (keyInput && !keyInput.readOnly) {
             keyInput.value = labelToCamelCase(input.value);
             fieldDefinitions[index].key = keyInput.value;

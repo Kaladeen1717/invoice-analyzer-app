@@ -82,7 +82,7 @@ scripts/                — Utility TypeScript scripts (run via npx tsx)
   generate-truth.ts     — Generate ground truth files for eval corpus
   eval-quality.ts       — Extraction quality evaluation against ground truth
   research-multi-agent.ts — Multi-agent extraction research harness
-  create-test-invoice.ts — Create sample test invoice PDF
+  test-pipeline.ts      — Run extraction pipeline on eval-corpus PDFs, log results
 ```
 
 ## Architecture

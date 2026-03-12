@@ -189,14 +189,21 @@ app.put('/api/clients/:id', async (req: Request, res: Response) => {
         const clientId = req.params.id as string;
         const { name, enabled, folderPath, apiKeyEnvVar, tagOverrides } = req.body;
 
+        const existing = await getClient(clientId);
         const config: Record<string, unknown> = {
+            ...existing,
             name,
             enabled: enabled !== false,
             folderPath
         };
 
-        if (apiKeyEnvVar) {
-            config.apiKeyEnvVar = apiKeyEnvVar;
+        // Support clearing apiKeyEnvVar (send null/empty to remove)
+        if (apiKeyEnvVar !== undefined) {
+            if (apiKeyEnvVar) {
+                config.apiKeyEnvVar = apiKeyEnvVar;
+            } else {
+                delete config.apiKeyEnvVar;
+            }
         }
 
         if (tagOverrides) {

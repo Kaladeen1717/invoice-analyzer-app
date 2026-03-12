@@ -224,9 +224,7 @@ function showImportPreview(bundle) {
         all: 'Everything (Global + Clients)'
     };
     const scope = bundle.scope;
-    const scopeLabel = scope.startsWith('client:')
-        ? `Client: ${scope.substring(7)}`
-        : scopeLabels[scope] || scope;
+    const scopeLabel = scope.startsWith('client:') ? `Client: ${scope.substring(7)}` : scopeLabels[scope] || scope;
     importPreviewMeta.textContent = '';
     [
         ['Scope', scopeLabel],
